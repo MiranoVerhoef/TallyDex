@@ -101,6 +101,87 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
+enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
+    case cardmarket
+    case tcgplayer
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cardmarket: "Cardmarket"
+        case .tcgplayer: "TCGplayer"
+        }
+    }
+
+    var currencyCode: String {
+        switch self {
+        case .cardmarket: "EUR"
+        case .tcgplayer: "USD"
+        }
+    }
+}
+
+enum PricingSettings {
+    static let sourceKey = "pricing.preferredSource"
+    static let defaultSource = CatalogPriceSource.cardmarket
+
+    static var preferredSource: CatalogPriceSource {
+        guard let rawValue = UserDefaults.standard.string(forKey: sourceKey) else {
+            return defaultSource
+        }
+        return CatalogPriceSource(rawValue: rawValue) ?? defaultSource
+    }
+}
+
+struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
+    let cardID: String
+    let variant: CatalogVariantKind
+    let source: CatalogPriceSource
+    let currencyCode: String
+    let amount: Double
+    let updatedAt: Date
+
+    var id: String { "\(cardID)|\(variant.rawValue)|\(source.rawValue)" }
+}
+
+struct CatalogValueSummary: Equatable, Sendable {
+    let amount: Double
+    let pricedVariants: Int
+    let missingVariants: Int
+    let source: CatalogPriceSource
+
+    var currencyCode: String { source.currencyCode }
+}
+
+enum CatalogValueCalculator {
+    static func summary(
+        entries: [CollectionVariantEntry],
+        prices: [String: [CatalogPriceQuote]],
+        source: CatalogPriceSource
+    ) -> CatalogValueSummary {
+        var amount = 0.0
+        var pricedVariants = 0
+        var missingVariants = 0
+        for entry in entries where entry.quantity > 0 {
+            if let quote = prices[entry.cardID]?.first(where: {
+                $0.variant == entry.variant && $0.source == source
+            }) {
+                amount += quote.amount * Double(entry.quantity)
+                pricedVariants += 1
+            } else {
+                missingVariants += 1
+            }
+        }
+        return CatalogValueSummary(
+            amount: amount,
+            pricedVariants: pricedVariants,
+            missingVariants: missingVariants,
+            source: source
+        )
+    }
+}
+
 /// TCGdex does not currently distinguish stamped Prerelease and Staff prints.
 /// Keep the provider data primary, then apply small, sourced corrections for
 /// English printings that would otherwise be invisible to collectors.
@@ -134,6 +215,17 @@ enum CatalogVariantOverrides {
 struct CatalogCardSnapshot: Codable, Equatable, Sendable {
     let card: CatalogCard
     let variants: Set<CatalogVariantKind>
+    let prices: [CatalogPriceQuote]
+
+    init(
+        card: CatalogCard,
+        variants: Set<CatalogVariantKind>,
+        prices: [CatalogPriceQuote] = []
+    ) {
+        self.card = card
+        self.variants = variants
+        self.prices = prices
+    }
 }
 
 struct CatalogCardSearchResult: Equatable, Identifiable, Sendable {
@@ -178,6 +270,7 @@ protocol CatalogRepository: Sendable {
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func fetchVariants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>]
+    func fetchPrices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]]
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
     func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws
