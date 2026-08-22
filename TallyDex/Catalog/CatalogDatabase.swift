@@ -216,6 +216,38 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult] {
+        guard !cardIDs.isEmpty else { return [] }
+        return try await database.queue.read { database in
+            let placeholders = Array(repeating: "?", count: cardIDs.count).joined(separator: ",")
+            return try Row.fetchAll(
+                database,
+                sql: """
+                SELECT search.*, catalogSet.name AS setName
+                FROM catalogSearchCard AS search
+                JOIN catalogSet ON catalogSet.id = search.setID
+                WHERE search.id IN (\(placeholders))
+                ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
+                """,
+                arguments: StatementArguments(cardIDs)
+            ).map { row in
+                CatalogCardSearchResult(
+                    card: CatalogCard(
+                        id: row["id"],
+                        setID: row["setID"],
+                        localID: row["localID"],
+                        name: row["name"],
+                        imageURL: Self.url(row["imageURL"]),
+                        category: nil,
+                        illustrator: nil,
+                        rarity: nil
+                    ),
+                    setName: row["setName"]
+                )
+            }
+        }
+    }
+
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind> {
         try await database.queue.read { database in
             let rawValues = try String.fetchAll(
