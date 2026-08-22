@@ -43,3 +43,12 @@ apps can use this source URL:
 ```text
 https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.json
 ```
+
+## License
+
+TallyDex's original source code, interface, documentation, name, and artwork
+are proprietary and all rights are reserved. See [LICENSE](LICENSE).
+
+TCGdex data, GRDB.swift, Pokémon card imagery, names, logos, and other
+third-party material remain under their own licenses or owners' rights. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
