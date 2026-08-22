@@ -75,6 +75,29 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
     }
 
+    func testTCGdexDecodesOfficialSetAbbreviation() async throws {
+        let response = #"""
+        {
+          "id": "me04",
+          "name": "Chaos Rising",
+          "abbreviation": { "official": "CRI" },
+          "cardCount": { "official": 86, "total": 122 },
+          "serie": { "id": "me", "name": "Mega Evolution" },
+          "cards": []
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchSet(id: "me04")
+
+        XCTAssertEqual(snapshot.set.abbreviation, "CRI")
+    }
+
     func testRepositoryReplacesOnlySetsForRequestedSeries() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let firstSeries = CatalogSeries(id: "base", name: "Base", logoURL: nil)
@@ -153,7 +176,7 @@ final class CatalogFoundationTests: XCTestCase {
                 series: mega,
                 sets: [
                     set(id: "me05", seriesID: "me", name: "Pitch Black"),
-                    set(id: "me04", seriesID: "me", name: "Chaos Rising"),
+                    set(id: "me04", seriesID: "me", name: "Chaos Rising", abbreviation: "CRI"),
                 ]
             ),
             CatalogSeriesSnapshot(
@@ -164,8 +187,10 @@ final class CatalogFoundationTests: XCTestCase {
 
         let storedSeriesIDs = try await repository.fetchSeries().map(\.id)
         let storedMegaSetNames = try await repository.fetchSets(seriesID: "me").map(\.name)
+        let storedChaosRising = try await repository.fetchSets(seriesID: "me")[1]
         XCTAssertEqual(storedSeriesIDs, ["me", "sv"])
         XCTAssertEqual(storedMegaSetNames, ["Pitch Black", "Chaos Rising"])
+        XCTAssertEqual(storedChaosRising.abbreviation, "CRI")
     }
 
     func testRepositoryRejectsInvalidWholeCatalogWithoutDeletingCache() async throws {
@@ -196,11 +221,17 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(storedBaseSetIDs, ["base1"])
     }
 
-    private func set(id: String, seriesID: String, name: String) -> CatalogSet {
+    private func set(
+        id: String,
+        seriesID: String,
+        name: String,
+        abbreviation: String? = nil
+    ) -> CatalogSet {
         CatalogSet(
             id: id,
             seriesID: seriesID,
             name: name,
+            abbreviation: abbreviation,
             logoURL: nil,
             symbolURL: nil,
             officialCardCount: 1,

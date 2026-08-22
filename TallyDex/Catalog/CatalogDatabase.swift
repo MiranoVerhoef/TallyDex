@@ -87,6 +87,12 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v2-set-abbreviation") { database in
+            try database.alter(table: "catalogSet") { table in
+                table.add(column: "abbreviation", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -318,11 +324,12 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         try database.execute(
             sql: """
             INSERT INTO catalogSet
-                (id, seriesID, name, logoURL, symbolURL, officialCardCount, totalCardCount, releaseDate, sortIndex)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, seriesID, name, abbreviation, logoURL, symbolURL, officialCardCount, totalCardCount, releaseDate, sortIndex)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 seriesID = excluded.seriesID,
                 name = excluded.name,
+                abbreviation = COALESCE(excluded.abbreviation, catalogSet.abbreviation),
                 logoURL = excluded.logoURL,
                 symbolURL = excluded.symbolURL,
                 officialCardCount = excluded.officialCardCount,
@@ -334,6 +341,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 set.id,
                 set.seriesID,
                 set.name,
+                set.abbreviation,
                 set.logoURL?.absoluteString,
                 set.symbolURL?.absoluteString,
                 set.officialCardCount,
@@ -349,6 +357,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             id: row["id"],
             seriesID: row["seriesID"],
             name: row["name"],
+            abbreviation: row["abbreviation"],
             logoURL: url(row["logoURL"]),
             symbolURL: url(row["symbolURL"]),
             officialCardCount: row["officialCardCount"],

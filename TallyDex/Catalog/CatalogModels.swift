@@ -10,11 +10,26 @@ struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let seriesID: String
     let name: String
+    let abbreviation: String?
     let logoURL: URL?
     let symbolURL: URL?
     let officialCardCount: Int
     let totalCardCount: Int
     let releaseDate: String?
+
+    func fillingMissingMetadata(from fallback: CatalogSet?) -> CatalogSet {
+        CatalogSet(
+            id: id,
+            seriesID: seriesID,
+            name: name,
+            abbreviation: abbreviation ?? fallback?.abbreviation,
+            logoURL: logoURL,
+            symbolURL: symbolURL,
+            officialCardCount: officialCardCount,
+            totalCardCount: totalCardCount,
+            releaseDate: releaseDate ?? fallback?.releaseDate
+        )
+    }
 }
 
 struct CatalogCard: Codable, Equatable, Hashable, Identifiable, Sendable {

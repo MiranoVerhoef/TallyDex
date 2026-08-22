@@ -260,8 +260,22 @@ private struct CatalogSetRow: View {
         max(0, set.totalCardCount - set.officialCardCount)
     }
 
+    private var cardCountText: String {
+        if secretCardCount > 0 {
+            "\(set.officialCardCount) cards + \(secretCardCount) secret"
+        } else {
+            "\(set.officialCardCount) cards"
+        }
+    }
+
+    private var metadataText: String {
+        [set.abbreviation, cardCountText]
+            .compactMap { $0 }
+            .joined(separator: "  •  ")
+    }
+
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             AsyncImage(url: set.logoURL?.appendingPathExtension("png")) { phase in
                 switch phase {
                 case .success(let image):
@@ -275,23 +289,17 @@ private struct CatalogSetRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 74, height: 48)
+            .frame(width: 96, height: 64)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(set.name)
-                    .font(.body.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                if secretCardCount > 0 {
-                    Text("\(set.officialCardCount) cards + \(secretCardCount) secret")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("\(set.officialCardCount) cards")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(metadataText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
