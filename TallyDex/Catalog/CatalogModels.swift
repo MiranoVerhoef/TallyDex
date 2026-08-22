@@ -92,6 +92,13 @@ struct CatalogCardSnapshot: Codable, Equatable, Sendable {
     let variants: Set<CatalogVariantKind>
 }
 
+struct CatalogCardSearchResult: Equatable, Identifiable, Sendable {
+    let card: CatalogCard
+    let setName: String
+
+    var id: String { card.id }
+}
+
 struct CatalogSeriesSnapshot: Codable, Equatable, Sendable {
     let series: CatalogSeries
     let sets: [CatalogSet]
@@ -103,6 +110,7 @@ struct CatalogSetSnapshot: Codable, Equatable, Sendable {
 }
 
 protocol CatalogProvider: Sendable {
+    func fetchCardIndex() async throws -> [CatalogCard]
     func fetchSeriesIndex() async throws -> [CatalogSeries]
     func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot
     func fetchSet(id: String) async throws -> CatalogSetSnapshot
@@ -114,7 +122,7 @@ protocol CatalogRepository: Sendable {
     func fetchSets(seriesID: String?) async throws -> [CatalogSet]
     func fetchCards(setID: String) async throws -> [CatalogCard]
     func fetchDownloadedSetIDs() async throws -> [String]
-    func searchCards(query: String) async throws -> [CatalogCard]
+    func searchCards(query: String) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
@@ -122,6 +130,7 @@ protocol CatalogRepository: Sendable {
     func replaceSets(_ sets: [CatalogSet], forSeriesID seriesID: String) async throws
     func replaceSet(_ snapshot: CatalogSetSnapshot) async throws
     func replaceCard(_ snapshot: CatalogCardSnapshot) async throws
+    func replaceSearchIndex(_ cards: [CatalogCard]) async throws
     func setMetadataDate(_ date: Date, forKey key: String) async throws
 }
 

@@ -20,6 +20,31 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(series, [CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)])
     }
 
+    func testTCGdexDecodesCompleteCardSearchIndex() async throws {
+        let response = #"""
+        [
+          {
+            "id": "sm115-2",
+            "localId": "2",
+            "name": "Metapod",
+            "image": "https://assets.tcgdex.net/en/sm/sm115/2"
+          }
+        ]
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let cards = try await client.fetchCardIndex()
+
+        XCTAssertEqual(cards.first?.id, "sm115-2")
+        XCTAssertEqual(cards.first?.setID, "sm115")
+        XCTAssertEqual(cards.first?.name, "Metapod")
+    }
+
     func testTCGdexRetriesRateLimitResponse() async throws {
         let stub = HTTPClientStub(responses: [
             HTTPResponse(data: Data(), statusCode: 429, retryAfter: "0"),
@@ -366,7 +391,7 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(storedSeries.first?.name, "Scarlet & Violet Updated")
     }
 
-    func testRepositorySearchesDownloadedCardsByNameOrNumber() async throws {
+    func testRepositorySearchesPreloadedCardsByNameOrNumber() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
         let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
@@ -383,13 +408,20 @@ final class CatalogFoundationTests: XCTestCase {
         try await repository.replaceCatalog([
             CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
         ])
-        try await repository.replaceSet(CatalogSetSnapshot(set: catalogSet, cards: [card]))
+        try await repository.replaceSearchIndex([card])
 
         let byName = try await repository.searchCards(query: "sprig")
         let byNumber = try await repository.searchCards(query: "001")
+        let bySetAndName = try await repository.searchCards(query: "Scarlet sprig")
+        let searchOnlyDownloadedSetIDs = try await repository.fetchDownloadedSetIDs()
+        let expectedResult = CatalogCardSearchResult(card: card, setName: "Scarlet & Violet")
+        XCTAssertEqual(byName, [expectedResult])
+        XCTAssertEqual(byNumber, [expectedResult])
+        XCTAssertEqual(bySetAndName, [expectedResult])
+        XCTAssertTrue(searchOnlyDownloadedSetIDs.isEmpty)
+
+        try await repository.replaceSet(CatalogSetSnapshot(set: catalogSet, cards: [card]))
         let downloadedSetIDs = try await repository.fetchDownloadedSetIDs()
-        XCTAssertEqual(byName, [card])
-        XCTAssertEqual(byNumber, [card])
         XCTAssertEqual(downloadedSetIDs, ["sv01"])
     }
 
