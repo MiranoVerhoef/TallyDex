@@ -100,6 +100,25 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
     }
 
+    func testLucarioPrereleaseOverridesFillProviderGap() {
+        XCTAssertEqual(
+            CatalogVariantOverrides.apply(to: [.normal, .reverseHolo], cardID: "pl1-53"),
+            [.normal, .reverseHolo, .prerelease, .prereleaseStaff]
+        )
+        XCTAssertEqual(
+            CatalogVariantOverrides.apply(to: [.normal], cardID: "smp-SM95"),
+            [.prerelease, .prereleaseStaff]
+        )
+        XCTAssertEqual(
+            CatalogVariantOverrides.apply(to: [.normal], cardID: "swshp-SWSH186"),
+            [.prerelease, .prereleaseStaff]
+        )
+        XCTAssertEqual(
+            CatalogVariantOverrides.apply(to: [.normal], cardID: "sv01-001"),
+            [.normal]
+        )
+    }
+
     func testTCGdexDecodesOfficialSetAbbreviation() async throws {
         let response = #"""
         {

@@ -293,7 +293,10 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 sql: "SELECT kind FROM catalogVariant WHERE cardID = ? ORDER BY kind",
                 arguments: [cardID]
             )
-            return Set(rawValues.compactMap(CatalogVariantKind.init(rawValue:)))
+            return CatalogVariantOverrides.apply(
+                to: Set(rawValues.compactMap(CatalogVariantKind.init(rawValue:))),
+                cardID: cardID
+            )
         }
     }
 
@@ -306,13 +309,20 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 sql: "SELECT cardID, kind FROM catalogVariant WHERE cardID IN (\(placeholders))",
                 arguments: StatementArguments(cardIDs)
             )
-            return rows.reduce(into: [String: Set<CatalogVariantKind>]()) { result, row in
+            var result = rows.reduce(into: [String: Set<CatalogVariantKind>]()) { result, row in
                 let cardID: String = row["cardID"]
                 let rawKind: String = row["kind"]
                 if let kind = CatalogVariantKind(rawValue: rawKind) {
                     result[cardID, default: []].insert(kind)
                 }
             }
+            for cardID in cardIDs {
+                result[cardID] = CatalogVariantOverrides.apply(
+                    to: result[cardID] ?? [],
+                    cardID: cardID
+                )
+            }
+            return result
         }
     }
 
