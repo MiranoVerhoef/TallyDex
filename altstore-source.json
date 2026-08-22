@@ -20,11 +20,21 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.0/TallyDex-v0.2.0-Set-Edit.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.4/TallyDex-v0.1.4-Search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Detail.png"
       ],
       "versions": [
+        {
+          "version": "0.2.0",
+          "buildVersion": "6",
+          "date": "2026-08-22",
+          "localizedDescription": "Adds persistent per-printing card quantities, quick checkmarks in set grids, Main and Master collection goals configured by long-pressing a set and choosing Edit, live cards-owned progress, and a populated Collection tab.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.0/TallyDex-v0.2.0.ipa",
+          "size": 6407598,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.1.4",
           "buildVersion": "5",
