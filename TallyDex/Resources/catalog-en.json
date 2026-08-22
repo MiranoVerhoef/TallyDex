@@ -11,6 +11,30 @@
       },
       "sets": [
         {
+          "id": "upcoming-me06",
+          "seriesID": "me",
+          "name": "Delta Reign",
+          "abbreviation": null,
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 0,
+          "totalCardCount": 0,
+          "releaseDate": "2026-11-06",
+          "rarityCounts": []
+        },
+        {
+          "id": "upcoming-30c",
+          "seriesID": "me",
+          "name": "30th Celebration",
+          "abbreviation": "30C",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 0,
+          "totalCardCount": 0,
+          "releaseDate": "2026-09-16",
+          "rarityCounts": []
+        },
+        {
           "id": "me05",
           "seriesID": "me",
           "name": "Pitch Black",

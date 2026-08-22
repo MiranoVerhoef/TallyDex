@@ -1,0 +1,42 @@
+{
+  "name": "TallyDex Dev",
+  "identifier": "com.miranoverhoef.tallydex.source",
+  "subtitle": "Development releases of the native Pokémon TCG collection tracker.",
+  "description": "Install and update TallyDex development builds through FlareStore, AltStore, SideStore, and other compatible sideloading apps.",
+  "iconURL": "https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/Distribution/TallyDex-Icon.png",
+  "website": "https://github.com/MiranoVerhoef/TallyDex",
+  "tintColor": "#087FE8",
+  "featuredApps": [
+    "com.miranoverhoef.TallyDex"
+  ],
+  "apps": [
+    {
+      "name": "TallyDex",
+      "bundleIdentifier": "com.miranoverhoef.TallyDex",
+      "developerName": "Mirano Verhoef",
+      "subtitle": "Track Pokémon TCG sets and your collection.",
+      "localizedDescription": "A native, local-first iPhone app for browsing Pokémon TCG series and sets and building a personal collection.",
+      "iconURL": "https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/Distribution/TallyDex-Icon.png",
+      "tintColor": "#087FE8",
+      "category": "utilities",
+      "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1-Series.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1-Upcoming-Sets.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1-Expansion-Symbols.png"
+      ],
+      "versions": [
+        {
+          "version": "0.1.1",
+          "buildVersion": "2",
+          "date": "2026-08-22",
+          "localizedDescription": "Shows authentic expansion symbols for pre-Scarlet & Violet sets, includes announced upcoming sets, improves special-collection artwork fallbacks, and adds IPA distribution.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1.ipa",
+          "size": 6023479,
+          "minOSVersion": "26.0"
+        }
+      ],
+      "appPermissions": {}
+    }
+  ],
+  "news": []
+}
