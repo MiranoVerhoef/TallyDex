@@ -13,5 +13,14 @@ final class TallyDexSmokeTests: XCTestCase {
     func testInvalidStoredSetsScopeFallsBackToAllSets() {
         XCTAssertEqual(SetsScope.resolve("unsupported"), .all)
     }
-}
 
+    func testAppearanceDefaultsToSystem() {
+        XCTAssertEqual(AppAppearance.resolve("unsupported"), .system)
+        XCTAssertNil(AppAppearance.system.colorScheme)
+    }
+
+    func testSetsBrowsingStyleOffersBothLayouts() {
+        XCTAssertEqual(SetsBrowsingStyle.allCases.map(\.title), ["Series First", "Grouped List"])
+        XCTAssertEqual(SetsBrowsingStyle.resolve("unsupported"), .seriesFirst)
+    }
+}

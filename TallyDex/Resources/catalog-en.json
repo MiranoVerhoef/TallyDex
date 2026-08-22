@@ -1,0 +1,2217 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-22T09:34:46Z",
+  "language": "en",
+  "series": [
+    {
+      "series": {
+        "id": "me",
+        "name": "Mega Evolution",
+        "logoURL": "https://assets.tcgdex.net/en/me/me01/logo"
+      },
+      "sets": [
+        {
+          "id": "me05",
+          "seriesID": "me",
+          "name": "Pitch Black",
+          "logoURL": "https://assets.tcgdex.net/en/me/me05/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/me/me05/symbol",
+          "officialCardCount": 84,
+          "totalCardCount": 120,
+          "releaseDate": null
+        },
+        {
+          "id": "me04",
+          "seriesID": "me",
+          "name": "Chaos Rising",
+          "logoURL": "https://assets.tcgdex.net/en/me/me04/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/me/me04/symbol",
+          "officialCardCount": 86,
+          "totalCardCount": 122,
+          "releaseDate": null
+        },
+        {
+          "id": "me03",
+          "seriesID": "me",
+          "name": "Perfect Order",
+          "logoURL": "https://assets.tcgdex.net/en/me/me03/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/me/me03/symbol",
+          "officialCardCount": 88,
+          "totalCardCount": 124,
+          "releaseDate": null
+        },
+        {
+          "id": "me02.5",
+          "seriesID": "me",
+          "name": "Ascended Heroes",
+          "logoURL": "https://assets.tcgdex.net/en/me/me02.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/me/me02.5/symbol",
+          "officialCardCount": 217,
+          "totalCardCount": 295,
+          "releaseDate": null
+        },
+        {
+          "id": "me02",
+          "seriesID": "me",
+          "name": "Phantasmal Flames",
+          "logoURL": "https://assets.tcgdex.net/en/me/me02/logo",
+          "symbolURL": null,
+          "officialCardCount": 94,
+          "totalCardCount": 130,
+          "releaseDate": null
+        },
+        {
+          "id": "me01",
+          "seriesID": "me",
+          "name": "Mega Evolution",
+          "logoURL": "https://assets.tcgdex.net/en/me/me01/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/me/me01/symbol",
+          "officialCardCount": 132,
+          "totalCardCount": 188,
+          "releaseDate": null
+        },
+        {
+          "id": "mep",
+          "seriesID": "me",
+          "name": "MEP Black Star Promos",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 0,
+          "totalCardCount": 60,
+          "releaseDate": null
+        },
+        {
+          "id": "mee",
+          "seriesID": "me",
+          "name": "Mega Evolution Energy",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 8,
+          "totalCardCount": 8,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "sv",
+        "name": "Scarlet & Violet",
+        "logoURL": "https://assets.tcgdex.net/en/sv/sv01/logo"
+      },
+      "sets": [
+        {
+          "id": "sv10.5w",
+          "seriesID": "sv",
+          "name": "White Flare",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv10.5w/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv10.5w/symbol",
+          "officialCardCount": 86,
+          "totalCardCount": 173,
+          "releaseDate": null
+        },
+        {
+          "id": "sv10.5b",
+          "seriesID": "sv",
+          "name": "Black Bolt",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv10.5b/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv10.5b/symbol",
+          "officialCardCount": 86,
+          "totalCardCount": 172,
+          "releaseDate": null
+        },
+        {
+          "id": "sv10",
+          "seriesID": "sv",
+          "name": "Destined Rivals",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv10/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv10/symbol",
+          "officialCardCount": 182,
+          "totalCardCount": 244,
+          "releaseDate": null
+        },
+        {
+          "id": "sv09",
+          "seriesID": "sv",
+          "name": "Journey Together",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv09/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv09/symbol",
+          "officialCardCount": 159,
+          "totalCardCount": 190,
+          "releaseDate": null
+        },
+        {
+          "id": "sv08.5",
+          "seriesID": "sv",
+          "name": "Prismatic Evolutions",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv08.5/logo",
+          "symbolURL": null,
+          "officialCardCount": 131,
+          "totalCardCount": 180,
+          "releaseDate": null
+        },
+        {
+          "id": "sv08",
+          "seriesID": "sv",
+          "name": "Surging Sparks",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv08/logo",
+          "symbolURL": null,
+          "officialCardCount": 191,
+          "totalCardCount": 252,
+          "releaseDate": null
+        },
+        {
+          "id": "sv07",
+          "seriesID": "sv",
+          "name": "Stellar Crown",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv07/logo",
+          "symbolURL": null,
+          "officialCardCount": 142,
+          "totalCardCount": 175,
+          "releaseDate": null
+        },
+        {
+          "id": "sv06.5",
+          "seriesID": "sv",
+          "name": "Shrouded Fable",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv06.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv06.5/symbol",
+          "officialCardCount": 64,
+          "totalCardCount": 99,
+          "releaseDate": null
+        },
+        {
+          "id": "sv06",
+          "seriesID": "sv",
+          "name": "Twilight Masquerade",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv06/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv06/symbol",
+          "officialCardCount": 167,
+          "totalCardCount": 226,
+          "releaseDate": null
+        },
+        {
+          "id": "sv05",
+          "seriesID": "sv",
+          "name": "Temporal Forces",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv05/symbol",
+          "officialCardCount": 162,
+          "totalCardCount": 218,
+          "releaseDate": null
+        },
+        {
+          "id": "sv04.5",
+          "seriesID": "sv",
+          "name": "Paldean Fates",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv04.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv04.5/symbol",
+          "officialCardCount": 91,
+          "totalCardCount": 245,
+          "releaseDate": null
+        },
+        {
+          "id": "sv04",
+          "seriesID": "sv",
+          "name": "Paradox Rift",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv04/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv04/symbol",
+          "officialCardCount": 182,
+          "totalCardCount": 266,
+          "releaseDate": null
+        },
+        {
+          "id": "mfb",
+          "seriesID": "sv",
+          "name": "My First Battle",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 48,
+          "totalCardCount": 48,
+          "releaseDate": null
+        },
+        {
+          "id": "sv03.5",
+          "seriesID": "sv",
+          "name": "151",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv03.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv03.5/symbol",
+          "officialCardCount": 165,
+          "totalCardCount": 207,
+          "releaseDate": null
+        },
+        {
+          "id": "sv03",
+          "seriesID": "sv",
+          "name": "Obsidian Flames",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv03/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv03/symbol",
+          "officialCardCount": 197,
+          "totalCardCount": 230,
+          "releaseDate": null
+        },
+        {
+          "id": "sv02",
+          "seriesID": "sv",
+          "name": "Paldea Evolved",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv02/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv02/symbol",
+          "officialCardCount": 193,
+          "totalCardCount": 279,
+          "releaseDate": null
+        },
+        {
+          "id": "svp",
+          "seriesID": "sv",
+          "name": "SVP Black Star Promos",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 225,
+          "totalCardCount": 226,
+          "releaseDate": null
+        },
+        {
+          "id": "sve",
+          "seriesID": "sv",
+          "name": "Scarlet & Violet Energy",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 24,
+          "totalCardCount": 24,
+          "releaseDate": null
+        },
+        {
+          "id": "sv01",
+          "seriesID": "sv",
+          "name": "Scarlet & Violet",
+          "logoURL": "https://assets.tcgdex.net/en/sv/sv01/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sv/sv01/symbol",
+          "officialCardCount": 198,
+          "totalCardCount": 258,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "swsh",
+        "name": "Sword & Shield",
+        "logoURL": "https://assets.tcgdex.net/en/swsh/swsh1/logo"
+      },
+      "sets": [
+        {
+          "id": "swsh12.5",
+          "seriesID": "swsh",
+          "name": "Crown Zenith",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh12.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh12.5/symbol",
+          "officialCardCount": 159,
+          "totalCardCount": 160,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh12.5gg",
+          "seriesID": "swsh",
+          "name": "Crown Zenith Galarian Gallery",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 70,
+          "totalCardCount": 70,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh12.5tg",
+          "seriesID": "swsh",
+          "name": "Silver Tempest Trainer Gallery",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh12",
+          "seriesID": "swsh",
+          "name": "Silver Tempest",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh12/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh12/symbol",
+          "officialCardCount": 195,
+          "totalCardCount": 215,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh11",
+          "seriesID": "swsh",
+          "name": "Lost Origin",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh11/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh11/symbol",
+          "officialCardCount": 196,
+          "totalCardCount": 217,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh11.5tg",
+          "seriesID": "swsh",
+          "name": "Lost Origin Trainer Gallery",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh10.5",
+          "seriesID": "swsh",
+          "name": "Pokémon GO",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh10.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh10.5/symbol",
+          "officialCardCount": 78,
+          "totalCardCount": 88,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh10.5tg",
+          "seriesID": "swsh",
+          "name": "Astral Radiance Trainer Gallery",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh10",
+          "seriesID": "swsh",
+          "name": "Astral Radiance",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh10/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh10/symbol",
+          "officialCardCount": 189,
+          "totalCardCount": 216,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh9",
+          "seriesID": "swsh",
+          "name": "Brilliant Stars",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh9/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh9/symbol",
+          "officialCardCount": 172,
+          "totalCardCount": 186,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh9.5tg",
+          "seriesID": "swsh",
+          "name": "Brilliant Stars Trainer Gallery",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh8",
+          "seriesID": "swsh",
+          "name": "Fusion Strike",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh8/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh8/symbol",
+          "officialCardCount": 264,
+          "totalCardCount": 284,
+          "releaseDate": null
+        },
+        {
+          "id": "cel25cc",
+          "seriesID": "swsh",
+          "name": "Celebrations Classic Collection",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 25,
+          "totalCardCount": 25,
+          "releaseDate": null
+        },
+        {
+          "id": "cel25",
+          "seriesID": "swsh",
+          "name": "Celebrations",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/cel25/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/cel25/symbol",
+          "officialCardCount": 25,
+          "totalCardCount": 25,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh7",
+          "seriesID": "swsh",
+          "name": "Evolving Skies",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh7/symbol",
+          "officialCardCount": 203,
+          "totalCardCount": 237,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh6",
+          "seriesID": "swsh",
+          "name": "Chilling Reign",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh6/symbol",
+          "officialCardCount": 198,
+          "totalCardCount": 233,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh5",
+          "seriesID": "swsh",
+          "name": "Battle Styles",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh5/symbol",
+          "officialCardCount": 163,
+          "totalCardCount": 183,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh4.5sv",
+          "seriesID": "swsh",
+          "name": "Shining Fates Shiny Vault",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 122,
+          "totalCardCount": 122,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh4.5",
+          "seriesID": "swsh",
+          "name": "Shining Fates",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh4.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh4.5/symbol",
+          "officialCardCount": 72,
+          "totalCardCount": 73,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh4",
+          "seriesID": "swsh",
+          "name": "Vivid Voltage",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh4/symbol",
+          "officialCardCount": 185,
+          "totalCardCount": 203,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh3.5",
+          "seriesID": "swsh",
+          "name": "Champion's Path",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh3.5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh3.5/symbol",
+          "officialCardCount": 73,
+          "totalCardCount": 80,
+          "releaseDate": null
+        },
+        {
+          "id": "fut2020",
+          "seriesID": "swsh",
+          "name": "Pokémon Futsal 2020",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/fut2020/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/fut2020/symbol",
+          "officialCardCount": 5,
+          "totalCardCount": 5,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh3",
+          "seriesID": "swsh",
+          "name": "Darkness Ablaze",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh3/symbol",
+          "officialCardCount": 189,
+          "totalCardCount": 201,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh2",
+          "seriesID": "swsh",
+          "name": "Rebel Clash",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh2/symbol",
+          "officialCardCount": 192,
+          "totalCardCount": 209,
+          "releaseDate": null
+        },
+        {
+          "id": "swsh1",
+          "seriesID": "swsh",
+          "name": "Sword & Shield",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swsh1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh1/symbol",
+          "officialCardCount": 202,
+          "totalCardCount": 216,
+          "releaseDate": null
+        },
+        {
+          "id": "swshp",
+          "seriesID": "swsh",
+          "name": "SWSH Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/swsh/swshp/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/swsh/swshp/symbol",
+          "officialCardCount": 307,
+          "totalCardCount": 307,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "sm",
+        "name": "Sun & Moon",
+        "logoURL": "https://assets.tcgdex.net/en/sm/sm1/logo"
+      },
+      "sets": [
+        {
+          "id": "sm12",
+          "seriesID": "sm",
+          "name": "Cosmic Eclipse",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm12/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm12/symbol",
+          "officialCardCount": 236,
+          "totalCardCount": 271,
+          "releaseDate": null
+        },
+        {
+          "id": "sma",
+          "seriesID": "sm",
+          "name": "Hidden Fates Shiny Vault",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sma/symbol",
+          "officialCardCount": 94,
+          "totalCardCount": 94,
+          "releaseDate": null
+        },
+        {
+          "id": "sm115",
+          "seriesID": "sm",
+          "name": "Hidden Fates",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm115/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm115/symbol",
+          "officialCardCount": 68,
+          "totalCardCount": 69,
+          "releaseDate": null
+        },
+        {
+          "id": "sm11",
+          "seriesID": "sm",
+          "name": "Unified Minds",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm11/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm11/symbol",
+          "officialCardCount": 236,
+          "totalCardCount": 258,
+          "releaseDate": null
+        },
+        {
+          "id": "sm10",
+          "seriesID": "sm",
+          "name": "Unbroken Bonds",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm10/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm10/symbol",
+          "officialCardCount": 214,
+          "totalCardCount": 234,
+          "releaseDate": null
+        },
+        {
+          "id": "det1",
+          "seriesID": "sm",
+          "name": "Detective Pikachu",
+          "logoURL": "https://assets.tcgdex.net/en/sm/det1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/det1/symbol",
+          "officialCardCount": 18,
+          "totalCardCount": 18,
+          "releaseDate": null
+        },
+        {
+          "id": "sm9",
+          "seriesID": "sm",
+          "name": "Team Up",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm9/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm9/symbol",
+          "officialCardCount": 181,
+          "totalCardCount": 196,
+          "releaseDate": null
+        },
+        {
+          "id": "sm8",
+          "seriesID": "sm",
+          "name": "Lost Thunder",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm8/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm8/symbol",
+          "officialCardCount": 214,
+          "totalCardCount": 236,
+          "releaseDate": null
+        },
+        {
+          "id": "sm7.5",
+          "seriesID": "sm",
+          "name": "Dragon Majesty",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 70,
+          "totalCardCount": 78,
+          "releaseDate": null
+        },
+        {
+          "id": "sm7",
+          "seriesID": "sm",
+          "name": "Celestial Storm",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm7/symbol",
+          "officialCardCount": 168,
+          "totalCardCount": 183,
+          "releaseDate": null
+        },
+        {
+          "id": "sm6",
+          "seriesID": "sm",
+          "name": "Forbidden Light",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm6/symbol",
+          "officialCardCount": 131,
+          "totalCardCount": 146,
+          "releaseDate": null
+        },
+        {
+          "id": "sm5",
+          "seriesID": "sm",
+          "name": "Ultra Prism",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm5/symbol",
+          "officialCardCount": 156,
+          "totalCardCount": 173,
+          "releaseDate": null
+        },
+        {
+          "id": "sm4",
+          "seriesID": "sm",
+          "name": "Crimson Invasion",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm4/symbol",
+          "officialCardCount": 111,
+          "totalCardCount": 125,
+          "releaseDate": null
+        },
+        {
+          "id": "sm3.5",
+          "seriesID": "sm",
+          "name": "Shining Legends",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 73,
+          "totalCardCount": 78,
+          "releaseDate": null
+        },
+        {
+          "id": "sm3",
+          "seriesID": "sm",
+          "name": "Burning Shadows",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm3/symbol",
+          "officialCardCount": 147,
+          "totalCardCount": 169,
+          "releaseDate": null
+        },
+        {
+          "id": "sm2",
+          "seriesID": "sm",
+          "name": "Guardians Rising",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm2/symbol",
+          "officialCardCount": 145,
+          "totalCardCount": 169,
+          "releaseDate": null
+        },
+        {
+          "id": "smp",
+          "seriesID": "sm",
+          "name": "SM Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/sm/smp/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/smp/symbol",
+          "officialCardCount": 248,
+          "totalCardCount": 248,
+          "releaseDate": null
+        },
+        {
+          "id": "sm1",
+          "seriesID": "sm",
+          "name": "Sun & Moon",
+          "logoURL": "https://assets.tcgdex.net/en/sm/sm1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/sm/sm1/symbol",
+          "officialCardCount": 149,
+          "totalCardCount": 172,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "xy",
+        "name": "XY",
+        "logoURL": "https://assets.tcgdex.net/en/xy/xy1/logo"
+      },
+      "sets": [
+        {
+          "id": "xy12",
+          "seriesID": "xy",
+          "name": "Evolutions",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy12/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy12/symbol",
+          "officialCardCount": 108,
+          "totalCardCount": 113,
+          "releaseDate": null
+        },
+        {
+          "id": "xy11",
+          "seriesID": "xy",
+          "name": "Steam Siege",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy11/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy11/symbol",
+          "officialCardCount": 114,
+          "totalCardCount": 116,
+          "releaseDate": null
+        },
+        {
+          "id": "xy10",
+          "seriesID": "xy",
+          "name": "Fates Collide",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy10/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy10/symbol",
+          "officialCardCount": 124,
+          "totalCardCount": 129,
+          "releaseDate": null
+        },
+        {
+          "id": "g1",
+          "seriesID": "xy",
+          "name": "Generations",
+          "logoURL": "https://assets.tcgdex.net/en/xy/g1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/g1/symbol",
+          "officialCardCount": 83,
+          "totalCardCount": 117,
+          "releaseDate": null
+        },
+        {
+          "id": "xy9",
+          "seriesID": "xy",
+          "name": "BREAKpoint",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy9/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy9/symbol",
+          "officialCardCount": 122,
+          "totalCardCount": 126,
+          "releaseDate": null
+        },
+        {
+          "id": "xy8",
+          "seriesID": "xy",
+          "name": "BREAKthrough",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy8/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy8/symbol",
+          "officialCardCount": 162,
+          "totalCardCount": 165,
+          "releaseDate": null
+        },
+        {
+          "id": "xy7",
+          "seriesID": "xy",
+          "name": "Ancient Origins",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy7/symbol",
+          "officialCardCount": 98,
+          "totalCardCount": 101,
+          "releaseDate": null
+        },
+        {
+          "id": "xy6",
+          "seriesID": "xy",
+          "name": "Roaring Skies",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy6/symbol",
+          "officialCardCount": 108,
+          "totalCardCount": 112,
+          "releaseDate": null
+        },
+        {
+          "id": "dc1",
+          "seriesID": "xy",
+          "name": "Double Crisis",
+          "logoURL": "https://assets.tcgdex.net/en/xy/dc1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/dc1/symbol",
+          "officialCardCount": 34,
+          "totalCardCount": 34,
+          "releaseDate": null
+        },
+        {
+          "id": "xy5",
+          "seriesID": "xy",
+          "name": "Primal Clash",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy5/symbol",
+          "officialCardCount": 160,
+          "totalCardCount": 164,
+          "releaseDate": null
+        },
+        {
+          "id": "xy4",
+          "seriesID": "xy",
+          "name": "Phantom Forces",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy4/symbol",
+          "officialCardCount": 119,
+          "totalCardCount": 124,
+          "releaseDate": null
+        },
+        {
+          "id": "xy3",
+          "seriesID": "xy",
+          "name": "Furious Fists",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy3/symbol",
+          "officialCardCount": 111,
+          "totalCardCount": 114,
+          "releaseDate": null
+        },
+        {
+          "id": "xy2",
+          "seriesID": "xy",
+          "name": "Flashfire",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy2/symbol",
+          "officialCardCount": 106,
+          "totalCardCount": 110,
+          "releaseDate": null
+        },
+        {
+          "id": "xya",
+          "seriesID": "xy",
+          "name": "Yellow A Alternate",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 6,
+          "totalCardCount": 6,
+          "releaseDate": null
+        },
+        {
+          "id": "xy1",
+          "seriesID": "xy",
+          "name": "XY",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy1/symbol",
+          "officialCardCount": 146,
+          "totalCardCount": 146,
+          "releaseDate": null
+        },
+        {
+          "id": "xy0",
+          "seriesID": "xy",
+          "name": "Kalos Starter Set",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xy0/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xy0/symbol",
+          "officialCardCount": 39,
+          "totalCardCount": 39,
+          "releaseDate": null
+        },
+        {
+          "id": "xyp",
+          "seriesID": "xy",
+          "name": "XY Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/xy/xyp/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/xy/xyp/symbol",
+          "officialCardCount": 211,
+          "totalCardCount": 216,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "mc",
+        "name": "McDonald's Collection",
+        "logoURL": null
+      },
+      "sets": [
+        {
+          "id": "2024sv",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2024",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 15,
+          "totalCardCount": 15,
+          "releaseDate": null
+        },
+        {
+          "id": "2023sv",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2023",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 15,
+          "totalCardCount": 15,
+          "releaseDate": null
+        },
+        {
+          "id": "2022swsh",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2022",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 15,
+          "totalCardCount": 15,
+          "releaseDate": null
+        },
+        {
+          "id": "2021swsh",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2021",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/mc/2021swsh/symbol",
+          "officialCardCount": 25,
+          "totalCardCount": 25,
+          "releaseDate": null
+        },
+        {
+          "id": "2019sm",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2019",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2018sm",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2018",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2017sm",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2017",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2016xy",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2016",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2015xy",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2015",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2014xy",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2014",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2012bw",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2012",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "2011bw",
+          "seriesID": "mc",
+          "name": "McDonald's Collection 2011",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "bw",
+        "name": "Black & White",
+        "logoURL": "https://assets.tcgdex.net/en/bw/bw1/logo"
+      },
+      "sets": [
+        {
+          "id": "rc",
+          "seriesID": "bw",
+          "name": "Radiant Collection",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 25,
+          "totalCardCount": 25,
+          "releaseDate": null
+        },
+        {
+          "id": "bw11",
+          "seriesID": "bw",
+          "name": "Legendary Treasures",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw11/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw11/symbol",
+          "officialCardCount": 113,
+          "totalCardCount": 140,
+          "releaseDate": null
+        },
+        {
+          "id": "bw10",
+          "seriesID": "bw",
+          "name": "Plasma Blast",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw10/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw10/symbol",
+          "officialCardCount": 101,
+          "totalCardCount": 105,
+          "releaseDate": null
+        },
+        {
+          "id": "bw9",
+          "seriesID": "bw",
+          "name": "Plasma Freeze",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw9/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw9/symbol",
+          "officialCardCount": 116,
+          "totalCardCount": 122,
+          "releaseDate": null
+        },
+        {
+          "id": "bw8",
+          "seriesID": "bw",
+          "name": "Plasma Storm",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw8/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw8/symbol",
+          "officialCardCount": 135,
+          "totalCardCount": 138,
+          "releaseDate": null
+        },
+        {
+          "id": "bw7",
+          "seriesID": "bw",
+          "name": "Boundaries Crossed",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw7/symbol",
+          "officialCardCount": 149,
+          "totalCardCount": 153,
+          "releaseDate": null
+        },
+        {
+          "id": "dv1",
+          "seriesID": "bw",
+          "name": "Dragon Vault",
+          "logoURL": "https://assets.tcgdex.net/en/bw/dv1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/dv1/symbol",
+          "officialCardCount": 20,
+          "totalCardCount": 21,
+          "releaseDate": null
+        },
+        {
+          "id": "bw6",
+          "seriesID": "bw",
+          "name": "Dragons Exalted",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw6/symbol",
+          "officialCardCount": 124,
+          "totalCardCount": 128,
+          "releaseDate": null
+        },
+        {
+          "id": "bw5",
+          "seriesID": "bw",
+          "name": "Dark Explorers",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw5/symbol",
+          "officialCardCount": 108,
+          "totalCardCount": 111,
+          "releaseDate": null
+        },
+        {
+          "id": "bw4",
+          "seriesID": "bw",
+          "name": "Next Destinies",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw4/symbol",
+          "officialCardCount": 99,
+          "totalCardCount": 103,
+          "releaseDate": null
+        },
+        {
+          "id": "bw3",
+          "seriesID": "bw",
+          "name": "Noble Victories",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw3/symbol",
+          "officialCardCount": 101,
+          "totalCardCount": 102,
+          "releaseDate": null
+        },
+        {
+          "id": "bw2",
+          "seriesID": "bw",
+          "name": "Emerging Powers",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw2/symbol",
+          "officialCardCount": 98,
+          "totalCardCount": 98,
+          "releaseDate": null
+        },
+        {
+          "id": "bwp",
+          "seriesID": "bw",
+          "name": "BW Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bwp/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bwp/symbol",
+          "officialCardCount": 101,
+          "totalCardCount": 101,
+          "releaseDate": null
+        },
+        {
+          "id": "bw1",
+          "seriesID": "bw",
+          "name": "Black & White",
+          "logoURL": "https://assets.tcgdex.net/en/bw/bw1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/bw/bw1/symbol",
+          "officialCardCount": 114,
+          "totalCardCount": 115,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "col",
+        "name": "Call of Legends",
+        "logoURL": "https://assets.tcgdex.net/en/col/col1/logo"
+      },
+      "sets": [
+        {
+          "id": "col1",
+          "seriesID": "col",
+          "name": "Call of Legends",
+          "logoURL": "https://assets.tcgdex.net/en/col/col1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/col/col1/symbol",
+          "officialCardCount": 95,
+          "totalCardCount": 106,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "hgss",
+        "name": "HeartGold & SoulSilver",
+        "logoURL": "https://assets.tcgdex.net/en/hgss/hgss1/logo"
+      },
+      "sets": [
+        {
+          "id": "hgss4",
+          "seriesID": "hgss",
+          "name": "Triumphant",
+          "logoURL": "https://assets.tcgdex.net/en/hgss/hgss4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss4/symbol",
+          "officialCardCount": 102,
+          "totalCardCount": 103,
+          "releaseDate": null
+        },
+        {
+          "id": "hgss3",
+          "seriesID": "hgss",
+          "name": "Undaunted",
+          "logoURL": "https://assets.tcgdex.net/en/hgss/hgss3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss3/symbol",
+          "officialCardCount": 90,
+          "totalCardCount": 91,
+          "releaseDate": null
+        },
+        {
+          "id": "hgss2",
+          "seriesID": "hgss",
+          "name": "Unleashed",
+          "logoURL": "https://assets.tcgdex.net/en/hgss/hgss2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss2/symbol",
+          "officialCardCount": 95,
+          "totalCardCount": 96,
+          "releaseDate": null
+        },
+        {
+          "id": "hgssp",
+          "seriesID": "hgss",
+          "name": "HGSS Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/hgss/hgssp/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgssp/symbol",
+          "officialCardCount": 25,
+          "totalCardCount": 25,
+          "releaseDate": null
+        },
+        {
+          "id": "hgss1",
+          "seriesID": "hgss",
+          "name": "HeartGold SoulSilver",
+          "logoURL": "https://assets.tcgdex.net/en/hgss/hgss1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss1/symbol",
+          "officialCardCount": 123,
+          "totalCardCount": 124,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "pl",
+        "name": "Platinum",
+        "logoURL": "https://assets.tcgdex.net/en/pl/pl1/logo"
+      },
+      "sets": [
+        {
+          "id": "ru1",
+          "seriesID": "pl",
+          "name": "Pokémon Rumble",
+          "logoURL": "https://assets.tcgdex.net/en/pl/ru1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pl/ru1/symbol",
+          "officialCardCount": 16,
+          "totalCardCount": 16,
+          "releaseDate": null
+        },
+        {
+          "id": "pl4",
+          "seriesID": "pl",
+          "name": "Arceus",
+          "logoURL": "https://assets.tcgdex.net/en/pl/pl4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pl/pl4/symbol",
+          "officialCardCount": 99,
+          "totalCardCount": 111,
+          "releaseDate": null
+        },
+        {
+          "id": "pl3",
+          "seriesID": "pl",
+          "name": "Supreme Victors",
+          "logoURL": "https://assets.tcgdex.net/en/pl/pl3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pl/pl3/symbol",
+          "officialCardCount": 147,
+          "totalCardCount": 153,
+          "releaseDate": null
+        },
+        {
+          "id": "pl2",
+          "seriesID": "pl",
+          "name": "Rising Rivals",
+          "logoURL": "https://assets.tcgdex.net/en/pl/pl2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pl/pl2/symbol",
+          "officialCardCount": 111,
+          "totalCardCount": 120,
+          "releaseDate": null
+        },
+        {
+          "id": "pl1",
+          "seriesID": "pl",
+          "name": "Platinum",
+          "logoURL": "https://assets.tcgdex.net/en/pl/pl1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pl/pl1/symbol",
+          "officialCardCount": 127,
+          "totalCardCount": 133,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "dp",
+        "name": "Diamond & Pearl",
+        "logoURL": "https://assets.tcgdex.net/en/dp/dp1/logo"
+      },
+      "sets": [
+        {
+          "id": "dp7",
+          "seriesID": "dp",
+          "name": "Stormfront",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp7/symbol",
+          "officialCardCount": 100,
+          "totalCardCount": 106,
+          "releaseDate": null
+        },
+        {
+          "id": "dp6",
+          "seriesID": "dp",
+          "name": "Legends Awakened",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp6/symbol",
+          "officialCardCount": 146,
+          "totalCardCount": 146,
+          "releaseDate": null
+        },
+        {
+          "id": "dp5",
+          "seriesID": "dp",
+          "name": "Majestic Dawn",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp5/symbol",
+          "officialCardCount": 100,
+          "totalCardCount": 100,
+          "releaseDate": null
+        },
+        {
+          "id": "dp4",
+          "seriesID": "dp",
+          "name": "Great Encounters",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp4/symbol",
+          "officialCardCount": 106,
+          "totalCardCount": 106,
+          "releaseDate": null
+        },
+        {
+          "id": "dp3",
+          "seriesID": "dp",
+          "name": "Secret Wonders",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp3/symbol",
+          "officialCardCount": 132,
+          "totalCardCount": 132,
+          "releaseDate": null
+        },
+        {
+          "id": "dp2",
+          "seriesID": "dp",
+          "name": "Mysterious Treasures",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp2/symbol",
+          "officialCardCount": 123,
+          "totalCardCount": 124,
+          "releaseDate": null
+        },
+        {
+          "id": "dpp",
+          "seriesID": "dp",
+          "name": "DP Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dpp/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dpp/symbol",
+          "officialCardCount": 56,
+          "totalCardCount": 56,
+          "releaseDate": null
+        },
+        {
+          "id": "dp1",
+          "seriesID": "dp",
+          "name": "Diamond & Pearl",
+          "logoURL": "https://assets.tcgdex.net/en/dp/dp1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/dp/dp1/symbol",
+          "officialCardCount": 130,
+          "totalCardCount": 130,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "tk",
+        "name": "Trainer kits",
+        "logoURL": null
+      },
+      "sets": [
+        {
+          "id": "tk-sm-r",
+          "seriesID": "tk",
+          "name": "SM trainer Kit (Alolan Raichu)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-sm-r/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-sm-l",
+          "seriesID": "tk",
+          "name": "SM trainer Kit (Lycanroc)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-sm-l/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-su",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Suicune)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-su/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-p",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Pikachu Libre)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-p/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-latia",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Latias)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-latia/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-latio",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Latios)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-latio/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-b",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Bisharp)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-b/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-w",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Wigglytuff)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-w/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-sy",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Sylveon)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-sy/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-xy-n",
+          "seriesID": "tk",
+          "name": "XY trainer Kit (Noivern)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-n/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-bw-z",
+          "seriesID": "tk",
+          "name": "BW trainer Kit (Zoroark)",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-bw-e",
+          "seriesID": "tk",
+          "name": "BW trainer Kit (Excadrill)",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-hs-r",
+          "seriesID": "tk",
+          "name": "HS trainer Kit (Raichu)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-hs-r/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-hs-g",
+          "seriesID": "tk",
+          "name": "HS trainer Kit (Gyarados)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-hs-g/symbol",
+          "officialCardCount": 30,
+          "totalCardCount": 30,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-dp-l",
+          "seriesID": "tk",
+          "name": "DP trainer Kit (Lucario)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-dp-l/symbol",
+          "officialCardCount": 11,
+          "totalCardCount": 11,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-dp-m",
+          "seriesID": "tk",
+          "name": "DP trainer Kit (Manaphy)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-dp-m/symbol",
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-ex-m",
+          "seriesID": "tk",
+          "name": "EX trainer Kit 2 (Minun)",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-ex-p",
+          "seriesID": "tk",
+          "name": "EX trainer Kit 2 (Plusle)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-ex-p/symbol",
+          "officialCardCount": 12,
+          "totalCardCount": 12,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-ex-latia",
+          "seriesID": "tk",
+          "name": "EX trainer Kit (Latias)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-ex-latia/symbol",
+          "officialCardCount": 10,
+          "totalCardCount": 10,
+          "releaseDate": null
+        },
+        {
+          "id": "tk-ex-latio",
+          "seriesID": "tk",
+          "name": "EX trainer Kit (Latios)",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-ex-latio/symbol",
+          "officialCardCount": 10,
+          "totalCardCount": 10,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "pop",
+        "name": "POP",
+        "logoURL": "https://assets.tcgdex.net/en/pop/pop1/logo"
+      },
+      "sets": [
+        {
+          "id": "pop9",
+          "seriesID": "pop",
+          "name": "POP Series 9",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop9/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop9/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop8",
+          "seriesID": "pop",
+          "name": "POP Series 8",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop8/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop8/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop7",
+          "seriesID": "pop",
+          "name": "POP Series 7",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop7/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop6",
+          "seriesID": "pop",
+          "name": "POP Series 6",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop6/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop5",
+          "seriesID": "pop",
+          "name": "POP Series 5",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop5/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop4",
+          "seriesID": "pop",
+          "name": "POP Series 4",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop4/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop3",
+          "seriesID": "pop",
+          "name": "POP Series 3",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop3/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop2",
+          "seriesID": "pop",
+          "name": "POP Series 2",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop2/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "pop1",
+          "seriesID": "pop",
+          "name": "POP Series 1",
+          "logoURL": "https://assets.tcgdex.net/en/pop/pop1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/pop1/symbol",
+          "officialCardCount": 17,
+          "totalCardCount": 17,
+          "releaseDate": null
+        },
+        {
+          "id": "np",
+          "seriesID": "pop",
+          "name": "Nintendo Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/pop/np/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/pop/np/symbol",
+          "officialCardCount": 40,
+          "totalCardCount": 40,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "ex",
+        "name": "EX",
+        "logoURL": "https://assets.tcgdex.net/en/ex/ex1/logo"
+      },
+      "sets": [
+        {
+          "id": "ex16",
+          "seriesID": "ex",
+          "name": "Power Keepers",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex16/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex16/symbol",
+          "officialCardCount": 108,
+          "totalCardCount": 108,
+          "releaseDate": null
+        },
+        {
+          "id": "ex15",
+          "seriesID": "ex",
+          "name": "Dragon Frontiers",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex15/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex15/symbol",
+          "officialCardCount": 101,
+          "totalCardCount": 101,
+          "releaseDate": null
+        },
+        {
+          "id": "ex14",
+          "seriesID": "ex",
+          "name": "Crystal Guardians",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex14/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex14/symbol",
+          "officialCardCount": 100,
+          "totalCardCount": 100,
+          "releaseDate": null
+        },
+        {
+          "id": "ex13",
+          "seriesID": "ex",
+          "name": "Holon Phantoms",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex13/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex13/symbol",
+          "officialCardCount": 110,
+          "totalCardCount": 111,
+          "releaseDate": null
+        },
+        {
+          "id": "ex12",
+          "seriesID": "ex",
+          "name": "Legend Maker",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex12/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex12/symbol",
+          "officialCardCount": 92,
+          "totalCardCount": 93,
+          "releaseDate": null
+        },
+        {
+          "id": "ex11",
+          "seriesID": "ex",
+          "name": "Delta Species",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex11/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex11/symbol",
+          "officialCardCount": 113,
+          "totalCardCount": 114,
+          "releaseDate": null
+        },
+        {
+          "id": "ex10",
+          "seriesID": "ex",
+          "name": "Unseen Forces",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex10/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex10/symbol",
+          "officialCardCount": 115,
+          "totalCardCount": 117,
+          "releaseDate": null
+        },
+        {
+          "id": "exu",
+          "seriesID": "ex",
+          "name": "Unseen Forces Unown Collection",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 28,
+          "totalCardCount": 28,
+          "releaseDate": null
+        },
+        {
+          "id": "ex9",
+          "seriesID": "ex",
+          "name": "Emerald",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex9/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex9/symbol",
+          "officialCardCount": 106,
+          "totalCardCount": 107,
+          "releaseDate": null
+        },
+        {
+          "id": "ex8",
+          "seriesID": "ex",
+          "name": "Deoxys",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex8/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex8/symbol",
+          "officialCardCount": 107,
+          "totalCardCount": 108,
+          "releaseDate": null
+        },
+        {
+          "id": "ex7",
+          "seriesID": "ex",
+          "name": "Team Rocket Returns",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex7/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex7/symbol",
+          "officialCardCount": 109,
+          "totalCardCount": 111,
+          "releaseDate": null
+        },
+        {
+          "id": "ex6",
+          "seriesID": "ex",
+          "name": "FireRed & LeafGreen",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex6/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex6/symbol",
+          "officialCardCount": 112,
+          "totalCardCount": 116,
+          "releaseDate": null
+        },
+        {
+          "id": "ex5.5",
+          "seriesID": "ex",
+          "name": "Poké Card Creator Pack",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 5,
+          "totalCardCount": 5,
+          "releaseDate": null
+        },
+        {
+          "id": "ex5",
+          "seriesID": "ex",
+          "name": "Hidden Legends",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex5/symbol",
+          "officialCardCount": 101,
+          "totalCardCount": 102,
+          "releaseDate": null
+        },
+        {
+          "id": "ex4",
+          "seriesID": "ex",
+          "name": "Team Magma vs Team Aqua",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex4/symbol",
+          "officialCardCount": 95,
+          "totalCardCount": 97,
+          "releaseDate": null
+        },
+        {
+          "id": "ex3",
+          "seriesID": "ex",
+          "name": "Dragon",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex3/symbol",
+          "officialCardCount": 97,
+          "totalCardCount": 100,
+          "releaseDate": null
+        },
+        {
+          "id": "ex2",
+          "seriesID": "ex",
+          "name": "Sandstorm",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex2/symbol",
+          "officialCardCount": 100,
+          "totalCardCount": 100,
+          "releaseDate": null
+        },
+        {
+          "id": "ex1",
+          "seriesID": "ex",
+          "name": "Ruby & Sapphire",
+          "logoURL": "https://assets.tcgdex.net/en/ex/ex1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ex/ex1/symbol",
+          "officialCardCount": 109,
+          "totalCardCount": 109,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "ecard",
+        "name": "E-Card",
+        "logoURL": "https://assets.tcgdex.net/en/ecard/ecard1/logo"
+      },
+      "sets": [
+        {
+          "id": "ecard3",
+          "seriesID": "ecard",
+          "name": "Skyridge",
+          "logoURL": "https://assets.tcgdex.net/en/ecard/ecard3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ecard/ecard3/symbol",
+          "officialCardCount": 144,
+          "totalCardCount": 182,
+          "releaseDate": null
+        },
+        {
+          "id": "ecard2",
+          "seriesID": "ecard",
+          "name": "Aquapolis",
+          "logoURL": "https://assets.tcgdex.net/en/ecard/ecard2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ecard/ecard2/symbol",
+          "officialCardCount": 147,
+          "totalCardCount": 185,
+          "releaseDate": null
+        },
+        {
+          "id": "bog",
+          "seriesID": "ecard",
+          "name": "Best of game",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/ecard/bog/symbol",
+          "officialCardCount": 9,
+          "totalCardCount": 9,
+          "releaseDate": null
+        },
+        {
+          "id": "ecard1",
+          "seriesID": "ecard",
+          "name": "Expedition Base Set",
+          "logoURL": "https://assets.tcgdex.net/en/ecard/ecard1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/ecard/ecard1/symbol",
+          "officialCardCount": 165,
+          "totalCardCount": 165,
+          "releaseDate": null
+        },
+        {
+          "id": "sp",
+          "seriesID": "ecard",
+          "name": "Sample",
+          "logoURL": null,
+          "symbolURL": "https://assets.tcgdex.net/univ/ecard/sp/symbol",
+          "officialCardCount": 10,
+          "totalCardCount": 10,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "lc",
+        "name": "Legendary Collection",
+        "logoURL": "https://assets.tcgdex.net/en/lc/lc/logo"
+      },
+      "sets": [
+        {
+          "id": "lc",
+          "seriesID": "lc",
+          "name": "Legendary Collection",
+          "logoURL": "https://assets.tcgdex.net/en/lc/lc/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/lc/lc/symbol",
+          "officialCardCount": 110,
+          "totalCardCount": 110,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "neo",
+        "name": "Neo",
+        "logoURL": "https://assets.tcgdex.net/en/neo/neo1/logo"
+      },
+      "sets": [
+        {
+          "id": "neo4",
+          "seriesID": "neo",
+          "name": "Neo Destiny",
+          "logoURL": "https://assets.tcgdex.net/en/neo/neo4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/neo/neo4/symbol",
+          "officialCardCount": 105,
+          "totalCardCount": 113,
+          "releaseDate": null
+        },
+        {
+          "id": "neo3",
+          "seriesID": "neo",
+          "name": "Neo Revelation",
+          "logoURL": "https://assets.tcgdex.net/en/neo/neo3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/neo/neo3/symbol",
+          "officialCardCount": 64,
+          "totalCardCount": 66,
+          "releaseDate": null
+        },
+        {
+          "id": "si1",
+          "seriesID": "neo",
+          "name": "Southern Islands",
+          "logoURL": "https://assets.tcgdex.net/en/neo/si1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/neo/si1/symbol",
+          "officialCardCount": 18,
+          "totalCardCount": 18,
+          "releaseDate": null
+        },
+        {
+          "id": "neo2",
+          "seriesID": "neo",
+          "name": "Neo Discovery",
+          "logoURL": "https://assets.tcgdex.net/en/neo/neo2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/neo/neo2/symbol",
+          "officialCardCount": 75,
+          "totalCardCount": 75,
+          "releaseDate": null
+        },
+        {
+          "id": "neo1",
+          "seriesID": "neo",
+          "name": "Neo Genesis",
+          "logoURL": "https://assets.tcgdex.net/en/neo/neo1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/neo/neo1/symbol",
+          "officialCardCount": 111,
+          "totalCardCount": 111,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "gym",
+        "name": "Gym",
+        "logoURL": "https://assets.tcgdex.net/en/gym/gym1/logo"
+      },
+      "sets": [
+        {
+          "id": "gym2",
+          "seriesID": "gym",
+          "name": "Gym Challenge",
+          "logoURL": "https://assets.tcgdex.net/en/gym/gym2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/gym/gym2/symbol",
+          "officialCardCount": 132,
+          "totalCardCount": 132,
+          "releaseDate": null
+        },
+        {
+          "id": "gym1",
+          "seriesID": "gym",
+          "name": "Gym Heroes",
+          "logoURL": "https://assets.tcgdex.net/en/gym/gym1/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/gym/gym1/symbol",
+          "officialCardCount": 132,
+          "totalCardCount": 132,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "base",
+        "name": "Base",
+        "logoURL": "https://assets.tcgdex.net/en/base/base1/logo"
+      },
+      "sets": [
+        {
+          "id": "base5",
+          "seriesID": "base",
+          "name": "Team Rocket",
+          "logoURL": "https://assets.tcgdex.net/en/base/base5/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/base/base5/symbol",
+          "officialCardCount": 82,
+          "totalCardCount": 83,
+          "releaseDate": null
+        },
+        {
+          "id": "base4",
+          "seriesID": "base",
+          "name": "Base Set 2",
+          "logoURL": "https://assets.tcgdex.net/en/base/base4/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/base/base4/symbol",
+          "officialCardCount": 130,
+          "totalCardCount": 130,
+          "releaseDate": null
+        },
+        {
+          "id": "base3",
+          "seriesID": "base",
+          "name": "Fossil",
+          "logoURL": "https://assets.tcgdex.net/en/base/base3/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/base/base3/symbol",
+          "officialCardCount": 62,
+          "totalCardCount": 62,
+          "releaseDate": null
+        },
+        {
+          "id": "wp",
+          "seriesID": "base",
+          "name": "W Promotional",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 7,
+          "totalCardCount": 7,
+          "releaseDate": null
+        },
+        {
+          "id": "basep",
+          "seriesID": "base",
+          "name": "Wizards Black Star Promos",
+          "logoURL": "https://assets.tcgdex.net/en/base/basep/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/base/basep/symbol",
+          "officialCardCount": 53,
+          "totalCardCount": 53,
+          "releaseDate": null
+        },
+        {
+          "id": "base2",
+          "seriesID": "base",
+          "name": "Jungle",
+          "logoURL": "https://assets.tcgdex.net/en/base/base2/logo",
+          "symbolURL": "https://assets.tcgdex.net/univ/base/base2/symbol",
+          "officialCardCount": 64,
+          "totalCardCount": 64,
+          "releaseDate": null
+        },
+        {
+          "id": "base1",
+          "seriesID": "base",
+          "name": "Base Set",
+          "logoURL": "https://assets.tcgdex.net/en/base/base1/logo",
+          "symbolURL": null,
+          "officialCardCount": 102,
+          "totalCardCount": 102,
+          "releaseDate": null
+        }
+      ]
+    },
+    {
+      "series": {
+        "id": "misc",
+        "name": "Miscellaneous",
+        "logoURL": null
+      },
+      "sets": [
+        {
+          "id": "jumbo",
+          "seriesID": "misc",
+          "name": "Jumbo cards",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 160,
+          "totalCardCount": 160,
+          "releaseDate": null
+        },
+        {
+          "id": "miscp",
+          "seriesID": "misc",
+          "name": "Miscellaneous Promos",
+          "logoURL": null,
+          "symbolURL": null,
+          "officialCardCount": 1,
+          "totalCardCount": 1,
+          "releaseDate": null
+        }
+      ]
+    }
+  ]
+}

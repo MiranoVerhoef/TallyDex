@@ -143,6 +143,59 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(storedVariants, [.holo])
     }
 
+    func testRepositoryReplacesWholeCatalogInDisplayOrder() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let mega = CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil)
+        let scarletViolet = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(
+                series: mega,
+                sets: [
+                    set(id: "me05", seriesID: "me", name: "Pitch Black"),
+                    set(id: "me04", seriesID: "me", name: "Chaos Rising"),
+                ]
+            ),
+            CatalogSeriesSnapshot(
+                series: scarletViolet,
+                sets: [set(id: "sv10", seriesID: "sv", name: "Destined Rivals")]
+            ),
+        ])
+
+        let storedSeriesIDs = try await repository.fetchSeries().map(\.id)
+        let storedMegaSetNames = try await repository.fetchSets(seriesID: "me").map(\.name)
+        XCTAssertEqual(storedSeriesIDs, ["me", "sv"])
+        XCTAssertEqual(storedMegaSetNames, ["Pitch Black", "Chaos Rising"])
+    }
+
+    func testRepositoryRejectsInvalidWholeCatalogWithoutDeletingCache() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let base = CatalogSeries(id: "base", name: "Base", logoURL: nil)
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(
+                series: base,
+                sets: [set(id: "base1", seriesID: "base", name: "Base Set")]
+            ),
+        ])
+
+        do {
+            try await repository.replaceCatalog([
+                CatalogSeriesSnapshot(
+                    series: CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil),
+                    sets: [set(id: "me05", seriesID: "wrong", name: "Pitch Black")]
+                ),
+            ])
+            XCTFail("Expected invalid snapshot error")
+        } catch {
+            XCTAssertEqual(error as? CatalogRepositoryError, .invalidSnapshot)
+        }
+
+        let storedSeries = try await repository.fetchSeries()
+        let storedBaseSetIDs = try await repository.fetchSets(seriesID: "base").map(\.id)
+        XCTAssertEqual(storedSeries, [base])
+        XCTAssertEqual(storedBaseSetIDs, ["base1"])
+    }
+
     private func set(id: String, seriesID: String, name: String) -> CatalogSet {
         CatalogSet(
             id: id,

@@ -33,5 +33,5 @@ struct RootTabView: View {
 
 #Preview {
     RootTabView()
+        .environment(CatalogStore())
 }
-
