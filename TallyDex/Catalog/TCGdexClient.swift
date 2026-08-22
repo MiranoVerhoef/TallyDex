@@ -113,12 +113,11 @@ struct TCGdexClient: CatalogProvider, Sendable {
         let response: CardDTO = try await request(path: "cards/\(id)")
         let providerVariants = (response.variants?.availableKinds ?? [])
             .union(response.variantsDetailed?.availableKinds ?? [])
+        let variants = CatalogVariantOverrides.apply(to: providerVariants, cardID: response.id)
         return CatalogCardSnapshot(
             card: response.catalogCard,
-            variants: CatalogVariantOverrides.apply(
-                to: providerVariants,
-                cardID: response.id
-            )
+            variants: variants,
+            prices: response.catalogPrices(variants: variants)
         )
     }
 
@@ -292,9 +291,10 @@ private struct CardDTO: Decodable, Sendable {
     let set: SetReferenceDTO
     let variants: VariantsDTO?
     let variantsDetailed: [DetailedVariantDTO]?
+    let pricing: PricingDTO?
 
     private enum CodingKeys: String, CodingKey {
-        case id, localId, name, image, category, illustrator, rarity, set, variants
+        case id, localId, name, image, category, illustrator, rarity, set, variants, pricing
         case variantsDetailed = "variants_detailed"
     }
 
@@ -310,6 +310,90 @@ private struct CardDTO: Decodable, Sendable {
             rarity: rarity
         )
     }
+
+    func catalogPrices(variants: Set<CatalogVariantKind>) -> [CatalogPriceQuote] {
+        var quotes = pricing?.tcgplayer?.quotes(cardID: id) ?? []
+        quotes.append(contentsOf: pricing?.cardmarket?.quotes(cardID: id, variants: variants) ?? [])
+        return quotes
+    }
+}
+
+private struct PricingDTO: Decodable, Sendable {
+    let cardmarket: CardmarketPricingDTO?
+    let tcgplayer: TCGplayerPricingDTO?
+}
+
+private struct CardmarketPricingDTO: Decodable, Sendable {
+    let updated: String?
+    let unit: String?
+    let average: Double?
+    let trend: Double?
+    let averageHolo: Double?
+    let trendHolo: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case updated, unit, trend
+        case average = "avg"
+        case averageHolo = "avg-holo"
+        case trendHolo = "trend-holo"
+    }
+
+    func quotes(cardID: String, variants: Set<CatalogVariantKind>) -> [CatalogPriceQuote] {
+        guard let updatedAt = tcgdexDate(updated) else { return [] }
+        var quotes: [CatalogPriceQuote] = []
+        if variants.contains(.normal), let amount = positive(trend ?? average) {
+            quotes.append(.init(cardID: cardID, variant: .normal, source: .cardmarket,
+                                currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt))
+        }
+        let foilVariants = variants.intersection([.reverseHolo, .holo])
+        if foilVariants.count == 1, let variant = foilVariants.first,
+           let amount = positive(trendHolo ?? averageHolo) {
+            quotes.append(.init(cardID: cardID, variant: variant, source: .cardmarket,
+                                currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt))
+        }
+        return quotes
+    }
+
+    private func positive(_ value: Double?) -> Double? {
+        guard let value, value > 0 else { return nil }
+        return value
+    }
+}
+
+private struct TCGplayerPricingDTO: Decodable, Sendable {
+    let updated: String?
+    let unit: String?
+    let normal: TCGplayerMarketDTO?
+    let reverseHolofoil: TCGplayerMarketDTO?
+    let holofoil: TCGplayerMarketDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case updated, unit, normal, holofoil
+        case reverseHolofoil = "reverse-holofoil"
+    }
+
+    func quotes(cardID: String) -> [CatalogPriceQuote] {
+        guard let updatedAt = tcgdexDate(updated) else { return [] }
+        let values: [(CatalogVariantKind, TCGplayerMarketDTO?)] = [
+            (.normal, normal), (.reverseHolo, reverseHolofoil), (.holo, holofoil),
+        ]
+        return values.compactMap { variant, market in
+            guard let amount = market?.marketPrice, amount > 0 else { return nil }
+            return CatalogPriceQuote(cardID: cardID, variant: variant, source: .tcgplayer,
+                                     currencyCode: unit ?? "USD", amount: amount, updatedAt: updatedAt)
+        }
+    }
+}
+
+private struct TCGplayerMarketDTO: Decodable, Sendable {
+    let marketPrice: Double?
+}
+
+private func tcgdexDate(_ value: String?) -> Date? {
+    guard let value else { return nil }
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
 }
 
 private struct DetailedVariantDTO: Decodable, Sendable {

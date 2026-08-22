@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.0/TallyDex-v0.3.0-collection-value.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.4/TallyDex-v0.2.4-default-goal.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.3/TallyDex-v0.2.3-set-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.2/TallyDex-v0.2.2-collection-filters.png",
@@ -29,6 +30,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.3.0",
+          "buildVersion": "11",
+          "date": "2026-08-22",
+          "localizedDescription": "Adds exact per-printing Cardmarket EUR and TCGplayer USD prices supplied by TCGdex, configurable price-source settings, quantity-aware values for sets, custom folders, and the full collection, explicit unpriced-printing counts, an 18-hour price cache, and daily local price snapshots.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.0/TallyDex-v0.3.0.ipa",
+          "size": 6813258,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.2.4",
           "buildVersion": "10",

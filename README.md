@@ -44,11 +44,17 @@ apps can use this source URL:
 https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.json
 ```
 
-## Planned pricing preferences
+## Collection values
 
-The planned Cardmarket integration will let collectors choose the cheapest
-listing across all countries or restrict results to a selected country, with
-prices displayed in EUR or converted to USD.
+TallyDex caches Cardmarket EUR and TCGplayer USD market prices supplied by
+TCGdex. You can choose the preferred source in Settings. Values are calculated
+per exact printing and quantity; unpriced variants are reported separately
+instead of being estimated from another printing. Current prices refresh every
+18 hours and one snapshot per source day is retained locally for future price
+history views.
+
+Country-specific listings and optional currency conversion remain planned for
+a later direct marketplace integration.
 
 ## License
 
