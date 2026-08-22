@@ -177,6 +177,41 @@ final class CatalogStore {
         try await resolveRepository().fetchSearchResults(cardIDs: cardIDs)
     }
 
+    func variants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>] {
+        try await resolveRepository().fetchVariants(cardIDs: cardIDs)
+    }
+
+    /// TCGdex's set response contains card summaries but not printing variants.
+    /// Hydrate missing detail records with a small concurrency window so
+    /// variant-aware goals can calculate an exact denominator without flooding
+    /// the provider.
+    func prepareVariants(for cards: [CatalogCard]) async -> [String: Set<CatalogVariantKind>] {
+        guard let repository = try? resolveRepository() else { return [:] }
+        var cached = (try? await repository.fetchVariants(cardIDs: cards.map(\.id))) ?? [:]
+        var remaining = cards.filter { cached[$0.id]?.isEmpty != false }.makeIterator()
+        let provider = self.provider
+
+        await withTaskGroup(of: CatalogCardSnapshot?.self) { group in
+            let concurrencyLimit = 4
+            for _ in 0..<concurrencyLimit {
+                guard let card = remaining.next() else { break }
+                group.addTask { try? await provider.fetchCard(id: card.id) }
+            }
+
+            while let snapshot = await group.next() {
+                if let snapshot {
+                    try? await repository.replaceCard(snapshot)
+                }
+                if let card = remaining.next() {
+                    group.addTask { try? await provider.fetchCard(id: card.id) }
+                }
+            }
+        }
+
+        cached = (try? await repository.fetchVariants(cardIDs: cards.map(\.id))) ?? cached
+        return cached
+    }
+
     func details(for card: CatalogCard) async throws -> CatalogCardSnapshot {
         let repository = try resolveRepository()
         do {

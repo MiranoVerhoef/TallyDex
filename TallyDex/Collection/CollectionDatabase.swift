@@ -63,6 +63,25 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v4-set-management") { database in
+            try database.alter(table: "collectionSetPreference") { table in
+                // Existing goal rows already represent sets the collector chose,
+                // so they migrate into My Sets automatically.
+                table.add(column: "status", .text).notNull().defaults(to: SetTrackingStatus.collecting.rawValue)
+                table.add(column: "includedVariantsJSON", .text)
+                table.add(column: "includesSecretCards", .boolean).notNull().defaults(to: false)
+            }
+        }
+
+        migrator.registerMigration("collection-v5-card-metadata") { database in
+            try database.create(table: "collectionCardMetadata") { table in
+                table.column("cardID", .text).primaryKey()
+                table.column("isWishlisted", .boolean).notNull().defaults(to: false)
+                table.column("notes", .text).notNull().defaults(to: "")
+                table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -118,6 +137,22 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func fetchSetPreferences() async throws -> [String: SetCollectionPreference] {
+        try await database.queue.read { database in
+            let rows = try Row.fetchAll(
+                database,
+                sql: """
+                SELECT setID, goal, status, includedVariantsJSON, includesSecretCards, updatedAt
+                FROM collectionSetPreference
+                """
+            )
+            return Dictionary(uniqueKeysWithValues: rows.compactMap { row in
+                guard let preference = Self.setPreference(row) else { return nil }
+                return (preference.setID, preference)
+            })
+        }
+    }
+
     func fetchCustomFolders() async throws -> [CustomCollectionFolder] {
         try await database.queue.read { database in
             try Row.fetchAll(
@@ -128,6 +163,28 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 ORDER BY name COLLATE NOCASE, createdAt, id
                 """
             ).compactMap(Self.customFolder)
+        }
+    }
+
+    func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata {
+        try await database.queue.read { database in
+            guard let row = try Row.fetchOne(
+                database,
+                sql: """
+                SELECT cardID, isWishlisted, notes, updatedAt
+                FROM collectionCardMetadata
+                WHERE cardID = ?
+                """,
+                arguments: [cardID]
+            ) else {
+                return .empty(cardID: cardID)
+            }
+            return CardCollectionMetadata(
+                cardID: row["cardID"],
+                isWishlisted: row["isWishlisted"],
+                notes: row["notes"],
+                updatedAt: row["updatedAt"]
+            )
         }
     }
 
@@ -142,6 +199,46 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     updatedAt = excluded.updatedAt
                 """,
                 arguments: [setID, goal.rawValue, updatedAt]
+            )
+        }
+    }
+
+    func saveSetPreference(_ preference: SetCollectionPreference) async throws {
+        let variants = preference.includedVariants.map(\.rawValue).sorted()
+        let variantsJSON = String(
+            data: try JSONEncoder().encode(variants),
+            encoding: .utf8
+        )
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO collectionSetPreference
+                    (setID, goal, status, includedVariantsJSON, includesSecretCards, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(setID) DO UPDATE SET
+                    goal = excluded.goal,
+                    status = excluded.status,
+                    includedVariantsJSON = excluded.includedVariantsJSON,
+                    includesSecretCards = excluded.includesSecretCards,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    preference.setID,
+                    preference.goal.rawValue,
+                    preference.status.rawValue,
+                    variantsJSON,
+                    preference.includesSecretCards,
+                    preference.updatedAt,
+                ]
+            )
+        }
+    }
+
+    func deleteSetPreference(setID: String) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: "DELETE FROM collectionSetPreference WHERE setID = ?",
+                arguments: [setID]
             )
         }
     }
@@ -182,6 +279,27 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try database.execute(
                 sql: "DELETE FROM customCollectionFolder WHERE id = ?",
                 arguments: [id.uuidString]
+            )
+        }
+    }
+
+    func saveCardMetadata(_ metadata: CardCollectionMetadata) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO collectionCardMetadata (cardID, isWishlisted, notes, updatedAt)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(cardID) DO UPDATE SET
+                    isWishlisted = excluded.isWishlisted,
+                    notes = excluded.notes,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    metadata.cardID,
+                    metadata.isWishlisted,
+                    metadata.notes,
+                    metadata.updatedAt,
+                ]
             )
         }
     }
@@ -241,6 +359,34 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             cardNameQuery: row["cardNameQuery"],
             displayMode: displayMode,
             createdAt: row["createdAt"],
+            updatedAt: row["updatedAt"]
+        )
+    }
+
+    private static func setPreference(_ row: Row) -> SetCollectionPreference? {
+        let rawGoal: String = row["goal"]
+        let rawStatus: String = row["status"]
+        guard let goal = CollectionGoal(rawValue: rawGoal),
+              let status = SetTrackingStatus(rawValue: rawStatus) else {
+            return nil
+        }
+        let variantsJSON: String? = row["includedVariantsJSON"]
+        let rawVariants: [String]
+        if let variantsJSON,
+           let data = variantsJSON.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            rawVariants = decoded
+        } else {
+            rawVariants = goal == .holoChase
+                ? [CatalogVariantKind.holo.rawValue, CatalogVariantKind.reverseHolo.rawValue]
+                : [CatalogVariantKind.normal.rawValue]
+        }
+        return SetCollectionPreference(
+            setID: row["setID"],
+            status: status,
+            goal: goal,
+            includedVariants: Set(rawVariants.compactMap(CatalogVariantKind.init(rawValue:))),
+            includesSecretCards: row["includesSecretCards"],
             updatedAt: row["updatedAt"]
         )
     }

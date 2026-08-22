@@ -114,11 +114,27 @@ enum SetsBrowsingStyle: String, CaseIterable, Identifiable {
 
 struct SetsView: View {
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
     @AppStorage(SetsScope.storageKey) private var defaultScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @State private var selectedScope = SetsScope.all
     @State private var didApplyDefault = false
     @State private var editingSet: CatalogSet?
+
+    private var scopedGroups: [CatalogSeriesGroup] {
+        catalogStore.groups.compactMap { group in
+            let sets = group.sets.filter { set in
+                let status = collectionStore.trackingStatus(for: set.id)
+                switch selectedScope {
+                case .all: return status != .hidden
+                case .mySets: return status == .collecting
+                case .hidden: return status == .hidden
+                }
+            }
+            guard !sets.isEmpty else { return nil }
+            return CatalogSeriesGroup(series: group.series, sets: sets)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -179,26 +195,23 @@ struct SetsView: View {
 
     @ViewBuilder
     private var setsContent: some View {
-        switch selectedScope {
-        case .all:
-            if catalogStore.isInitialLoading && catalogStore.groups.isEmpty {
-                ProgressView("Loading saved catalog…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if catalogStore.groups.isEmpty {
-                ContentUnavailableView(
-                    "Catalog Unavailable",
-                    systemImage: "wifi.exclamationmark",
-                    description: Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
-                )
-            } else {
-                catalogList
-            }
-        case .mySets, .hidden:
+        if catalogStore.isInitialLoading && catalogStore.groups.isEmpty {
+            ProgressView("Loading saved catalog…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if selectedScope == .all && catalogStore.groups.isEmpty {
+            ContentUnavailableView(
+                "Catalog Unavailable",
+                systemImage: "wifi.exclamationmark",
+                description: Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
+            )
+        } else if scopedGroups.isEmpty {
             ContentUnavailableView(
                 selectedScope.title,
                 systemImage: selectedScope.systemImage,
                 description: Text(selectedScope.emptyDescription)
             )
+        } else {
+            catalogList
         }
     }
 
@@ -209,7 +222,7 @@ struct SetsView: View {
             List {
                 catalogRefreshMessage
 
-                ForEach(catalogStore.groups) { group in
+                ForEach(scopedGroups) { group in
                     Section {
                         ForEach(group.sets) { set in
                             CatalogSetLink(set: set) { editingSet = $0 }
@@ -230,7 +243,7 @@ struct SetsView: View {
             List {
                 catalogRefreshMessage
 
-                ForEach(catalogStore.groups) { group in
+                ForEach(scopedGroups) { group in
                     NavigationLink {
                         CatalogSeriesSetsView(group: group)
                     } label: {
@@ -392,24 +405,56 @@ private struct CatalogSetCollectionSettingsView: View {
     let set: CatalogSet
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedStatus = SetTrackingStatus.notCollecting
     @State private var selectedGoal = CollectionGoal.main
+    @State private var includedVariants: Set<CatalogVariantKind> = [.normal]
+    @State private var includesSecretCards = false
     @State private var isSaving = false
     @State private var message: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("Set visibility") {
+                    Picker("Status", selection: $selectedStatus) {
+                        ForEach(SetTrackingStatus.allCases, id: \.self) { status in
+                            Text(status.displayName).tag(status)
+                        }
+                    }
+                    Text("Hidden sets stay out of All Sets but keep every saved quantity.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Collecting \(set.name)") {
                     Picker("Collection goal", selection: $selectedGoal) {
                         ForEach(CollectionGoal.allCases, id: \.self) { goal in
                             Text(goal.displayName).tag(goal)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .disabled(selectedStatus != .collecting)
 
                     Text(selectedGoal.explanation)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+
+                if selectedStatus == .collecting && selectedGoal == .holoChase {
+                    Section("Holo Chase printings") {
+                        variantToggle(.holo)
+                        variantToggle(.reverseHolo)
+                    }
+                }
+
+                if selectedStatus == .collecting && selectedGoal == .custom {
+                    Section("Custom card rule") {
+                        Toggle("Include secret-numbered cards", isOn: $includesSecretCards)
+                    }
+                    Section("Custom printings") {
+                        ForEach(CatalogVariantKind.allCases, id: \.self) { variant in
+                            variantToggle(variant)
+                        }
+                    }
                 }
 
                 Section {
@@ -437,9 +482,26 @@ private struct CatalogSetCollectionSettingsView: View {
                 }
             }
             .onAppear {
-                selectedGoal = collectionStore.goal(for: set.id)
+                let preference = collectionStore.preference(for: set.id)
+                selectedStatus = preference.status
+                selectedGoal = preference.goal
+                includedVariants = preference.includedVariants
+                includesSecretCards = preference.includesSecretCards
             }
         }
+    }
+
+    private func variantToggle(_ variant: CatalogVariantKind) -> some View {
+        Toggle(variant.displayName, isOn: Binding(
+            get: { includedVariants.contains(variant) },
+            set: { isIncluded in
+                if isIncluded {
+                    includedVariants.insert(variant)
+                } else {
+                    includedVariants.remove(variant)
+                }
+            }
+        ))
     }
 
     private func save() {
@@ -449,7 +511,25 @@ private struct CatalogSetCollectionSettingsView: View {
         Task {
             defer { isSaving = false }
             do {
-                try await collectionStore.setGoal(selectedGoal, for: set.id)
+                var selectedVariants = includedVariants
+                if selectedGoal == .holoChase {
+                    selectedVariants.formIntersection([.holo, .reverseHolo])
+                    if selectedVariants.isEmpty {
+                        selectedVariants = [.holo, .reverseHolo]
+                    }
+                } else if selectedGoal == .custom && selectedVariants.isEmpty {
+                    selectedVariants = [.normal]
+                }
+                try await collectionStore.saveSetPreference(
+                    SetCollectionPreference(
+                        setID: set.id,
+                        status: selectedStatus,
+                        goal: selectedGoal,
+                        includedVariants: selectedVariants,
+                        includesSecretCards: includesSecretCards,
+                        updatedAt: Date()
+                    )
+                )
                 dismiss()
             } catch {
                 message = "That collection goal couldn’t be saved. Please try again."
@@ -503,6 +583,15 @@ private struct CatalogSeriesSetsView: View {
     }
 }
 
+private enum SetCardFilter: String, CaseIterable, Identifiable {
+    case all
+    case owned
+    case missing
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
 private struct CatalogSetDetailView: View {
     let set: CatalogSet
     @Environment(CatalogStore.self) private var catalogStore
@@ -514,6 +603,9 @@ private struct CatalogSetDetailView: View {
     @State private var collectionMessage: String?
     @State private var selectedVariantCard: CatalogCard?
     @State private var updatingCardIDs: Set<String> = []
+    @State private var selectedFilter = SetCardFilter.all
+    @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
+    @State private var isPreparingGoalMetadata = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
@@ -523,15 +615,39 @@ private struct CatalogSetDetailView: View {
         collectionStore.goal(for: set.id)
     }
 
-    private var ownedCardCount: Int {
-        cards.reduce(into: 0) { count, card in
-            if collectionStore.owns(cardID: card.id) { count += 1 }
+    private var collectionPreference: SetCollectionPreference {
+        collectionStore.preference(for: set.id)
+    }
+
+    private var progress: CollectionProgress {
+        CollectionProgressCalculator.progress(
+            cards: cards,
+            set: set,
+            preference: collectionPreference,
+            availableVariants: availableVariantsByCardID,
+            ownedEntries: collectionStore.ownedEntries
+        )
+    }
+
+    private var visibleCards: [CatalogCard] {
+        cards.filter { card in
+            switch selectedFilter {
+            case .all: true
+            case .owned: collectionStore.owns(cardID: card.id)
+            case .missing: isMissingForGoal(card)
+            }
         }
     }
 
-    private var ownedPercentage: Int {
-        guard !cards.isEmpty else { return 0 }
-        return Int((Double(ownedCardCount) / Double(cards.count) * 100).rounded())
+    private func isMissingForGoal(_ card: CatalogCard) -> Bool {
+        let cardProgress = CollectionProgressCalculator.progress(
+            cards: [card],
+            set: set,
+            preference: collectionPreference,
+            availableVariants: availableVariantsByCardID,
+            ownedEntries: collectionStore.ownedEntries
+        )
+        return cardProgress.requiredSlots > 0 && cardProgress.completedSlots < cardProgress.requiredSlots
     }
 
     var body: some View {
@@ -553,7 +669,7 @@ private struct CatalogSetDetailView: View {
                                 .accessibilityLabel("Expansion symbol")
                         }
 
-                        Text("\(ownedPercentage)% owned")
+                        Text("\(progress.percentage)% \(collectionGoal.displayName)")
                             .font(.subheadline.monospacedDigit().weight(.semibold))
                             .foregroundStyle(.tint)
                             .padding(.horizontal, 10)
@@ -579,10 +695,25 @@ private struct CatalogSetDetailView: View {
                         description: Text(cardMessage ?? "Pull down to check for this set’s cards again.")
                     )
                 } else {
+                    Picker("Cards", selection: $selectedFilter) {
+                        ForEach(SetCardFilter.allCases) { filter in
+                            Text(filter.title).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
                     HStack {
-                        Text("\(cards.count) cards")
+                        Text("\(visibleCards.count) cards")
                             .font(.headline)
                         Spacer()
+                        Text("\(progress.completedSlots) of \(progress.requiredSlots) goal slots")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        if isPreparingGoalMetadata {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Loading printing rules")
+                        }
                         if isLoadingCards {
                             ProgressView()
                                 .controlSize(.small)
@@ -590,7 +721,7 @@ private struct CatalogSetDetailView: View {
                     }
 
                     LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(cards) { card in
+                        ForEach(visibleCards) { card in
                             ZStack(alignment: .topTrailing) {
                                 NavigationLink {
                                     CatalogCardDetailView(card: card)
@@ -660,11 +791,17 @@ private struct CatalogSetDetailView: View {
         .task(id: set.id) {
             await loadCards()
         }
+        .onAppear {
+            guard !cards.isEmpty else { return }
+            Task {
+                await loadGoalVariants()
+            }
+        }
     }
 
     private func handleCheckmarkTap(for card: CatalogCard) {
         collectionMessage = nil
-        if collectionGoal == .master {
+        if collectionGoal == .master || collectionGoal == .holoChase || collectionGoal == .custom {
             selectedVariantCard = card
             return
         }
@@ -713,10 +850,23 @@ private struct CatalogSetDetailView: View {
         defer { isLoadingCards = false }
         do {
             cards = try await catalogStore.cards(for: set, forceRefresh: forceRefresh)
+            await loadGoalVariants()
         } catch {
             cardMessage = set.isUpcoming()
                 ? "The card list will appear automatically after it is published."
                 : "TallyDex couldn’t update this card list. Check your connection and pull down to retry."
+        }
+    }
+
+    private func loadGoalVariants() async {
+        switch collectionGoal {
+        case .holoChase, .master, .custom:
+            isPreparingGoalMetadata = true
+            defer { isPreparingGoalMetadata = false }
+            availableVariantsByCardID = await catalogStore.prepareVariants(for: cards)
+        case .main, .complete:
+            availableVariantsByCardID =
+                (try? await catalogStore.variants(cardIDs: cards.map(\.id))) ?? availableVariantsByCardID
         }
     }
 }
@@ -923,6 +1073,10 @@ private struct CatalogCardDetailView: View {
     @State private var isLoadingCollection = true
     @State private var collectionMessage: String?
     @State private var updatingVariants: Set<CatalogVariantKind> = []
+    @State private var isWishlisted = false
+    @State private var notes = ""
+    @State private var savedNotes = ""
+    @State private var isSavingMetadata = false
 
     private var displayedCard: CatalogCard { snapshot?.card ?? card }
     private var availableVariants: [CatalogVariantKind] {
@@ -960,6 +1114,7 @@ private struct CatalogCardDetailView: View {
                     }
                 }
 
+                personalSection
                 collectionSection
 
                 if let message {
@@ -985,11 +1140,55 @@ private struct CatalogCardDetailView: View {
             isLoadingCollection = true
             defer { isLoadingCollection = false }
             do {
-                quantities = try await collectionStore.quantities(for: card.id)
+                async let savedQuantities = collectionStore.quantities(for: card.id)
+                async let savedMetadata = collectionStore.cardMetadata(for: card.id)
+                quantities = try await savedQuantities
+                let metadata = try await savedMetadata
+                isWishlisted = metadata.isWishlisted
+                notes = metadata.notes
+                savedNotes = metadata.notes
             } catch {
-                collectionMessage = "Your saved quantities couldn’t be loaded."
+                collectionMessage = "Your saved collection details couldn’t be loaded."
             }
         }
+    }
+
+    private var personalSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Personal")
+                .font(.headline)
+
+            Toggle(isOn: Binding(
+                get: { isWishlisted },
+                set: { newValue in
+                    isWishlisted = newValue
+                    saveMetadata()
+                }
+            )) {
+                Label("Wishlist", systemImage: isWishlisted ? "heart.fill" : "heart")
+            }
+            .disabled(isSavingMetadata)
+
+            Text("Notes")
+                .font(.subheadline.weight(.semibold))
+            TextEditor(text: $notes)
+                .frame(minHeight: 90)
+                .padding(8)
+                .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.secondary.opacity(0.2))
+                }
+
+            HStack {
+                Spacer()
+                Button("Save Notes") { saveMetadata() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(notes == savedNotes || isSavingMetadata)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 
     @ViewBuilder
@@ -1087,6 +1286,27 @@ private struct CatalogCardDetailView: View {
                 }
             } catch {
                 collectionMessage = "That quantity couldn’t be saved. Please try again."
+            }
+        }
+    }
+
+    private func saveMetadata() {
+        guard !isSavingMetadata else { return }
+        isSavingMetadata = true
+        collectionMessage = nil
+        let wishlistValue = isWishlisted
+        let notesValue = notes
+        Task {
+            defer { isSavingMetadata = false }
+            do {
+                try await collectionStore.saveCardMetadata(
+                    cardID: card.id,
+                    isWishlisted: wishlistValue,
+                    notes: notesValue
+                )
+                savedNotes = notesValue
+            } catch {
+                collectionMessage = "Your wishlist or notes couldn’t be saved. Please try again."
             }
         }
     }
@@ -1591,6 +1811,34 @@ private struct CustomCollectionFolderEditorView: View {
     }
 }
 
+private enum CollectionCardSort: String, CaseIterable, Identifiable {
+    case releaseNewest
+    case releaseOldest
+    case setName
+    case collectorNumber
+    case cardName
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .releaseNewest: "Release date (newest)"
+        case .releaseOldest: "Release date (oldest)"
+        case .setName: "Set name"
+        case .collectorNumber: "Collector number"
+        case .cardName: "Card name"
+        }
+    }
+}
+
+private enum CollectionOwnershipFilter: String, CaseIterable, Identifiable {
+    case all
+    case owned
+    case missing
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
 private struct CustomCollectionFolderDetailView: View {
     let folder: CustomCollectionFolder
     @Environment(CatalogStore.self) private var catalogStore
@@ -1600,16 +1848,76 @@ private struct CustomCollectionFolderDetailView: View {
     @State private var message: String?
     @State private var selectedVariantCard: CatalogCard?
     @State private var updatingCardIDs: Set<String> = []
+    @State private var searchText = ""
+    @State private var ownershipFilter: CollectionOwnershipFilter
+    @State private var selectedSetName = ""
+    @State private var selectedReleaseYear = 0
+    @State private var sort = CollectionCardSort.releaseNewest
 
     private let columns = [
         GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
     ]
 
+    init(folder: CustomCollectionFolder) {
+        self.folder = folder
+        _ownershipFilter = State(
+            initialValue: folder.displayMode == .ownedOnly ? .owned : .all
+        )
+    }
+
+    private var availableSetNames: [String] {
+        Array(Set(matches.map(\.setName))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var availableReleaseYears: [Int] {
+        Array(Set(matches.compactMap { result in
+            result.setReleaseDate.flatMap { Int($0.prefix(4)) }
+        })).sorted(by: >)
+    }
+
     private var visibleMatches: [CatalogCardSearchResult] {
-        switch folder.displayMode {
-        case .allMatching: matches
-        case .ownedOnly: matches.filter { collectionStore.owns(cardID: $0.card.id) }
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return matches.filter { result in
+            let isOwned = collectionStore.owns(cardID: result.card.id)
+            let ownershipMatches: Bool = switch ownershipFilter {
+            case .all: true
+            case .owned: isOwned
+            case .missing: !isOwned
+            }
+            let searchMatches = trimmedSearch.isEmpty
+                || result.card.name.localizedCaseInsensitiveContains(trimmedSearch)
+                || result.setName.localizedCaseInsensitiveContains(trimmedSearch)
+                || result.card.localID.localizedCaseInsensitiveContains(trimmedSearch)
+            let setMatches = selectedSetName.isEmpty || result.setName == selectedSetName
+            let yearMatches = selectedReleaseYear == 0
+                || result.setReleaseDate?.hasPrefix(String(selectedReleaseYear)) == true
+            return ownershipMatches && searchMatches && setMatches && yearMatches
+        }.sorted(by: compareResults)
+    }
+
+    private func compareResults(_ left: CatalogCardSearchResult, _ right: CatalogCardSearchResult) -> Bool {
+        switch sort {
+        case .releaseNewest:
+            let leftDate = left.setReleaseDate ?? ""
+            let rightDate = right.setReleaseDate ?? ""
+            if leftDate != rightDate { return leftDate > rightDate }
+        case .releaseOldest:
+            let leftDate = left.setReleaseDate ?? "9999"
+            let rightDate = right.setReleaseDate ?? "9999"
+            if leftDate != rightDate { return leftDate < rightDate }
+        case .setName:
+            let comparison = left.setName.localizedCaseInsensitiveCompare(right.setName)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
+        case .collectorNumber:
+            let leftNumber = Int(left.card.localID) ?? .max
+            let rightNumber = Int(right.card.localID) ?? .max
+            if leftNumber != rightNumber { return leftNumber < rightNumber }
+        case .cardName:
+            let comparison = left.card.name.localizedCaseInsensitiveCompare(right.card.name)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
         }
+        if left.setName != right.setName { return left.setName < right.setName }
+        return left.card.localID.localizedStandardCompare(right.card.localID) == .orderedAscending
     }
 
     private var ownedCount: Int {
@@ -1661,16 +1969,16 @@ private struct CustomCollectionFolderDetailView: View {
                     )
                 } else if visibleMatches.isEmpty {
                     ContentUnavailableView(
-                        "No Owned Matches Yet",
-                        systemImage: "checkmark.circle",
-                        description: Text("Edit this folder to show All cards, then check cards off here.")
+                        "No Cards for These Filters",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Try another search, ownership filter, set, or release year.")
                     )
                 } else {
                     HStack {
                         Text("\(visibleMatches.count) cards")
                             .font(.headline)
                         Spacer()
-                        Text(folder.displayMode == .allMatching ? "All" : "Owned")
+                        Text(ownershipFilter.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -1737,6 +2045,95 @@ private struct CustomCollectionFolderDetailView: View {
         }
         .navigationTitle(folder.name)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Card, set, or number")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("Filter and sort", systemImage: "line.3.horizontal.decrease.circle") {
+                    Menu("Ownership: \(ownershipFilter.title)") {
+                        ForEach(CollectionOwnershipFilter.allCases) { filter in
+                            Button {
+                                ownershipFilter = filter
+                            } label: {
+                                if ownershipFilter == filter {
+                                    Label(filter.title, systemImage: "checkmark")
+                                } else {
+                                    Text(filter.title)
+                                }
+                            }
+                        }
+                    }
+
+                    Menu(selectedSetName.isEmpty ? "Set: All" : "Set: \(selectedSetName)") {
+                        Button {
+                            selectedSetName = ""
+                        } label: {
+                            if selectedSetName.isEmpty {
+                                Label("All sets", systemImage: "checkmark")
+                            } else {
+                                Text("All sets")
+                            }
+                        }
+                        ForEach(availableSetNames, id: \.self) { setName in
+                            Button {
+                                selectedSetName = setName
+                            } label: {
+                                if selectedSetName == setName {
+                                    Label(setName, systemImage: "checkmark")
+                                } else {
+                                    Text(setName)
+                                }
+                            }
+                        }
+                    }
+
+                    Menu(selectedReleaseYear == 0 ? "Release year: All" : "Release year: \(selectedReleaseYear)") {
+                        Button {
+                            selectedReleaseYear = 0
+                        } label: {
+                            if selectedReleaseYear == 0 {
+                                Label("All years", systemImage: "checkmark")
+                            } else {
+                                Text("All years")
+                            }
+                        }
+                        ForEach(availableReleaseYears, id: \.self) { year in
+                            Button {
+                                selectedReleaseYear = year
+                            } label: {
+                                if selectedReleaseYear == year {
+                                    Label(String(year), systemImage: "checkmark")
+                                } else {
+                                    Text(String(year))
+                                }
+                            }
+                        }
+                    }
+
+                    Menu("Sort: \(sort.title)") {
+                        ForEach(CollectionCardSort.allCases) { option in
+                            Button {
+                                sort = option
+                            } label: {
+                                if sort == option {
+                                    Label(option.title, systemImage: "checkmark")
+                                } else {
+                                    Text(option.title)
+                                }
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    Button("Reset filters", systemImage: "arrow.counterclockwise") {
+                        ownershipFilter = folder.displayMode == .ownedOnly ? .owned : .all
+                        selectedSetName = ""
+                        selectedReleaseYear = 0
+                        sort = .releaseNewest
+                    }
+                }
+            }
+        }
         .sheet(item: $selectedVariantCard) { card in
             CatalogVariantPickerView(card: card)
                 .presentationDetents([.medium, .large])
