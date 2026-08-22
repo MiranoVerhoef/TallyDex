@@ -6,6 +6,13 @@ struct CatalogSeries: Codable, Equatable, Hashable, Identifiable, Sendable {
     let logoURL: URL?
 }
 
+struct CatalogRarityCount: Codable, Equatable, Hashable, Identifiable, Sendable {
+    let rarity: String
+    let count: Int
+
+    var id: String { rarity }
+}
+
 struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let seriesID: String
@@ -16,6 +23,7 @@ struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
     let officialCardCount: Int
     let totalCardCount: Int
     let releaseDate: String?
+    let rarityCounts: [CatalogRarityCount]?
 
     func fillingMissingMetadata(from fallback: CatalogSet?) -> CatalogSet {
         CatalogSet(
@@ -27,7 +35,10 @@ struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
             symbolURL: symbolURL,
             officialCardCount: officialCardCount,
             totalCardCount: totalCardCount,
-            releaseDate: releaseDate ?? fallback?.releaseDate
+            releaseDate: releaseDate ?? fallback?.releaseDate,
+            rarityCounts: rarityCounts?.isEmpty == false
+                ? rarityCounts
+                : fallback?.rarityCounts
         )
     }
 }

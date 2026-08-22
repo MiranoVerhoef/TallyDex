@@ -120,30 +120,45 @@ struct SetsView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Sets view", selection: $selectedScope) {
-                    ForEach(SetsScope.allCases) { scope in
-                        Text(scope.pickerTitle)
-                            .tag(scope)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 8)
+            ZStack {
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
 
-                setsContent
-            }
-            .navigationTitle("Sets")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Image("TallyDexLogo")
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: 132, height: 44)
-                        .accessibilityLabel("TallyDex")
+                VStack(spacing: 0) {
+                    HStack {
+                        Image("TallyDexLogo")
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                            .frame(width: 132, height: 44)
+                            .accessibilityLabel("TallyDex")
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    HStack {
+                        Text("Sets")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    .padding(.bottom, 14)
+
+                    Picker("Sets view", selection: $selectedScope) {
+                        ForEach(SetsScope.allCases) { scope in
+                            Text(scope.pickerTitle)
+                                .tag(scope)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    setsContent
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 guard !didApplyDefault else { return }
                 selectedScope = SetsScope.resolve(defaultScope)
@@ -195,6 +210,7 @@ struct SetsView: View {
                             } label: {
                                 CatalogSetRow(set: set)
                             }
+                            .listRowBackground(Color.clear)
                         }
                     } header: {
                         CatalogSeriesHeader(group: group)
@@ -202,6 +218,8 @@ struct SetsView: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
             .refreshable {
                 await catalogStore.refresh()
             }
@@ -215,9 +233,12 @@ struct SetsView: View {
                     } label: {
                         CatalogSeriesRow(group: group)
                     }
+                    .listRowBackground(Color.clear)
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
             .refreshable {
                 await catalogStore.refresh()
             }
@@ -327,14 +348,19 @@ private struct CatalogSeriesSetsView: View {
     let group: CatalogSeriesGroup
 
     var body: some View {
-        List(group.sets) { set in
-            NavigationLink {
-                CatalogSetDetailView(set: set)
-            } label: {
-                CatalogSetRow(set: set)
+        List {
+            ForEach(group.sets) { set in
+                NavigationLink {
+                    CatalogSetDetailView(set: set)
+                } label: {
+                    CatalogSetRow(set: set)
+                }
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(group.series.name)
         .navigationBarTitleDisplayMode(.large)
     }
@@ -342,18 +368,7 @@ private struct CatalogSeriesSetsView: View {
 
 private struct CatalogSetDetailView: View {
     let set: CatalogSet
-
-    private var secretCardCount: Int {
-        max(0, set.totalCardCount - set.officialCardCount)
-    }
-
-    private var cardCountText: String {
-        if secretCardCount > 0 {
-            "\(set.officialCardCount) cards + \(secretCardCount) secret"
-        } else {
-            "\(set.officialCardCount) cards"
-        }
-    }
+    @State private var isShowingInformation = false
 
     var body: some View {
         ScrollView {
@@ -380,8 +395,6 @@ private struct CatalogSetDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.secondary)
                     }
-                    Text(cardCountText)
-                        .font(.title3.weight(.semibold))
                 }
                 .accessibilityElement(children: .combine)
 
@@ -395,6 +408,143 @@ private struct CatalogSetDetailView: View {
         }
         .navigationTitle(set.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Set information", systemImage: "info.circle") {
+                    isShowingInformation = true
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingInformation) {
+            CatalogSetInformationView(set: set)
+        }
+    }
+}
+
+private struct CatalogSetInformationView: View {
+    let set: CatalogSet
+    @Environment(\.dismiss) private var dismiss
+
+    private var additionalCardCount: Int {
+        max(0, set.totalCardCount - set.officialCardCount)
+    }
+
+    private var releaseDateText: String {
+        guard let releaseDate = set.releaseDate else { return "Unknown" }
+        let parts = releaseDate.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = Calendar(identifier: .gregorian).date(
+                  from: DateComponents(year: parts[0], month: parts[1], day: parts[2])
+              ) else {
+            return releaseDate
+        }
+        return date.formatted(date: .long, time: .omitted)
+    }
+
+    private var sortedRarityCounts: [CatalogRarityCount] {
+        let priority = [
+            "illustration rare": 0,
+            "ultra rare": 1,
+            "special illustration rare": 2,
+            "hyper rare": 3,
+            "mega hyper rare": 4,
+        ]
+        return (set.rarityCounts ?? []).sorted {
+            let left = priority[$0.rarity.lowercased(), default: .max]
+            let right = priority[$1.rarity.lowercased(), default: .max]
+            if left == right { return $0.rarity < $1.rarity }
+            return left < right
+        }
+    }
+
+    private var additionalRarityCounts: [CatalogRarityCount] {
+        let candidates = sortedRarityCounts.filter { rarityCount in
+            let rarity = rarityCount.rarity.lowercased()
+            return rarity.contains("illustration")
+                || rarity.contains("ultra")
+                || rarity.contains("hyper")
+                || rarity.contains("secret")
+                || rarity.contains("rainbow")
+                || rarity.contains("shiny")
+                || rarity.contains("gold")
+                || rarity.contains("trainer gallery")
+                || rarity.contains("classic collection")
+        }
+        guard candidates.reduce(0, { $0 + $1.count }) == additionalCardCount else {
+            return []
+        }
+        return candidates
+    }
+
+    private func displayName(for rarity: String) -> String {
+        switch rarity.lowercased() {
+        case "illustration rare": "Illustration Rare (IR)"
+        case "special illustration rare": "Special Illustration Rare (SIR)"
+        case "ultra rare": "Ultra Rare (UR)"
+        case "mega hyper rare": "Mega Hyper Rare (MHR)"
+        default: rarity.capitalized
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Release") {
+                    LabeledContent("Date", value: releaseDateText)
+                    if let abbreviation = set.abbreviation {
+                        LabeledContent("Set code", value: abbreviation)
+                    }
+                }
+
+                Section("Cards") {
+                    LabeledContent("Main numbered cards", value: "\(set.officialCardCount)")
+                    LabeledContent("Total cataloged cards", value: "\(set.totalCardCount)")
+                }
+
+                if !additionalRarityCounts.isEmpty {
+                    Section {
+                        ForEach(additionalRarityCounts) { rarityCount in
+                            LabeledContent(
+                                displayName(for: rarityCount.rarity),
+                                value: "\(rarityCount.count)"
+                            )
+                        }
+                    } header: {
+                        Text("Additional cards")
+                    } footer: {
+                        Text("\(additionalCardCount) cards beyond the main numbered set.")
+                    }
+                } else if additionalCardCount > 0 {
+                    Section("Additional cards") {
+                        LabeledContent("Additional cards", value: "\(additionalCardCount)")
+                    }
+                }
+
+                if additionalRarityCounts.isEmpty && !sortedRarityCounts.isEmpty {
+                    Section("Rarity breakdown") {
+                        ForEach(sortedRarityCounts) { rarityCount in
+                            LabeledContent(
+                                displayName(for: rarityCount.rarity),
+                                value: "\(rarityCount.count)"
+                            )
+                        }
+                    }
+                }
+
+                Section {
+                    Text("Additional cards are entries beyond the main numbered set. A master collection may also include parallel variants such as reverse holos.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle(set.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-22T10:03:45Z",
+  "generatedAt": "2026-08-22T10:22:44Z",
   "language": "en",
   "series": [
     {
@@ -19,7 +19,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/me/me05/symbol",
           "officialCardCount": 84,
           "totalCardCount": 120,
-          "releaseDate": "2026-07-17"
+          "releaseDate": "2026-07-17",
+          "rarityCounts": [
+            {
+              "count": 37,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Mega Hyper Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "me04",
@@ -30,7 +64,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/me/me04/symbol",
           "officialCardCount": 86,
           "totalCardCount": 122,
-          "releaseDate": "2026-05-22"
+          "releaseDate": "2026-05-22",
+          "rarityCounts": [
+            {
+              "count": 38,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Mega Hyper Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "me03",
@@ -41,7 +109,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/me/me03/symbol",
           "officialCardCount": 88,
           "totalCardCount": 124,
-          "releaseDate": "2026-03-27"
+          "releaseDate": "2026-03-27",
+          "rarityCounts": [
+            {
+              "count": 44,
+              "rarity": "Common"
+            },
+            {
+              "count": 9,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Mega Hyper Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 24,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "me02.5",
@@ -52,7 +154,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/me/me02.5/symbol",
           "officialCardCount": 217,
           "totalCardCount": 295,
-          "releaseDate": "2026-01-30"
+          "releaseDate": "2026-01-30",
+          "rarityCounts": [
+            {
+              "count": 84,
+              "rarity": "Common"
+            },
+            {
+              "count": 39,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Mega Hyper Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 69,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "me02",
@@ -63,7 +199,41 @@
           "symbolURL": null,
           "officialCardCount": 94,
           "totalCardCount": 130,
-          "releaseDate": "2025-11-14"
+          "releaseDate": "2025-11-14",
+          "rarityCounts": [
+            {
+              "count": 43,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 13,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Mega Hyper Rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 31,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "me01",
@@ -74,7 +244,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/me/me01/symbol",
           "officialCardCount": 132,
           "totalCardCount": 188,
-          "releaseDate": "2025-09-26"
+          "releaseDate": "2025-09-26",
+          "rarityCounts": [
+            {
+              "count": 67,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Mega Hyper Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 43,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "mep",
@@ -85,7 +289,13 @@
           "symbolURL": null,
           "officialCardCount": 0,
           "totalCardCount": 60,
-          "releaseDate": "2025-09-26"
+          "releaseDate": "2025-09-26",
+          "rarityCounts": [
+            {
+              "count": 89,
+              "rarity": "Promo"
+            }
+          ]
         },
         {
           "id": "mee",
@@ -96,7 +306,13 @@
           "symbolURL": null,
           "officialCardCount": 8,
           "totalCardCount": 8,
-          "releaseDate": "2025-09-25"
+          "releaseDate": "2025-09-25",
+          "rarityCounts": [
+            {
+              "count": 8,
+              "rarity": "Common"
+            }
+          ]
         }
       ]
     },
@@ -116,7 +332,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv10.5w/symbol",
           "officialCardCount": 86,
           "totalCardCount": 173,
-          "releaseDate": "2025-07-17"
+          "releaseDate": "2025-07-17",
+          "rarityCounts": [
+            {
+              "count": 2,
+              "rarity": "Black White Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 70,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv10.5b",
@@ -127,7 +377,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv10.5b/symbol",
           "officialCardCount": 86,
           "totalCardCount": 172,
-          "releaseDate": "2025-07-17"
+          "releaseDate": "2025-07-17",
+          "rarityCounts": [
+            {
+              "count": 2,
+              "rarity": "Black White Rare"
+            },
+            {
+              "count": 39,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 69,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 31,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv10",
@@ -138,7 +422,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv10/symbol",
           "officialCardCount": 182,
           "totalCardCount": 244,
-          "releaseDate": "2025-05-30"
+          "releaseDate": "2025-05-30",
+          "rarityCounts": [
+            {
+              "count": 85,
+              "rarity": "Common"
+            },
+            {
+              "count": 17,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 62,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv09",
@@ -149,7 +467,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv09/symbol",
           "officialCardCount": 159,
           "totalCardCount": 190,
-          "releaseDate": "2025-03-28"
+          "releaseDate": "2025-03-28",
+          "rarityCounts": [
+            {
+              "count": 85,
+              "rarity": "Common"
+            },
+            {
+              "count": 16,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv08.5",
@@ -160,7 +512,41 @@
           "symbolURL": null,
           "officialCardCount": 131,
           "totalCardCount": 180,
-          "releaseDate": "2025-01-17"
+          "releaseDate": "2025-01-17",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "ACE SPEC Rare"
+            },
+            {
+              "count": 46,
+              "rarity": "Common"
+            },
+            {
+              "count": 25,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv08",
@@ -171,7 +557,45 @@
           "symbolURL": null,
           "officialCardCount": 191,
           "totalCardCount": 252,
-          "releaseDate": "2024-11-08"
+          "releaseDate": "2024-11-08",
+          "rarityCounts": [
+            {
+              "count": 8,
+              "rarity": "ACE SPEC Rare"
+            },
+            {
+              "count": 88,
+              "rarity": "Common"
+            },
+            {
+              "count": 18,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 61,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv07",
@@ -182,7 +606,45 @@
           "symbolURL": null,
           "officialCardCount": 142,
           "totalCardCount": 175,
-          "releaseDate": "2024-09-13"
+          "releaseDate": "2024-09-13",
+          "rarityCounts": [
+            {
+              "count": 3,
+              "rarity": "ACE SPEC Rare"
+            },
+            {
+              "count": 71,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 13,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 39,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv06.5",
@@ -193,7 +655,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv06.5/symbol",
           "officialCardCount": 64,
           "totalCardCount": 99,
-          "releaseDate": "2024-08-02"
+          "releaseDate": "2024-08-02",
+          "rarityCounts": [
+            {
+              "count": 3,
+              "rarity": "ACE SPEC Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv06",
@@ -204,7 +704,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv06/symbol",
           "officialCardCount": 167,
           "totalCardCount": 226,
-          "releaseDate": "2024-05-24"
+          "releaseDate": "2024-05-24",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "ACE SPEC Rare"
+            },
+            {
+              "count": 76,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 55,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv05",
@@ -215,7 +753,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv05/symbol",
           "officialCardCount": 162,
           "totalCardCount": 218,
-          "releaseDate": "2024-03-22"
+          "releaseDate": "2024-03-22",
+          "rarityCounts": [
+            {
+              "count": 7,
+              "rarity": "ACE SPEC Rare"
+            },
+            {
+              "count": 71,
+              "rarity": "Common"
+            },
+            {
+              "count": 15,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 55,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv04.5",
@@ -226,7 +802,49 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv04.5/symbol",
           "officialCardCount": 91,
           "totalCardCount": 245,
-          "releaseDate": "2024-01-26"
+          "releaseDate": "2024-01-26",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Shiny Ultra Rare"
+            },
+            {
+              "count": 120,
+              "rarity": "Shiny rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv04",
@@ -237,7 +855,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv04/symbol",
           "officialCardCount": 182,
           "totalCardCount": 266,
-          "releaseDate": "2023-11-03"
+          "releaseDate": "2023-11-03",
+          "rarityCounts": [
+            {
+              "count": 81,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 34,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 27,
+              "rarity": "Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 54,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "mfb",
@@ -248,7 +900,13 @@
           "symbolURL": null,
           "officialCardCount": 48,
           "totalCardCount": 48,
-          "releaseDate": "2023-09-29"
+          "releaseDate": "2023-09-29",
+          "rarityCounts": [
+            {
+              "count": 34,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "sv03.5",
@@ -259,7 +917,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv03.5/symbol",
           "officialCardCount": 165,
           "totalCardCount": 207,
-          "releaseDate": "2023-09-22"
+          "releaseDate": "2023-09-22",
+          "rarityCounts": [
+            {
+              "count": 66,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 62,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv03",
@@ -270,7 +962,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv03/symbol",
           "officialCardCount": 197,
           "totalCardCount": 230,
-          "releaseDate": "2023-08-11"
+          "releaseDate": "2023-08-11",
+          "rarityCounts": [
+            {
+              "count": 92,
+              "rarity": "Common"
+            },
+            {
+              "count": 21,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 74,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sv02",
@@ -281,7 +1007,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv02/symbol",
           "officialCardCount": 193,
           "totalCardCount": 279,
-          "releaseDate": "2023-06-09"
+          "releaseDate": "2023-06-09",
+          "rarityCounts": [
+            {
+              "count": 81,
+              "rarity": "Common"
+            },
+            {
+              "count": 17,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 9,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 70,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "svp",
@@ -292,7 +1052,13 @@
           "symbolURL": null,
           "officialCardCount": 225,
           "totalCardCount": 226,
-          "releaseDate": "2023-03-31"
+          "releaseDate": "2023-03-31",
+          "rarityCounts": [
+            {
+              "count": 226,
+              "rarity": "Promo"
+            }
+          ]
         },
         {
           "id": "sve",
@@ -303,7 +1069,13 @@
           "symbolURL": null,
           "officialCardCount": 24,
           "totalCardCount": 24,
-          "releaseDate": "2023-03-31"
+          "releaseDate": "2023-03-31",
+          "rarityCounts": [
+            {
+              "count": 24,
+              "rarity": "Common"
+            }
+          ]
         },
         {
           "id": "sv01",
@@ -314,7 +1086,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sv/sv01/symbol",
           "officialCardCount": 198,
           "totalCardCount": 258,
-          "releaseDate": "2023-03-31"
+          "releaseDate": "2023-03-31",
+          "rarityCounts": [
+            {
+              "count": 105,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Double rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Hyper rare"
+            },
+            {
+              "count": 24,
+              "rarity": "Illustration rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Special illustration rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 60,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -334,7 +1140,49 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh12.5/symbol",
           "officialCardCount": 159,
           "totalCardCount": 160,
-          "releaseDate": "2023-01-20"
+          "releaseDate": "2023-01-20",
+          "rarityCounts": [
+            {
+              "count": 42,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 4,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 8,
+              "rarity": "Holo Rare VSTAR"
+            },
+            {
+              "count": 3,
+              "rarity": "Radiant Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 29,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh12.5gg",
@@ -345,7 +1193,21 @@
           "symbolURL": null,
           "officialCardCount": 70,
           "totalCardCount": 70,
-          "releaseDate": "2023-01-20"
+          "releaseDate": "2023-01-20",
+          "rarityCounts": [
+            {
+              "count": 34,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Ultra Rare"
+            }
+          ]
         },
         {
           "id": "swsh12.5tg",
@@ -356,7 +1218,8 @@
           "symbolURL": null,
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2022-11-11"
+          "releaseDate": "2022-11-11",
+          "rarityCounts": []
         },
         {
           "id": "swsh12",
@@ -367,7 +1230,49 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh12/symbol",
           "officialCardCount": 195,
           "totalCardCount": 215,
-          "releaseDate": "2022-11-11"
+          "releaseDate": "2022-11-11",
+          "rarityCounts": [
+            {
+              "count": 53,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 1,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 6,
+              "rarity": "Holo Rare VSTAR"
+            },
+            {
+              "count": 3,
+              "rarity": "Radiant Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 56,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh11",
@@ -378,7 +1283,49 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh11/symbol",
           "officialCardCount": 196,
           "totalCardCount": 217,
-          "releaseDate": "2022-09-09"
+          "releaseDate": "2022-09-09",
+          "rarityCounts": [
+            {
+              "count": 49,
+              "rarity": "Common"
+            },
+            {
+              "count": 22,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 3,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 6,
+              "rarity": "Holo Rare VSTAR"
+            },
+            {
+              "count": 3,
+              "rarity": "Radiant Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 50,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh11.5tg",
@@ -389,7 +1336,8 @@
           "symbolURL": null,
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2022-09-09"
+          "releaseDate": "2022-09-09",
+          "rarityCounts": []
         },
         {
           "id": "swsh10.5",
@@ -400,7 +1348,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh10.5/symbol",
           "officialCardCount": 78,
           "totalCardCount": 88,
-          "releaseDate": "2022-07-01"
+          "releaseDate": "2022-07-01",
+          "rarityCounts": [
+            {
+              "count": 22,
+              "rarity": "Common"
+            },
+            {
+              "count": 16,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 2,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 1,
+              "rarity": "Holo Rare VSTAR"
+            },
+            {
+              "count": 3,
+              "rarity": "Radiant Rare"
+            },
+            {
+              "count": 10,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh10.5tg",
@@ -411,7 +1397,8 @@
           "symbolURL": null,
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2022-05-27"
+          "releaseDate": "2022-05-27",
+          "rarityCounts": []
         },
         {
           "id": "swsh10",
@@ -422,7 +1409,49 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh10/symbol",
           "officialCardCount": 189,
           "totalCardCount": 216,
-          "releaseDate": "2022-05-27"
+          "releaseDate": "2022-05-27",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 2,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 7,
+              "rarity": "Holo Rare VSTAR"
+            },
+            {
+              "count": 3,
+              "rarity": "Radiant Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 27,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 31,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 47,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh9",
@@ -433,7 +1462,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh9/symbol",
           "officialCardCount": 172,
           "totalCardCount": 186,
-          "releaseDate": "2022-02-25"
+          "releaseDate": "2022-02-25",
+          "rarityCounts": [
+            {
+              "count": 42,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 3,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 4,
+              "rarity": "Holo Rare VSTAR"
+            },
+            {
+              "count": 26,
+              "rarity": "Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 46,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh9.5tg",
@@ -444,7 +1511,8 @@
           "symbolURL": null,
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2022-02-25"
+          "releaseDate": "2022-02-25",
+          "rarityCounts": []
         },
         {
           "id": "swsh8",
@@ -455,7 +1523,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh8/symbol",
           "officialCardCount": 264,
           "totalCardCount": 284,
-          "releaseDate": "2021-11-12"
+          "releaseDate": "2021-11-12",
+          "rarityCounts": [
+            {
+              "count": 89,
+              "rarity": "Common"
+            },
+            {
+              "count": 13,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 19,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 8,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 83,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "cel25cc",
@@ -466,7 +1568,13 @@
           "symbolURL": null,
           "officialCardCount": 25,
           "totalCardCount": 25,
-          "releaseDate": "2021-10-08"
+          "releaseDate": "2021-10-08",
+          "rarityCounts": [
+            {
+              "count": 25,
+              "rarity": "Classic Collection"
+            }
+          ]
         },
         {
           "id": "cel25",
@@ -477,7 +1585,33 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/cel25/symbol",
           "officialCardCount": 25,
           "totalCardCount": 25,
-          "releaseDate": "2021-10-08"
+          "releaseDate": "2021-10-08",
+          "rarityCounts": [
+            {
+              "count": 5,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 2,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 12,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Ultra Rare"
+            }
+          ]
         },
         {
           "id": "swsh7",
@@ -488,7 +1622,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh7/symbol",
           "officialCardCount": 203,
           "totalCardCount": 237,
-          "releaseDate": "2021-08-27"
+          "releaseDate": "2021-08-27",
+          "rarityCounts": [
+            {
+              "count": 42,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 15,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 19,
+              "rarity": "Rare"
+            },
+            {
+              "count": 34,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 51,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh6",
@@ -499,7 +1667,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh6/symbol",
           "officialCardCount": 198,
           "totalCardCount": 233,
-          "releaseDate": "2021-06-18"
+          "releaseDate": "2021-06-18",
+          "rarityCounts": [
+            {
+              "count": 43,
+              "rarity": "Common"
+            },
+            {
+              "count": 24,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 8,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 23,
+              "rarity": "Rare"
+            },
+            {
+              "count": 35,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 39,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 46,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh5",
@@ -510,7 +1712,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh5/symbol",
           "officialCardCount": 163,
           "totalCardCount": 183,
-          "releaseDate": "2021-03-19"
+          "releaseDate": "2021-03-19",
+          "rarityCounts": [
+            {
+              "count": 41,
+              "rarity": "Common"
+            },
+            {
+              "count": 16,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 6,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 20,
+              "rarity": "Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 46,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh4.5sv",
@@ -521,7 +1757,25 @@
           "symbolURL": null,
           "officialCardCount": 122,
           "totalCardCount": 122,
-          "releaseDate": "2021-02-19"
+          "releaseDate": "2021-02-19",
+          "rarityCounts": [
+            {
+              "count": 2,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 104,
+              "rarity": "Shiny rare"
+            },
+            {
+              "count": 9,
+              "rarity": "Shiny rare V"
+            },
+            {
+              "count": 7,
+              "rarity": "Shiny rare VMAX"
+            }
+          ]
         },
         {
           "id": "swsh4.5",
@@ -532,7 +1786,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh4.5/symbol",
           "officialCardCount": 72,
           "totalCardCount": 73,
-          "releaseDate": "2021-02-19"
+          "releaseDate": "2021-02-19",
+          "rarityCounts": [
+            {
+              "count": 3,
+              "rarity": "Amazing Rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Common"
+            },
+            {
+              "count": 5,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 5,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 10,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 13,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh4",
@@ -543,7 +1835,45 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh4/symbol",
           "officialCardCount": 185,
           "totalCardCount": 203,
-          "releaseDate": "2020-11-13"
+          "releaseDate": "2020-11-13",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "Amazing Rare"
+            },
+            {
+              "count": 44,
+              "rarity": "Common"
+            },
+            {
+              "count": 19,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 6,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 33,
+              "rarity": "Rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 46,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh3.5",
@@ -554,7 +1884,37 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh3.5/symbol",
           "officialCardCount": 73,
           "totalCardCount": 80,
-          "releaseDate": "2020-09-25"
+          "releaseDate": "2020-09-25",
+          "rarityCounts": [
+            {
+              "count": 21,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 3,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 7,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "fut2020",
@@ -565,7 +1925,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/fut2020/symbol",
           "officialCardCount": 5,
           "totalCardCount": 5,
-          "releaseDate": "2020-09-11"
+          "releaseDate": "2020-09-11",
+          "rarityCounts": [
+            {
+              "count": 5,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "swsh3",
@@ -576,7 +1942,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh3/symbol",
           "officialCardCount": 189,
           "totalCardCount": 201,
-          "releaseDate": "2020-08-14"
+          "releaseDate": "2020-08-14",
+          "rarityCounts": [
+            {
+              "count": 53,
+              "rarity": "Common"
+            },
+            {
+              "count": 18,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 7,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 34,
+              "rarity": "Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 13,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 50,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh2",
@@ -587,7 +1987,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh2/symbol",
           "officialCardCount": 192,
           "totalCardCount": 209,
-          "releaseDate": "2020-05-01"
+          "releaseDate": "2020-05-01",
+          "rarityCounts": [
+            {
+              "count": 50,
+              "rarity": "Common"
+            },
+            {
+              "count": 18,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 7,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 51,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swsh1",
@@ -598,7 +2032,41 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swsh1/symbol",
           "officialCardCount": 202,
           "totalCardCount": 216,
-          "releaseDate": "2020-02-07"
+          "releaseDate": "2020-02-07",
+          "rarityCounts": [
+            {
+              "count": 60,
+              "rarity": "Common"
+            },
+            {
+              "count": 15,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Holo Rare V"
+            },
+            {
+              "count": 6,
+              "rarity": "Holo Rare VMAX"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 56,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "swshp",
@@ -609,7 +2077,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/swsh/swshp/symbol",
           "officialCardCount": 307,
           "totalCardCount": 307,
-          "releaseDate": "2019-11-15"
+          "releaseDate": "2019-11-15",
+          "rarityCounts": [
+            {
+              "count": 303,
+              "rarity": "Promo"
+            },
+            {
+              "count": 1,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Ultra Rare"
+            }
+          ]
         }
       ]
     },
@@ -629,7 +2111,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm12/symbol",
           "officialCardCount": 236,
           "totalCardCount": 271,
-          "releaseDate": "2019-11-01"
+          "releaseDate": "2019-11-01",
+          "rarityCounts": [
+            {
+              "count": 67,
+              "rarity": "Common"
+            },
+            {
+              "count": 60,
+              "rarity": "Rare"
+            },
+            {
+              "count": 35,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 43,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 66,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sma",
@@ -640,7 +2144,17 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sma/symbol",
           "officialCardCount": 94,
           "totalCardCount": 94,
-          "releaseDate": "2019-08-23"
+          "releaseDate": "2019-08-23",
+          "rarityCounts": [
+            {
+              "count": 8,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 86,
+              "rarity": "Shiny rare"
+            }
+          ]
         },
         {
           "id": "sm115",
@@ -651,7 +2165,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm115/symbol",
           "officialCardCount": 68,
           "totalCardCount": 69,
-          "releaseDate": "2019-08-23"
+          "releaseDate": "2019-08-23",
+          "rarityCounts": [
+            {
+              "count": 18,
+              "rarity": "Common"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm11",
@@ -662,7 +2198,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm11/symbol",
           "officialCardCount": 236,
           "totalCardCount": 258,
-          "releaseDate": "2019-08-02"
+          "releaseDate": "2019-08-02",
+          "rarityCounts": [
+            {
+              "count": 65,
+              "rarity": "Common"
+            },
+            {
+              "count": 59,
+              "rarity": "Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 40,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 72,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm10",
@@ -673,7 +2231,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm10/symbol",
           "officialCardCount": 214,
           "totalCardCount": 234,
-          "releaseDate": "2019-05-03"
+          "releaseDate": "2019-05-03",
+          "rarityCounts": [
+            {
+              "count": 62,
+              "rarity": "Common"
+            },
+            {
+              "count": 61,
+              "rarity": "Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 53,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "det1",
@@ -684,7 +2264,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/det1/symbol",
           "officialCardCount": 18,
           "totalCardCount": 18,
-          "releaseDate": "2019-03-29"
+          "releaseDate": "2019-03-29",
+          "rarityCounts": [
+            {
+              "count": 8,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Ultra Rare"
+            }
+          ]
         },
         {
           "id": "sm9",
@@ -695,7 +2289,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm9/symbol",
           "officialCardCount": 181,
           "totalCardCount": 196,
-          "releaseDate": "2019-01-31"
+          "releaseDate": "2019-01-31",
+          "rarityCounts": [
+            {
+              "count": 45,
+              "rarity": "Common"
+            },
+            {
+              "count": 54,
+              "rarity": "Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 34,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 48,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm8",
@@ -706,7 +2322,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm8/symbol",
           "officialCardCount": 214,
           "totalCardCount": 236,
-          "releaseDate": "2018-11-02"
+          "releaseDate": "2018-11-02",
+          "rarityCounts": [
+            {
+              "count": 56,
+              "rarity": "Common"
+            },
+            {
+              "count": 66,
+              "rarity": "Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 59,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm7.5",
@@ -717,7 +2355,29 @@
           "symbolURL": null,
           "officialCardCount": 70,
           "totalCardCount": 78,
-          "releaseDate": "2018-09-07"
+          "releaseDate": "2018-09-07",
+          "rarityCounts": [
+            {
+              "count": 23,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm7",
@@ -728,7 +2388,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm7/symbol",
           "officialCardCount": 168,
           "totalCardCount": 183,
-          "releaseDate": "2018-08-03"
+          "releaseDate": "2018-08-03",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            },
+            {
+              "count": 38,
+              "rarity": "Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 62,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm6",
@@ -739,7 +2421,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm6/symbol",
           "officialCardCount": 131,
           "totalCardCount": 146,
-          "releaseDate": "2018-05-04"
+          "releaseDate": "2018-05-04",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 41,
+              "rarity": "Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm5",
@@ -750,7 +2454,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm5/symbol",
           "officialCardCount": 156,
           "totalCardCount": 173,
-          "releaseDate": "2018-02-02"
+          "releaseDate": "2018-02-02",
+          "rarityCounts": [
+            {
+              "count": 45,
+              "rarity": "Common"
+            },
+            {
+              "count": 42,
+              "rarity": "Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 44,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm4",
@@ -761,7 +2487,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm4/symbol",
           "officialCardCount": 111,
           "totalCardCount": 125,
-          "releaseDate": "2017-11-03"
+          "releaseDate": "2017-11-03",
+          "rarityCounts": [
+            {
+              "count": 34,
+              "rarity": "Common"
+            },
+            {
+              "count": 33,
+              "rarity": "Rare"
+            },
+            {
+              "count": 13,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 19,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm3.5",
@@ -772,7 +2520,29 @@
           "symbolURL": null,
           "officialCardCount": 73,
           "totalCardCount": 78,
-          "releaseDate": "2017-10-06"
+          "releaseDate": "2017-10-06",
+          "rarityCounts": [
+            {
+              "count": 23,
+              "rarity": "Common"
+            },
+            {
+              "count": 13,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm3",
@@ -783,7 +2553,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm3/symbol",
           "officialCardCount": 147,
           "totalCardCount": 169,
-          "releaseDate": "2017-08-04"
+          "releaseDate": "2017-08-04",
+          "rarityCounts": [
+            {
+              "count": 39,
+              "rarity": "Common"
+            },
+            {
+              "count": 40,
+              "rarity": "Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 30,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sm2",
@@ -794,7 +2586,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm2/symbol",
           "officialCardCount": 145,
           "totalCardCount": 169,
-          "releaseDate": "2017-05-05"
+          "releaseDate": "2017-05-05",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            },
+            {
+              "count": 43,
+              "rarity": "Rare"
+            },
+            {
+              "count": 24,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "smp",
@@ -805,7 +2619,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/smp/symbol",
           "officialCardCount": 248,
           "totalCardCount": 248,
-          "releaseDate": "2017-02-03"
+          "releaseDate": "2017-02-03",
+          "rarityCounts": [
+            {
+              "count": 248,
+              "rarity": "Promo"
+            }
+          ]
         },
         {
           "id": "sm1",
@@ -816,7 +2636,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/sm/sm1/symbol",
           "officialCardCount": 149,
           "totalCardCount": 172,
-          "releaseDate": "2017-02-03"
+          "releaseDate": "2017-02-03",
+          "rarityCounts": [
+            {
+              "count": 53,
+              "rarity": "Common"
+            },
+            {
+              "count": 33,
+              "rarity": "Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 49,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -836,7 +2678,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy12/symbol",
           "officialCardCount": 108,
           "totalCardCount": 113,
-          "releaseDate": "2016-11-02"
+          "releaseDate": "2016-11-02",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 22,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy11",
@@ -847,7 +2711,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy11/symbol",
           "officialCardCount": 114,
           "totalCardCount": 116,
-          "releaseDate": "2016-08-03"
+          "releaseDate": "2016-08-03",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 30,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy10",
@@ -858,7 +2744,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy10/symbol",
           "officialCardCount": 124,
           "totalCardCount": 129,
-          "releaseDate": "2016-05-02"
+          "releaseDate": "2016-05-02",
+          "rarityCounts": [
+            {
+              "count": 26,
+              "rarity": "Common"
+            },
+            {
+              "count": 27,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 47,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "g1",
@@ -869,7 +2777,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/g1/symbol",
           "officialCardCount": 83,
           "totalCardCount": 117,
-          "releaseDate": "2016-02-22"
+          "releaseDate": "2016-02-22",
+          "rarityCounts": [
+            {
+              "count": 41,
+              "rarity": "Common"
+            },
+            {
+              "count": 17,
+              "rarity": "Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy9",
@@ -880,7 +2806,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy9/symbol",
           "officialCardCount": 122,
           "totalCardCount": 126,
-          "releaseDate": "2016-02-03"
+          "releaseDate": "2016-02-03",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 23,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 44,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy8",
@@ -891,7 +2839,33 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy8/symbol",
           "officialCardCount": 162,
           "totalCardCount": 165,
-          "releaseDate": "2015-11-04"
+          "releaseDate": "2015-11-04",
+          "rarityCounts": [
+            {
+              "count": 53,
+              "rarity": "Common"
+            },
+            {
+              "count": 1,
+              "rarity": "None"
+            },
+            {
+              "count": 37,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 24,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 48,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy7",
@@ -902,7 +2876,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy7/symbol",
           "officialCardCount": 98,
           "totalCardCount": 101,
-          "releaseDate": "2015-08-12"
+          "releaseDate": "2015-08-12",
+          "rarityCounts": [
+            {
+              "count": 23,
+              "rarity": "Common"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 29,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy6",
@@ -913,7 +2909,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy6/symbol",
           "officialCardCount": 108,
           "totalCardCount": 112,
-          "releaseDate": "2015-05-06"
+          "releaseDate": "2015-05-06",
+          "rarityCounts": [
+            {
+              "count": 26,
+              "rarity": "Common"
+            },
+            {
+              "count": 29,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dc1",
@@ -924,7 +2942,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/dc1/symbol",
           "officialCardCount": 34,
           "totalCardCount": 34,
-          "releaseDate": "2015-03-25"
+          "releaseDate": "2015-03-25",
+          "rarityCounts": [
+            {
+              "count": 14,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 12,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy5",
@@ -935,7 +2971,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy5/symbol",
           "officialCardCount": 160,
           "totalCardCount": 164,
-          "releaseDate": "2015-02-04"
+          "releaseDate": "2015-02-04",
+          "rarityCounts": [
+            {
+              "count": 39,
+              "rarity": "Common"
+            },
+            {
+              "count": 43,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 50,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy4",
@@ -946,7 +3004,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy4/symbol",
           "officialCardCount": 119,
           "totalCardCount": 124,
-          "releaseDate": "2014-11-05"
+          "releaseDate": "2014-11-05",
+          "rarityCounts": [
+            {
+              "count": 34,
+              "rarity": "Common"
+            },
+            {
+              "count": 35,
+              "rarity": "Rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 37,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy3",
@@ -957,7 +3037,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy3/symbol",
           "officialCardCount": 111,
           "totalCardCount": 114,
-          "releaseDate": "2014-08-13"
+          "releaseDate": "2014-08-13",
+          "rarityCounts": [
+            {
+              "count": 29,
+              "rarity": "Common"
+            },
+            {
+              "count": 30,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 39,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy2",
@@ -968,7 +3070,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy2/symbol",
           "officialCardCount": 106,
           "totalCardCount": 110,
-          "releaseDate": "2014-05-07"
+          "releaseDate": "2014-05-07",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 28,
+              "rarity": "Rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 15,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xya",
@@ -979,7 +3103,17 @@
           "symbolURL": null,
           "officialCardCount": 6,
           "totalCardCount": 6,
-          "releaseDate": "2014-02-05"
+          "releaseDate": "2014-02-05",
+          "rarityCounts": [
+            {
+              "count": 4,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy1",
@@ -990,7 +3124,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy1/symbol",
           "officialCardCount": 146,
           "totalCardCount": 146,
-          "releaseDate": "2014-02-05"
+          "releaseDate": "2014-02-05",
+          "rarityCounts": [
+            {
+              "count": 48,
+              "rarity": "Common"
+            },
+            {
+              "count": 42,
+              "rarity": "Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "xy0",
@@ -1001,7 +3153,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xy0/symbol",
           "officialCardCount": 39,
           "totalCardCount": 39,
-          "releaseDate": "2013-11-08"
+          "releaseDate": "2013-11-08",
+          "rarityCounts": [
+            {
+              "count": 39,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "xyp",
@@ -1012,7 +3170,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/xy/xyp/symbol",
           "officialCardCount": 211,
           "totalCardCount": 216,
-          "releaseDate": "2013-10-12"
+          "releaseDate": "2013-10-12",
+          "rarityCounts": [
+            {
+              "count": 216,
+              "rarity": "Promo"
+            }
+          ]
         }
       ]
     },
@@ -1032,7 +3196,13 @@
           "symbolURL": null,
           "officialCardCount": 15,
           "totalCardCount": 15,
-          "releaseDate": "2024-12-04"
+          "releaseDate": "2024-12-04",
+          "rarityCounts": [
+            {
+              "count": 15,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2023sv",
@@ -1043,7 +3213,13 @@
           "symbolURL": null,
           "officialCardCount": 15,
           "totalCardCount": 15,
-          "releaseDate": "2023-08-01"
+          "releaseDate": "2023-08-01",
+          "rarityCounts": [
+            {
+              "count": 15,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2022swsh",
@@ -1054,7 +3230,13 @@
           "symbolURL": null,
           "officialCardCount": 15,
           "totalCardCount": 15,
-          "releaseDate": "2022-08-03"
+          "releaseDate": "2022-08-03",
+          "rarityCounts": [
+            {
+              "count": 15,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2021swsh",
@@ -1065,7 +3247,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/mc/2021swsh/symbol",
           "officialCardCount": 25,
           "totalCardCount": 25,
-          "releaseDate": "2021-02-09"
+          "releaseDate": "2021-02-09",
+          "rarityCounts": [
+            {
+              "count": 25,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2019sm",
@@ -1076,7 +3264,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2019-10-15"
+          "releaseDate": "2019-10-15",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2018sm",
@@ -1087,7 +3281,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2018-10-19"
+          "releaseDate": "2018-10-19",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2017sm",
@@ -1098,7 +3298,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2017-08-03"
+          "releaseDate": "2017-08-03",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2016xy",
@@ -1109,7 +3315,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2016-08-20"
+          "releaseDate": "2016-08-20",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2015xy",
@@ -1120,7 +3332,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2015-11-27"
+          "releaseDate": "2015-11-27",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2014xy",
@@ -1131,7 +3349,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2014-05-23"
+          "releaseDate": "2014-05-23",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2012bw",
@@ -1142,7 +3366,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2012-06-15"
+          "releaseDate": "2012-06-15",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "2011bw",
@@ -1153,7 +3383,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2011-06-17"
+          "releaseDate": "2011-06-17",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         }
       ]
     },
@@ -1173,7 +3409,8 @@
           "symbolURL": null,
           "officialCardCount": 25,
           "totalCardCount": 25,
-          "releaseDate": "2013-11-06"
+          "releaseDate": "2013-11-06",
+          "rarityCounts": []
         },
         {
           "id": "bw11",
@@ -1184,7 +3421,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw11/symbol",
           "officialCardCount": 113,
           "totalCardCount": 140,
-          "releaseDate": "2013-11-06"
+          "releaseDate": "2013-11-06",
+          "rarityCounts": [
+            {
+              "count": 37,
+              "rarity": "Common"
+            },
+            {
+              "count": 55,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 41,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw10",
@@ -1195,7 +3454,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw10/symbol",
           "officialCardCount": 101,
           "totalCardCount": 105,
-          "releaseDate": "2013-08-14"
+          "releaseDate": "2013-08-14",
+          "rarityCounts": [
+            {
+              "count": 26,
+              "rarity": "Common"
+            },
+            {
+              "count": 36,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw9",
@@ -1206,7 +3487,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw9/symbol",
           "officialCardCount": 116,
           "totalCardCount": 122,
-          "releaseDate": "2013-05-08"
+          "releaseDate": "2013-05-08",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 44,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw8",
@@ -1217,7 +3520,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw8/symbol",
           "officialCardCount": 135,
           "totalCardCount": 138,
-          "releaseDate": "2013-02-06"
+          "releaseDate": "2013-02-06",
+          "rarityCounts": [
+            {
+              "count": 41,
+              "rarity": "Common"
+            },
+            {
+              "count": 47,
+              "rarity": "Rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw7",
@@ -1228,7 +3553,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw7/symbol",
           "officialCardCount": 149,
           "totalCardCount": 153,
-          "releaseDate": "2012-11-07"
+          "releaseDate": "2012-11-07",
+          "rarityCounts": [
+            {
+              "count": 50,
+              "rarity": "Common"
+            },
+            {
+              "count": 47,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 9,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 43,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dv1",
@@ -1239,7 +3586,17 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/dv1/symbol",
           "officialCardCount": 20,
           "totalCardCount": 21,
-          "releaseDate": "2012-10-05"
+          "releaseDate": "2012-10-05",
+          "rarityCounts": [
+            {
+              "count": 1,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Rare"
+            }
+          ]
         },
         {
           "id": "bw6",
@@ -1250,7 +3607,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw6/symbol",
           "officialCardCount": 124,
           "totalCardCount": 128,
-          "releaseDate": "2012-08-15"
+          "releaseDate": "2012-08-15",
+          "rarityCounts": [
+            {
+              "count": 39,
+              "rarity": "Common"
+            },
+            {
+              "count": 43,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw5",
@@ -1261,7 +3640,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw5/symbol",
           "officialCardCount": 108,
           "totalCardCount": 111,
-          "releaseDate": "2012-05-09"
+          "releaseDate": "2012-05-09",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 34,
+              "rarity": "Rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 35,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw4",
@@ -1272,7 +3673,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw4/symbol",
           "officialCardCount": 99,
           "totalCardCount": 103,
-          "releaseDate": "2012-02-08"
+          "releaseDate": "2012-02-08",
+          "rarityCounts": [
+            {
+              "count": 29,
+              "rarity": "Common"
+            },
+            {
+              "count": 37,
+              "rarity": "Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 27,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw3",
@@ -1283,7 +3706,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw3/symbol",
           "officialCardCount": 101,
           "totalCardCount": 102,
-          "releaseDate": "2011-11-16"
+          "releaseDate": "2011-11-16",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 35,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 30,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw2",
@@ -1294,7 +3739,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw2/symbol",
           "officialCardCount": 98,
           "totalCardCount": 98,
-          "releaseDate": "2011-08-31"
+          "releaseDate": "2011-08-31",
+          "rarityCounts": [
+            {
+              "count": 34,
+              "rarity": "Common"
+            },
+            {
+              "count": 31,
+              "rarity": "Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 31,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bwp",
@@ -1305,7 +3768,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bwp/symbol",
           "officialCardCount": 101,
           "totalCardCount": 101,
-          "releaseDate": "2011-04-26"
+          "releaseDate": "2011-04-26",
+          "rarityCounts": [
+            {
+              "count": 70,
+              "rarity": "Common"
+            },
+            {
+              "count": 30,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bw1",
@@ -1316,7 +3793,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/bw/bw1/symbol",
           "officialCardCount": 114,
           "totalCardCount": 115,
-          "releaseDate": "2011-04-25"
+          "releaseDate": "2011-04-25",
+          "rarityCounts": [
+            {
+              "count": 44,
+              "rarity": "Common"
+            },
+            {
+              "count": 31,
+              "rarity": "Rare"
+            },
+            {
+              "count": 1,
+              "rarity": "Secret Rare"
+            },
+            {
+              "count": 2,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 37,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -1336,7 +3835,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/col/col1/symbol",
           "officialCardCount": 95,
           "totalCardCount": 106,
-          "releaseDate": "2011-02-09"
+          "releaseDate": "2011-02-09",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 33,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Rare"
+            },
+            {
+              "count": 25,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -1356,7 +3873,33 @@
           "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss4/symbol",
           "officialCardCount": 102,
           "totalCardCount": 103,
-          "releaseDate": "2010-11-03"
+          "releaseDate": "2010-11-03",
+          "rarityCounts": [
+            {
+              "count": 30,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "LEGEND"
+            },
+            {
+              "count": 20,
+              "rarity": "Rare"
+            },
+            {
+              "count": 8,
+              "rarity": "Rare PRIME"
+            },
+            {
+              "count": 29,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "hgss3",
@@ -1367,7 +3910,37 @@
           "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss3/symbol",
           "officialCardCount": 90,
           "totalCardCount": 91,
-          "releaseDate": "2010-08-18"
+          "releaseDate": "2010-08-18",
+          "rarityCounts": [
+            {
+              "count": 29,
+              "rarity": "Common"
+            },
+            {
+              "count": 10,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "LEGEND"
+            },
+            {
+              "count": 15,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare PRIME"
+            },
+            {
+              "count": 1,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "hgss2",
@@ -1378,7 +3951,37 @@
           "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss2/symbol",
           "officialCardCount": 95,
           "totalCardCount": 96,
-          "releaseDate": "2010-05-12"
+          "releaseDate": "2010-05-12",
+          "rarityCounts": [
+            {
+              "count": 28,
+              "rarity": "Common"
+            },
+            {
+              "count": 11,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "LEGEND"
+            },
+            {
+              "count": 16,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare PRIME"
+            },
+            {
+              "count": 1,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 28,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "hgssp",
@@ -1389,7 +3992,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgssp/symbol",
           "officialCardCount": 25,
           "totalCardCount": 25,
-          "releaseDate": "2010-02-11"
+          "releaseDate": "2010-02-11",
+          "rarityCounts": [
+            {
+              "count": 25,
+              "rarity": "Promo"
+            }
+          ]
         },
         {
           "id": "hgss1",
@@ -1400,7 +4009,37 @@
           "symbolURL": "https://assets.tcgdex.net/univ/hgss/hgss1/symbol",
           "officialCardCount": 123,
           "totalCardCount": 124,
-          "releaseDate": "2010-02-10"
+          "releaseDate": "2010-02-10",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 4,
+              "rarity": "LEGEND"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare PRIME"
+            },
+            {
+              "count": 1,
+              "rarity": "Ultra Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -1420,7 +4059,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pl/ru1/symbol",
           "officialCardCount": 16,
           "totalCardCount": 16,
-          "releaseDate": "2009-12-02"
+          "releaseDate": "2009-12-02",
+          "rarityCounts": [
+            {
+              "count": 16,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "pl4",
@@ -1431,7 +4076,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pl/pl4/symbol",
           "officialCardCount": 99,
           "totalCardCount": 111,
-          "releaseDate": "2009-11-04"
+          "releaseDate": "2009-11-04",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 29,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pl3",
@@ -1442,7 +4109,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pl/pl3/symbol",
           "officialCardCount": 147,
           "totalCardCount": 153,
-          "releaseDate": "2009-08-19"
+          "releaseDate": "2009-08-19",
+          "rarityCounts": [
+            {
+              "count": 45,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 40,
+              "rarity": "Rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 47,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pl2",
@@ -1453,7 +4142,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pl/pl2/symbol",
           "officialCardCount": 111,
           "totalCardCount": 120,
-          "releaseDate": "2009-05-16"
+          "releaseDate": "2009-05-16",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 13,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Rare"
+            },
+            {
+              "count": 9,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 32,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pl1",
@@ -1464,7 +4175,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pl/pl1/symbol",
           "officialCardCount": 127,
           "totalCardCount": 133,
-          "releaseDate": "2009-02-11"
+          "releaseDate": "2009-02-11",
+          "rarityCounts": [
+            {
+              "count": 39,
+              "rarity": "Common"
+            },
+            {
+              "count": 17,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 29,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -1484,7 +4217,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp7/symbol",
           "officialCardCount": 100,
           "totalCardCount": 106,
-          "releaseDate": "2008-11-01"
+          "releaseDate": "2008-11-01",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 23,
+              "rarity": "Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 8,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dp6",
@@ -1495,7 +4250,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp6/symbol",
           "officialCardCount": 146,
           "totalCardCount": 146,
-          "releaseDate": "2008-08-01"
+          "releaseDate": "2008-08-01",
+          "rarityCounts": [
+            {
+              "count": 48,
+              "rarity": "Common"
+            },
+            {
+              "count": 28,
+              "rarity": "Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 7,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 46,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dp5",
@@ -1506,7 +4283,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp5/symbol",
           "officialCardCount": 100,
           "totalCardCount": 100,
-          "releaseDate": "2008-05-01"
+          "releaseDate": "2008-05-01",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Rare"
+            },
+            {
+              "count": 14,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 4,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 30,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dp4",
@@ -1517,7 +4316,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp4/symbol",
           "officialCardCount": 106,
           "totalCardCount": 106,
-          "releaseDate": "2008-02-01"
+          "releaseDate": "2008-02-01",
+          "rarityCounts": [
+            {
+              "count": 39,
+              "rarity": "Common"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 11,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 4,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 31,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dp3",
@@ -1528,7 +4349,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp3/symbol",
           "officialCardCount": 132,
           "totalCardCount": 132,
-          "releaseDate": "2007-11-01"
+          "releaseDate": "2007-11-01",
+          "rarityCounts": [
+            {
+              "count": 45,
+              "rarity": "Common"
+            },
+            {
+              "count": 24,
+              "rarity": "Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 2,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 41,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dp2",
@@ -1539,7 +4382,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp2/symbol",
           "officialCardCount": 123,
           "totalCardCount": 124,
-          "releaseDate": "2007-08-01"
+          "releaseDate": "2007-08-01",
+          "rarityCounts": [
+            {
+              "count": 42,
+              "rarity": "Common"
+            },
+            {
+              "count": 24,
+              "rarity": "Rare"
+            },
+            {
+              "count": 18,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 3,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 37,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "dpp",
@@ -1550,7 +4415,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dpp/symbol",
           "officialCardCount": 56,
           "totalCardCount": 56,
-          "releaseDate": "2007-05-01"
+          "releaseDate": "2007-05-01",
+          "rarityCounts": [
+            {
+              "count": 56,
+              "rarity": "Common"
+            }
+          ]
         },
         {
           "id": "dp1",
@@ -1561,7 +4432,29 @@
           "symbolURL": "https://assets.tcgdex.net/univ/dp/dp1/symbol",
           "officialCardCount": 130,
           "totalCardCount": 130,
-          "releaseDate": "2007-05-01"
+          "releaseDate": "2007-05-01",
+          "rarityCounts": [
+            {
+              "count": 47,
+              "rarity": "Common"
+            },
+            {
+              "count": 25,
+              "rarity": "Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Rare Holo"
+            },
+            {
+              "count": 3,
+              "rarity": "Rare Holo LV.X"
+            },
+            {
+              "count": 38,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -1581,7 +4474,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-sm-r/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2017-04-21"
+          "releaseDate": "2017-04-21",
+          "rarityCounts": [
+            {
+              "count": 8,
+              "rarity": "Common"
+            },
+            {
+              "count": 15,
+              "rarity": "None"
+            },
+            {
+              "count": 1,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-sm-l",
@@ -1592,7 +4503,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-sm-l/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2017-04-21"
+          "releaseDate": "2017-04-21",
+          "rarityCounts": [
+            {
+              "count": 8,
+              "rarity": "Common"
+            },
+            {
+              "count": 2,
+              "rarity": "None"
+            },
+            {
+              "count": 1,
+              "rarity": "Rare"
+            },
+            {
+              "count": 7,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-su",
@@ -1603,7 +4532,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-su/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2016-04-27"
+          "releaseDate": "2016-04-27",
+          "rarityCounts": [
+            {
+              "count": 18,
+              "rarity": "Common"
+            },
+            {
+              "count": 3,
+              "rarity": "None"
+            },
+            {
+              "count": 9,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-p",
@@ -1614,7 +4557,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-p/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2016-04-27"
+          "releaseDate": "2016-04-27",
+          "rarityCounts": [
+            {
+              "count": 16,
+              "rarity": "Common"
+            },
+            {
+              "count": 8,
+              "rarity": "None"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-latia",
@@ -1625,7 +4582,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-latia/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2015-04-29"
+          "releaseDate": "2015-04-29",
+          "rarityCounts": [
+            {
+              "count": 19,
+              "rarity": "Common"
+            },
+            {
+              "count": 3,
+              "rarity": "None"
+            },
+            {
+              "count": 2,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-latio",
@@ -1636,7 +4611,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-latio/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2015-04-29"
+          "releaseDate": "2015-04-29",
+          "rarityCounts": [
+            {
+              "count": 21,
+              "rarity": "Common"
+            },
+            {
+              "count": 2,
+              "rarity": "None"
+            },
+            {
+              "count": 2,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-b",
@@ -1647,7 +4640,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-b/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2014-11-01"
+          "releaseDate": "2014-11-01",
+          "rarityCounts": [
+            {
+              "count": 22,
+              "rarity": "Common"
+            },
+            {
+              "count": 2,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-w",
@@ -1658,7 +4665,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-w/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2014-11-01"
+          "releaseDate": "2014-11-01",
+          "rarityCounts": [
+            {
+              "count": 22,
+              "rarity": "Common"
+            },
+            {
+              "count": 2,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-sy",
@@ -1669,7 +4690,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-sy/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2014-03-12"
+          "releaseDate": "2014-03-12",
+          "rarityCounts": [
+            {
+              "count": 25,
+              "rarity": "Common"
+            },
+            {
+              "count": 2,
+              "rarity": "None"
+            },
+            {
+              "count": 3,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-xy-n",
@@ -1680,7 +4715,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-xy-n/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2014-03-12"
+          "releaseDate": "2014-03-12",
+          "rarityCounts": [
+            {
+              "count": 23,
+              "rarity": "Common"
+            },
+            {
+              "count": 2,
+              "rarity": "None"
+            },
+            {
+              "count": 2,
+              "rarity": "Rare"
+            },
+            {
+              "count": 3,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "tk-bw-z",
@@ -1691,7 +4744,13 @@
           "symbolURL": null,
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2011-09-01"
+          "releaseDate": "2011-09-01",
+          "rarityCounts": [
+            {
+              "count": 30,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-bw-e",
@@ -1702,7 +4761,13 @@
           "symbolURL": null,
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2011-09-01"
+          "releaseDate": "2011-09-01",
+          "rarityCounts": [
+            {
+              "count": 30,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-hs-r",
@@ -1713,7 +4778,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-hs-r/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2010-05-01"
+          "releaseDate": "2010-05-01",
+          "rarityCounts": [
+            {
+              "count": 30,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-hs-g",
@@ -1724,7 +4795,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-hs-g/symbol",
           "officialCardCount": 30,
           "totalCardCount": 30,
-          "releaseDate": "2010-05-01"
+          "releaseDate": "2010-05-01",
+          "rarityCounts": [
+            {
+              "count": 30,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-dp-l",
@@ -1735,7 +4812,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-dp-l/symbol",
           "officialCardCount": 11,
           "totalCardCount": 11,
-          "releaseDate": "2007-09-01"
+          "releaseDate": "2007-09-01",
+          "rarityCounts": [
+            {
+              "count": 11,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-dp-m",
@@ -1746,7 +4829,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-dp-m/symbol",
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2007-09-01"
+          "releaseDate": "2007-09-01",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-ex-m",
@@ -1757,7 +4846,13 @@
           "symbolURL": null,
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2006-03-01"
+          "releaseDate": "2006-03-01",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-ex-p",
@@ -1768,7 +4863,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-ex-p/symbol",
           "officialCardCount": 12,
           "totalCardCount": 12,
-          "releaseDate": "2006-03-01"
+          "releaseDate": "2006-03-01",
+          "rarityCounts": [
+            {
+              "count": 12,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-ex-latia",
@@ -1779,7 +4880,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-ex-latia/symbol",
           "officialCardCount": 10,
           "totalCardCount": 10,
-          "releaseDate": "2004-07-01"
+          "releaseDate": "2004-07-01",
+          "rarityCounts": [
+            {
+              "count": 10,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "tk-ex-latio",
@@ -1790,7 +4897,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/tk/tk-ex-latio/symbol",
           "officialCardCount": 10,
           "totalCardCount": 10,
-          "releaseDate": "2004-07-01"
+          "releaseDate": "2004-07-01",
+          "rarityCounts": [
+            {
+              "count": 10,
+              "rarity": "None"
+            }
+          ]
         }
       ]
     },
@@ -1810,7 +4923,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop9/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2009-03-01"
+          "releaseDate": "2009-03-01",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "Common"
+            },
+            {
+              "count": 5,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop8",
@@ -1821,7 +4948,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop8/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2008-09-01"
+          "releaseDate": "2008-09-01",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "Common"
+            },
+            {
+              "count": 5,
+              "rarity": "Rare"
+            },
+            {
+              "count": 6,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop7",
@@ -1832,7 +4973,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop7/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2008-03-01"
+          "releaseDate": "2008-03-01",
+          "rarityCounts": [
+            {
+              "count": 7,
+              "rarity": "Common"
+            },
+            {
+              "count": 5,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop6",
@@ -1843,7 +4998,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop6/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2007-09-01"
+          "releaseDate": "2007-09-01",
+          "rarityCounts": [
+            {
+              "count": 7,
+              "rarity": "Common"
+            },
+            {
+              "count": 5,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop5",
@@ -1854,7 +5023,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop5/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2007-03-01"
+          "releaseDate": "2007-03-01",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop4",
@@ -1865,7 +5048,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop4/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2006-08-01"
+          "releaseDate": "2006-08-01",
+          "rarityCounts": [
+            {
+              "count": 6,
+              "rarity": "Common"
+            },
+            {
+              "count": 6,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop3",
@@ -1876,7 +5073,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop3/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2006-04-01"
+          "releaseDate": "2006-04-01",
+          "rarityCounts": [
+            {
+              "count": 5,
+              "rarity": "Common"
+            },
+            {
+              "count": 7,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop2",
@@ -1887,7 +5098,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop2/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2005-08-01"
+          "releaseDate": "2005-08-01",
+          "rarityCounts": [
+            {
+              "count": 5,
+              "rarity": "Common"
+            },
+            {
+              "count": 7,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "pop1",
@@ -1898,7 +5123,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/pop1/symbol",
           "officialCardCount": 17,
           "totalCardCount": 17,
-          "releaseDate": "2004-09-01"
+          "releaseDate": "2004-09-01",
+          "rarityCounts": [
+            {
+              "count": 5,
+              "rarity": "Common"
+            },
+            {
+              "count": 7,
+              "rarity": "Rare"
+            },
+            {
+              "count": 5,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "np",
@@ -1909,7 +5148,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/pop/np/symbol",
           "officialCardCount": 40,
           "totalCardCount": 40,
-          "releaseDate": "2003-10-01"
+          "releaseDate": "2003-10-01",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            }
+          ]
         }
       ]
     },
@@ -1929,7 +5174,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex16/symbol",
           "officialCardCount": 108,
           "totalCardCount": 108,
-          "releaseDate": "2007-02-17"
+          "releaseDate": "2007-02-17",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 45,
+              "rarity": "Rare"
+            },
+            {
+              "count": 31,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex15",
@@ -1940,7 +5199,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex15/symbol",
           "officialCardCount": 101,
           "totalCardCount": 101,
-          "releaseDate": "2006-11-08"
+          "releaseDate": "2006-11-08",
+          "rarityCounts": [
+            {
+              "count": 30,
+              "rarity": "Common"
+            },
+            {
+              "count": 40,
+              "rarity": "Rare"
+            },
+            {
+              "count": 31,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex14",
@@ -1951,7 +5224,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex14/symbol",
           "officialCardCount": 100,
           "totalCardCount": 100,
-          "releaseDate": "2006-08-30"
+          "releaseDate": "2006-08-30",
+          "rarityCounts": [
+            {
+              "count": 29,
+              "rarity": "Common"
+            },
+            {
+              "count": 41,
+              "rarity": "Rare"
+            },
+            {
+              "count": 30,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex13",
@@ -1962,7 +5249,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex13/symbol",
           "officialCardCount": 110,
           "totalCardCount": 111,
-          "releaseDate": "2006-05-03"
+          "releaseDate": "2006-05-03",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 50,
+              "rarity": "Rare"
+            },
+            {
+              "count": 30,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex12",
@@ -1973,7 +5274,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex12/symbol",
           "officialCardCount": 92,
           "totalCardCount": 93,
-          "releaseDate": "2006-02-13"
+          "releaseDate": "2006-02-13",
+          "rarityCounts": [
+            {
+              "count": 27,
+              "rarity": "Common"
+            },
+            {
+              "count": 40,
+              "rarity": "Rare"
+            },
+            {
+              "count": 26,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex11",
@@ -1984,7 +5299,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex11/symbol",
           "officialCardCount": 113,
           "totalCardCount": 114,
-          "releaseDate": "2005-10-31"
+          "releaseDate": "2005-10-31",
+          "rarityCounts": [
+            {
+              "count": 34,
+              "rarity": "Common"
+            },
+            {
+              "count": 45,
+              "rarity": "Rare"
+            },
+            {
+              "count": 35,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex10",
@@ -1995,7 +5324,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex10/symbol",
           "officialCardCount": 115,
           "totalCardCount": 117,
-          "releaseDate": "2005-08-22"
+          "releaseDate": "2005-08-22",
+          "rarityCounts": [
+            {
+              "count": 31,
+              "rarity": "Common"
+            },
+            {
+              "count": 52,
+              "rarity": "Rare"
+            },
+            {
+              "count": 34,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "exu",
@@ -2006,7 +5349,13 @@
           "symbolURL": null,
           "officialCardCount": 28,
           "totalCardCount": 28,
-          "releaseDate": "2005-08-22"
+          "releaseDate": "2005-08-22",
+          "rarityCounts": [
+            {
+              "count": 28,
+              "rarity": "Rare"
+            }
+          ]
         },
         {
           "id": "ex9",
@@ -2017,7 +5366,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex9/symbol",
           "officialCardCount": 106,
           "totalCardCount": 107,
-          "releaseDate": "2005-05-09"
+          "releaseDate": "2005-05-09",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 43,
+              "rarity": "Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex8",
@@ -2028,7 +5391,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex8/symbol",
           "officialCardCount": 107,
           "totalCardCount": 108,
-          "releaseDate": "2005-02-01"
+          "releaseDate": "2005-02-01",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 42,
+              "rarity": "Rare"
+            },
+            {
+              "count": 34,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex7",
@@ -2039,7 +5416,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex7/symbol",
           "officialCardCount": 109,
           "totalCardCount": 111,
-          "releaseDate": "2004-11-01"
+          "releaseDate": "2004-11-01",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 44,
+              "rarity": "Rare"
+            },
+            {
+              "count": 35,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex6",
@@ -2050,7 +5441,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex6/symbol",
           "officialCardCount": 112,
           "totalCardCount": 116,
-          "releaseDate": "2004-09-01"
+          "releaseDate": "2004-09-01",
+          "rarityCounts": [
+            {
+              "count": 36,
+              "rarity": "Common"
+            },
+            {
+              "count": 44,
+              "rarity": "Rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex5.5",
@@ -2061,7 +5466,13 @@
           "symbolURL": null,
           "officialCardCount": 5,
           "totalCardCount": 5,
-          "releaseDate": "2004-07-01"
+          "releaseDate": "2004-07-01",
+          "rarityCounts": [
+            {
+              "count": 5,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "ex5",
@@ -2072,7 +5483,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex5/symbol",
           "officialCardCount": 101,
           "totalCardCount": 102,
-          "releaseDate": "2004-06-01"
+          "releaseDate": "2004-06-01",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 15,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex4",
@@ -2083,7 +5512,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex4/symbol",
           "officialCardCount": 95,
           "totalCardCount": 97,
-          "releaseDate": "2004-03-01"
+          "releaseDate": "2004-03-01",
+          "rarityCounts": [
+            {
+              "count": 32,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex3",
@@ -2094,7 +5541,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex3/symbol",
           "officialCardCount": 97,
           "totalCardCount": 100,
-          "releaseDate": "2003-11-24"
+          "releaseDate": "2003-11-24",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 12,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 22,
+              "rarity": "Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex2",
@@ -2105,7 +5570,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex2/symbol",
           "officialCardCount": 100,
           "totalCardCount": 100,
-          "releaseDate": "2003-09-18"
+          "releaseDate": "2003-09-18",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 20,
+              "rarity": "Rare"
+            },
+            {
+              "count": 33,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ex1",
@@ -2116,7 +5599,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ex/ex1/symbol",
           "officialCardCount": 109,
           "totalCardCount": 109,
-          "releaseDate": "2003-07-01"
+          "releaseDate": "2003-07-01",
+          "rarityCounts": [
+            {
+              "count": 40,
+              "rarity": "Common"
+            },
+            {
+              "count": 14,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 34,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -2136,7 +5637,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ecard/ecard3/symbol",
           "officialCardCount": 144,
           "totalCardCount": 182,
-          "releaseDate": "2003-05-12"
+          "releaseDate": "2003-05-12",
+          "rarityCounts": [
+            {
+              "count": 73,
+              "rarity": "Common"
+            },
+            {
+              "count": 32,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 41,
+              "rarity": "Rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "ecard2",
@@ -2147,7 +5666,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ecard/ecard2/symbol",
           "officialCardCount": 147,
           "totalCardCount": 185,
-          "releaseDate": "2003-01-15"
+          "releaseDate": "2003-01-15",
+          "rarityCounts": [
+            {
+              "count": 54,
+              "rarity": "Common"
+            },
+            {
+              "count": 32,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 51,
+              "rarity": "Rare"
+            },
+            {
+              "count": 49,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "bog",
@@ -2158,7 +5695,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ecard/bog/symbol",
           "officialCardCount": 9,
           "totalCardCount": 9,
-          "releaseDate": "2002-12-01"
+          "releaseDate": "2002-12-01",
+          "rarityCounts": [
+            {
+              "count": 9,
+              "rarity": "None"
+            }
+          ]
         },
         {
           "id": "ecard1",
@@ -2169,7 +5712,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ecard/ecard1/symbol",
           "officialCardCount": 165,
           "totalCardCount": 165,
-          "releaseDate": "2002-09-15"
+          "releaseDate": "2002-09-15",
+          "rarityCounts": [
+            {
+              "count": 55,
+              "rarity": "Common"
+            },
+            {
+              "count": 32,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 40,
+              "rarity": "Rare"
+            },
+            {
+              "count": 38,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "sp",
@@ -2180,7 +5741,8 @@
           "symbolURL": "https://assets.tcgdex.net/univ/ecard/sp/symbol",
           "officialCardCount": 10,
           "totalCardCount": 10,
-          "releaseDate": "2002-08-01"
+          "releaseDate": "2002-08-01",
+          "rarityCounts": []
         }
       ]
     },
@@ -2200,7 +5762,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/lc/lc/symbol",
           "officialCardCount": 110,
           "totalCardCount": 110,
-          "releaseDate": "2002-05-24"
+          "releaseDate": "2002-05-24",
+          "rarityCounts": [
+            {
+              "count": 36,
+              "rarity": "Common"
+            },
+            {
+              "count": 19,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 19,
+              "rarity": "Rare"
+            },
+            {
+              "count": 36,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -2220,7 +5800,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/neo/neo4/symbol",
           "officialCardCount": 105,
           "totalCardCount": 113,
-          "releaseDate": "2002-02-28"
+          "releaseDate": "2002-02-28",
+          "rarityCounts": [
+            {
+              "count": 33,
+              "rarity": "Common"
+            },
+            {
+              "count": 43,
+              "rarity": "Rare"
+            },
+            {
+              "count": 37,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "neo3",
@@ -2231,7 +5825,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/neo/neo3/symbol",
           "officialCardCount": 64,
           "totalCardCount": 66,
-          "releaseDate": "2001-09-21"
+          "releaseDate": "2001-09-21",
+          "rarityCounts": [
+            {
+              "count": 20,
+              "rarity": "Common"
+            },
+            {
+              "count": 29,
+              "rarity": "Rare"
+            },
+            {
+              "count": 17,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "si1",
@@ -2242,7 +5850,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/neo/si1/symbol",
           "officialCardCount": 18,
           "totalCardCount": 18,
-          "releaseDate": "2001-07-31"
+          "releaseDate": "2001-07-31",
+          "rarityCounts": [
+            {
+              "count": 18,
+              "rarity": "Common"
+            }
+          ]
         },
         {
           "id": "neo2",
@@ -2253,7 +5867,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/neo/neo2/symbol",
           "officialCardCount": 75,
           "totalCardCount": 75,
-          "releaseDate": "2001-06-01"
+          "releaseDate": "2001-06-01",
+          "rarityCounts": [
+            {
+              "count": 20,
+              "rarity": "Common"
+            },
+            {
+              "count": 36,
+              "rarity": "Rare"
+            },
+            {
+              "count": 19,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "neo1",
@@ -2264,7 +5892,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/neo/neo1/symbol",
           "officialCardCount": 111,
           "totalCardCount": 111,
-          "releaseDate": "2000-12-16"
+          "releaseDate": "2000-12-16",
+          "rarityCounts": [
+            {
+              "count": 41,
+              "rarity": "Common"
+            },
+            {
+              "count": 35,
+              "rarity": "Rare"
+            },
+            {
+              "count": 35,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -2284,7 +5926,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/gym/gym2/symbol",
           "officialCardCount": 132,
           "totalCardCount": 132,
-          "releaseDate": "2000-10-16"
+          "releaseDate": "2000-10-16",
+          "rarityCounts": [
+            {
+              "count": 49,
+              "rarity": "Common"
+            },
+            {
+              "count": 20,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 21,
+              "rarity": "Rare"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "gym1",
@@ -2295,7 +5955,25 @@
           "symbolURL": "https://assets.tcgdex.net/univ/gym/gym1/symbol",
           "officialCardCount": 132,
           "totalCardCount": 132,
-          "releaseDate": "2000-08-14"
+          "releaseDate": "2000-08-14",
+          "rarityCounts": [
+            {
+              "count": 48,
+              "rarity": "Common"
+            },
+            {
+              "count": 19,
+              "rarity": "Holo Rare"
+            },
+            {
+              "count": 23,
+              "rarity": "Rare"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -2315,7 +5993,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/base/base5/symbol",
           "officialCardCount": 82,
           "totalCardCount": 83,
-          "releaseDate": "2000-04-24"
+          "releaseDate": "2000-04-24",
+          "rarityCounts": [
+            {
+              "count": 24,
+              "rarity": "Common"
+            },
+            {
+              "count": 35,
+              "rarity": "Rare"
+            },
+            {
+              "count": 24,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "base4",
@@ -2326,7 +6018,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/base/base4/symbol",
           "officialCardCount": 130,
           "totalCardCount": 130,
-          "releaseDate": "2000-02-24"
+          "releaseDate": "2000-02-24",
+          "rarityCounts": [
+            {
+              "count": 48,
+              "rarity": "Common"
+            },
+            {
+              "count": 40,
+              "rarity": "Rare"
+            },
+            {
+              "count": 42,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "base3",
@@ -2337,7 +6043,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/base/base3/symbol",
           "officialCardCount": 62,
           "totalCardCount": 62,
-          "releaseDate": "1999-10-10"
+          "releaseDate": "1999-10-10",
+          "rarityCounts": [
+            {
+              "count": 16,
+              "rarity": "Common"
+            },
+            {
+              "count": 30,
+              "rarity": "Rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "wp",
@@ -2348,7 +6068,8 @@
           "symbolURL": null,
           "officialCardCount": 7,
           "totalCardCount": 7,
-          "releaseDate": "1999-09-01"
+          "releaseDate": "1999-09-01",
+          "rarityCounts": []
         },
         {
           "id": "basep",
@@ -2359,7 +6080,13 @@
           "symbolURL": "https://assets.tcgdex.net/univ/base/basep/symbol",
           "officialCardCount": 53,
           "totalCardCount": 53,
-          "releaseDate": "1999-07-01"
+          "releaseDate": "1999-07-01",
+          "rarityCounts": [
+            {
+              "count": 53,
+              "rarity": "Common"
+            }
+          ]
         },
         {
           "id": "base2",
@@ -2370,7 +6097,21 @@
           "symbolURL": "https://assets.tcgdex.net/univ/base/base2/symbol",
           "officialCardCount": 64,
           "totalCardCount": 64,
-          "releaseDate": "1999-06-16"
+          "releaseDate": "1999-06-16",
+          "rarityCounts": [
+            {
+              "count": 16,
+              "rarity": "Common"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 16,
+              "rarity": "Uncommon"
+            }
+          ]
         },
         {
           "id": "base1",
@@ -2381,7 +6122,21 @@
           "symbolURL": null,
           "officialCardCount": 102,
           "totalCardCount": 102,
-          "releaseDate": "1999-01-09"
+          "releaseDate": "1999-01-09",
+          "rarityCounts": [
+            {
+              "count": 38,
+              "rarity": "Common"
+            },
+            {
+              "count": 32,
+              "rarity": "Rare"
+            },
+            {
+              "count": 32,
+              "rarity": "Uncommon"
+            }
+          ]
         }
       ]
     },
@@ -2401,7 +6156,8 @@
           "symbolURL": null,
           "officialCardCount": 160,
           "totalCardCount": 160,
-          "releaseDate": "2000-02-01"
+          "releaseDate": "2000-02-01",
+          "rarityCounts": []
         },
         {
           "id": "miscp",
@@ -2412,7 +6168,13 @@
           "symbolURL": null,
           "officialCardCount": 1,
           "totalCardCount": 1,
-          "releaseDate": "1996-01-01"
+          "releaseDate": "1996-01-01",
+          "rarityCounts": [
+            {
+              "count": 1,
+              "rarity": "Promo"
+            }
+          ]
         }
       ]
     }
