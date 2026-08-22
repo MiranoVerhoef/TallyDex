@@ -113,7 +113,10 @@ struct TCGdexClient: CatalogProvider, Sendable {
         let response: CardDTO = try await request(path: "cards/\(id)")
         return CatalogCardSnapshot(
             card: response.catalogCard,
-            variants: response.variants?.availableKinds ?? []
+            variants: CatalogVariantOverrides.apply(
+                to: response.variants?.availableKinds ?? [],
+                cardID: response.id
+            )
         )
     }
 

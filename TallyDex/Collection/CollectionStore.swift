@@ -44,7 +44,7 @@ final class CollectionStore {
     }
 
     func goal(for setID: String) -> CollectionGoal {
-        goalsBySetID[setID] ?? .main
+        goalsBySetID[setID] ?? .normal
     }
 
     func preference(for setID: String) -> SetCollectionPreference {
@@ -169,6 +169,13 @@ final class CollectionStore {
         ownedEntries.sort {
             if $0.updatedAt == $1.updatedAt { return $0.id < $1.id }
             return $0.updatedAt > $1.updatedAt
+        }
+    }
+
+    func removeAllOwnership(cardID: String) async throws {
+        let savedQuantities = try await quantities(for: cardID)
+        for variant in savedQuantities.keys where savedQuantities[variant, default: 0] > 0 {
+            try await setQuantity(0, cardID: cardID, variant: variant)
         }
     }
 

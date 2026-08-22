@@ -85,6 +85,8 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     case holo
     case firstEdition
     case watermarkedPromo
+    case prerelease
+    case prereleaseStaff
 
     var displayName: String {
         switch self {
@@ -93,7 +95,36 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
         case .holo: "Holo"
         case .firstEdition: "First edition"
         case .watermarkedPromo: "Watermarked promo"
+        case .prerelease: "Prerelease"
+        case .prereleaseStaff: "Prerelease Staff"
         }
+    }
+}
+
+/// TCGdex does not currently distinguish stamped Prerelease and Staff prints.
+/// Keep the provider data primary, then apply small, sourced corrections for
+/// English printings that would otherwise be invisible to collectors.
+enum CatalogVariantOverrides {
+    private struct Override {
+        let additions: Set<CatalogVariantKind>
+        let removals: Set<CatalogVariantKind>
+    }
+
+    private static let byCardID: [String: Override] = [
+        // Platinum 53/127 also had Prerelease and gold Staff-stamped prints.
+        "pl1-53": Override(
+            additions: [.normal, .reverseHolo, .prerelease, .prereleaseStaff],
+            removals: []
+        ),
+        // SM95 and SWSH186 are themselves Prerelease promos; their other
+        // English printing is the Staff-stamped version, not an unstamped Normal.
+        "smp-SM95": Override(additions: [.prerelease, .prereleaseStaff], removals: [.normal]),
+        "swshp-SWSH186": Override(additions: [.prerelease, .prereleaseStaff], removals: [.normal]),
+    ]
+
+    static func apply(to variants: Set<CatalogVariantKind>, cardID: String) -> Set<CatalogVariantKind> {
+        guard let override = byCardID[cardID] else { return variants }
+        return variants.subtracting(override.removals).union(override.additions)
     }
 }
 

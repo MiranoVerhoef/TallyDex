@@ -82,6 +82,43 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v6-simple-goals-and-prerelease-variants") { database in
+            try database.execute(
+                sql: """
+                UPDATE collectionSetPreference
+                SET goal = 'normal', includesSecretCards = 1
+                WHERE goal IN ('main', 'complete')
+                """
+            )
+            try database.execute(
+                sql: """
+                UPDATE collectionSetPreference
+                SET goal = 'custom', includesSecretCards = 1
+                WHERE goal = 'holoChase'
+                """
+            )
+
+            // These promo IDs are Prerelease printings. Move any previously
+            // checked "Normal" quantity to the corrected printing without loss.
+            try database.execute(
+                sql: """
+                INSERT INTO collectionVariant (cardID, variant, quantity, updatedAt)
+                SELECT cardID, 'prerelease', quantity, updatedAt
+                FROM collectionVariant
+                WHERE cardID IN ('smp-SM95', 'swshp-SWSH186') AND variant = 'normal'
+                ON CONFLICT(cardID, variant) DO UPDATE SET
+                    quantity = MAX(quantity, excluded.quantity),
+                    updatedAt = MAX(updatedAt, excluded.updatedAt)
+                """
+            )
+            try database.execute(
+                sql: """
+                DELETE FROM collectionVariant
+                WHERE cardID IN ('smp-SM95', 'swshp-SWSH186') AND variant = 'normal'
+                """
+            )
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -131,7 +168,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             return Dictionary(uniqueKeysWithValues: rows.compactMap { row in
                 let setID: String = row["setID"]
                 let rawGoal: String = row["goal"]
-                guard let goal = CollectionGoal(rawValue: rawGoal) else { return nil }
+                guard let goal = CollectionGoal.migrated(persistedValue: rawGoal) else { return nil }
                 return (setID, goal)
             })
         }
@@ -366,7 +403,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
     private static func setPreference(_ row: Row) -> SetCollectionPreference? {
         let rawGoal: String = row["goal"]
         let rawStatus: String = row["status"]
-        guard let goal = CollectionGoal(rawValue: rawGoal),
+        guard let goal = CollectionGoal.migrated(persistedValue: rawGoal),
               let status = SetTrackingStatus(rawValue: rawStatus) else {
             return nil
         }
@@ -377,9 +414,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
            let decoded = try? JSONDecoder().decode([String].self, from: data) {
             rawVariants = decoded
         } else {
-            rawVariants = goal == .holoChase
-                ? [CatalogVariantKind.holo.rawValue, CatalogVariantKind.reverseHolo.rawValue]
-                : [CatalogVariantKind.normal.rawValue]
+            rawVariants = [CatalogVariantKind.normal.rawValue]
         }
         return SetCollectionPreference(
             setID: row["setID"],
