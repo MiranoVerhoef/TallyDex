@@ -27,7 +27,8 @@ final class CatalogDatabase: @unchecked Sendable {
         )
         let directory = applicationSupport.appending(path: "TallyDex", directoryHint: .isDirectory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        return try CatalogDatabase(path: directory.appending(path: "catalog.sqlite").path())
+        let databaseURL = directory.appending(path: "catalog.sqlite")
+        return try CatalogDatabase(path: databaseURL.path(percentEncoded: false))
     }
 
     private func migrate() throws {
@@ -83,6 +84,18 @@ final class CatalogDatabase: @unchecked Sendable {
                 table.column("key", .text).primaryKey()
                 table.column("value", .text).notNull()
                 table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
+        migrator.registerMigration("catalog-v2-set-abbreviation") { database in
+            try database.alter(table: "catalogSet") { table in
+                table.add(column: "abbreviation", .text)
+            }
+        }
+
+        migrator.registerMigration("catalog-v3-set-rarity-counts") { database in
+            try database.alter(table: "catalogSet") { table in
+                table.add(column: "rarityCountsJSON", .text)
             }
         }
 
@@ -152,6 +165,16 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func metadataDate(forKey key: String) async throws -> Date? {
+        try await database.queue.read { database in
+            try Date.fetchOne(
+                database,
+                sql: "SELECT updatedAt FROM catalogMetadata WHERE key = ?",
+                arguments: [key]
+            )
+        }
+    }
+
     func upsertSeries(_ series: [CatalogSeries]) async throws {
         try await database.queue.write { database in
             for (index, item) in series.enumerated() {
@@ -166,6 +189,37 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     """,
                     arguments: [item.id, item.name, item.logoURL?.absoluteString, index]
                 )
+            }
+        }
+    }
+
+    func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws {
+        let seriesIDs = snapshots.map(\.series.id)
+        let setIDs = snapshots.flatMap { $0.sets.map(\.id) }
+        guard Set(seriesIDs).count == seriesIDs.count,
+              Set(setIDs).count == setIDs.count,
+              snapshots.allSatisfy({ snapshot in
+                  snapshot.sets.allSatisfy { $0.seriesID == snapshot.series.id }
+              }) else {
+            throw CatalogRepositoryError.invalidSnapshot
+        }
+
+        try await database.queue.write { database in
+            try database.execute(sql: "DELETE FROM catalogSeries")
+
+            for (seriesIndex, snapshot) in snapshots.enumerated() {
+                let series = snapshot.series
+                try database.execute(
+                    sql: """
+                    INSERT INTO catalogSeries (id, name, logoURL, sortIndex)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    arguments: [series.id, series.name, series.logoURL?.absoluteString, seriesIndex]
+                )
+
+                for (setIndex, set) in snapshot.sets.enumerated() {
+                    try Self.insert(set, sortIndex: setIndex, database: database)
+                }
             }
         }
     }
@@ -257,31 +311,50 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func setMetadataDate(_ date: Date, forKey key: String) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO catalogMetadata (key, value, updatedAt)
+                VALUES (?, 'date', ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [key, date]
+            )
+        }
+    }
+
     private static func insert(_ set: CatalogSet, sortIndex: Int, database: Database) throws {
         try database.execute(
             sql: """
             INSERT INTO catalogSet
-                (id, seriesID, name, logoURL, symbolURL, officialCardCount, totalCardCount, releaseDate, sortIndex)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, seriesID, name, abbreviation, logoURL, symbolURL, officialCardCount, totalCardCount, releaseDate, rarityCountsJSON, sortIndex)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 seriesID = excluded.seriesID,
                 name = excluded.name,
+                abbreviation = COALESCE(excluded.abbreviation, catalogSet.abbreviation),
                 logoURL = excluded.logoURL,
                 symbolURL = excluded.symbolURL,
                 officialCardCount = excluded.officialCardCount,
                 totalCardCount = excluded.totalCardCount,
                 releaseDate = COALESCE(excluded.releaseDate, catalogSet.releaseDate),
+                rarityCountsJSON = COALESCE(excluded.rarityCountsJSON, catalogSet.rarityCountsJSON),
                 sortIndex = excluded.sortIndex
             """,
             arguments: [
                 set.id,
                 set.seriesID,
                 set.name,
+                set.abbreviation,
                 set.logoURL?.absoluteString,
                 set.symbolURL?.absoluteString,
                 set.officialCardCount,
                 set.totalCardCount,
                 set.releaseDate,
+                encodeRarityCounts(set.rarityCounts),
                 sortIndex,
             ]
         )
@@ -292,11 +365,13 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             id: row["id"],
             seriesID: row["seriesID"],
             name: row["name"],
+            abbreviation: row["abbreviation"],
             logoURL: url(row["logoURL"]),
             symbolURL: url(row["symbolURL"]),
             officialCardCount: row["officialCardCount"],
             totalCardCount: row["totalCardCount"],
-            releaseDate: row["releaseDate"]
+            releaseDate: row["releaseDate"],
+            rarityCounts: decodeRarityCounts(row["rarityCountsJSON"])
         )
     }
 
@@ -316,8 +391,25 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
     private static func url(_ string: String?) -> URL? {
         string.flatMap(URL.init(string:))
     }
+
+    private static func encodeRarityCounts(_ counts: [CatalogRarityCount]?) -> String? {
+        guard let counts,
+              let data = try? JSONEncoder().encode(counts) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func decodeRarityCounts(_ string: String?) -> [CatalogRarityCount]? {
+        guard let string,
+              let data = string.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([CatalogRarityCount].self, from: data)
+    }
 }
 
 enum CatalogRepositoryError: Error, Equatable {
     case seriesMismatch
+    case invalidSnapshot
 }
