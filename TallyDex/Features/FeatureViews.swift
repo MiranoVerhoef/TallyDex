@@ -406,7 +406,7 @@ private struct CatalogSetCollectionSettingsView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(\.dismiss) private var dismiss
     @State private var selectedStatus = SetTrackingStatus.notCollecting
-    @State private var selectedGoal = CollectionGoal.main
+    @State private var selectedGoal = CollectionGoal.normal
     @State private var includedVariants: Set<CatalogVariantKind> = [.normal]
     @State private var includesSecretCards = false
     @State private var isSaving = false
@@ -437,13 +437,6 @@ private struct CatalogSetCollectionSettingsView: View {
                     Text(selectedGoal.explanation)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-
-                if selectedStatus == .collecting && selectedGoal == .holoChase {
-                    Section("Holo Chase printings") {
-                        variantToggle(.holo)
-                        variantToggle(.reverseHolo)
-                    }
                 }
 
                 if selectedStatus == .collecting && selectedGoal == .custom {
@@ -512,12 +505,7 @@ private struct CatalogSetCollectionSettingsView: View {
             defer { isSaving = false }
             do {
                 var selectedVariants = includedVariants
-                if selectedGoal == .holoChase {
-                    selectedVariants.formIntersection([.holo, .reverseHolo])
-                    if selectedVariants.isEmpty {
-                        selectedVariants = [.holo, .reverseHolo]
-                    }
-                } else if selectedGoal == .custom && selectedVariants.isEmpty {
+                if selectedGoal == .custom && selectedVariants.isEmpty {
                     selectedVariants = [.normal]
                 }
                 try await collectionStore.saveSetPreference(
@@ -604,6 +592,7 @@ private struct CatalogSetDetailView: View {
     @State private var selectedVariantCard: CatalogCard?
     @State private var updatingCardIDs: Set<String> = []
     @State private var selectedFilter = SetCardFilter.all
+    @State private var searchText = ""
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var isPreparingGoalMetadata = false
 
@@ -630,12 +619,17 @@ private struct CatalogSetDetailView: View {
     }
 
     private var visibleCards: [CatalogCard] {
-        cards.filter { card in
-            switch selectedFilter {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cards.filter { card in
+            let filterMatches = switch selectedFilter {
             case .all: true
             case .owned: collectionStore.owns(cardID: card.id)
             case .missing: isMissingForGoal(card)
             }
+            let searchMatches = query.isEmpty
+                || card.name.localizedCaseInsensitiveContains(query)
+                || card.localID.localizedCaseInsensitiveContains(query)
+            return filterMatches && searchMatches
         }
     }
 
@@ -771,6 +765,11 @@ private struct CatalogSetDetailView: View {
         .refreshable {
             await loadCards(forceRefresh: true)
         }
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .automatic),
+            prompt: "Card name or number"
+        )
         .navigationTitle(set.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -801,7 +800,7 @@ private struct CatalogSetDetailView: View {
 
     private func handleCheckmarkTap(for card: CatalogCard) {
         collectionMessage = nil
-        if collectionGoal == .master || collectionGoal == .holoChase || collectionGoal == .custom {
+        if collectionGoal == .master || collectionGoal == .custom {
             selectedVariantCard = card
             return
         }
@@ -811,17 +810,17 @@ private struct CatalogSetDetailView: View {
         Task {
             defer { updatingCardIDs.remove(card.id) }
             do {
+                if collectionStore.owns(cardID: card.id) {
+                    try await collectionStore.removeAllOwnership(cardID: card.id)
+                    return
+                }
                 let snapshot = try await catalogStore.details(for: card)
                 guard let standardVariant = preferredStandardVariant(in: snapshot.variants) else {
                     collectionMessage = "Printing information isn’t available for \(card.name) yet."
                     return
                 }
-                let currentQuantity = collectionStore.quantity(
-                    cardID: card.id,
-                    variant: standardVariant
-                )
                 try await collectionStore.setQuantity(
-                    currentQuantity > 0 ? 0 : 1,
+                    1,
                     cardID: card.id,
                     variant: standardVariant
                 )
@@ -840,6 +839,8 @@ private struct CatalogSetDetailView: View {
             .reverseHolo,
             .firstEdition,
             .watermarkedPromo,
+            .prerelease,
+            .prereleaseStaff,
         ]
         return preference.first(where: variants.contains)
     }
@@ -860,13 +861,12 @@ private struct CatalogSetDetailView: View {
 
     private func loadGoalVariants() async {
         switch collectionGoal {
-        case .holoChase, .master, .custom:
+        case .master, .custom:
             isPreparingGoalMetadata = true
             defer { isPreparingGoalMetadata = false }
             availableVariantsByCardID = await catalogStore.prepareVariants(for: cards)
-        case .main, .complete:
-            availableVariantsByCardID =
-                (try? await catalogStore.variants(cardIDs: cards.map(\.id))) ?? availableVariantsByCardID
+        case .normal:
+            break
         }
     }
 }
@@ -876,6 +876,8 @@ private struct CatalogVariantPickerView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
+    private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @State private var snapshot: CatalogCardSnapshot?
     @State private var quantities: [CatalogVariantKind: Int] = [:]
     @State private var isLoading = true
@@ -956,27 +958,29 @@ private struct CatalogVariantPickerView: View {
             Text(variant.displayName)
             Spacer()
 
-            Button {
-                update(variant, to: max(0, quantity - 1))
-            } label: {
-                Image(systemName: "minus")
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.bordered)
-            .disabled(quantity == 0 || isUpdating)
+            if allowsMultipleCopies {
+                Button {
+                    update(variant, to: max(0, quantity - 1))
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .disabled(quantity == 0 || isUpdating)
 
-            Text("\(quantity)")
-                .font(.body.monospacedDigit().weight(.semibold))
-                .frame(minWidth: 24)
+                Text("\(quantity)")
+                    .font(.body.monospacedDigit().weight(.semibold))
+                    .frame(minWidth: 24)
 
-            Button {
-                update(variant, to: quantity + 1)
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 22, height: 22)
+                Button {
+                    update(variant, to: quantity + 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isUpdating)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isUpdating)
         }
     }
 
@@ -1066,6 +1070,8 @@ private struct CatalogCardDetailView: View {
     let card: CatalogCard
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
+    private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @State private var snapshot: CatalogCardSnapshot?
     @State private var isLoadingDetails = true
     @State private var message: String?
@@ -1232,37 +1238,53 @@ private struct CatalogCardDetailView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(variant.displayName)
                     .font(.body.weight(.medium))
-                Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if allowsMultipleCopies {
+                    Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
 
-            Button {
-                updateQuantity(for: variant, to: max(0, quantity - 1))
-            } label: {
-                Image(systemName: "minus")
-                    .frame(width: 22, height: 22)
-            }
-            .buttonStyle(.bordered)
-            .disabled(quantity == 0 || isUpdating)
-            .accessibilityLabel("Remove one \(variant.displayName)")
+            if allowsMultipleCopies {
+                Button {
+                    updateQuantity(for: variant, to: max(0, quantity - 1))
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .disabled(quantity == 0 || isUpdating)
+                .accessibilityLabel("Remove one \(variant.displayName)")
 
-            Text("\(quantity)")
-                .font(.body.monospacedDigit().weight(.semibold))
-                .frame(minWidth: 28)
-                .accessibilityLabel("\(quantity) owned")
+                Text("\(quantity)")
+                    .font(.body.monospacedDigit().weight(.semibold))
+                    .frame(minWidth: 28)
+                    .accessibilityLabel("\(quantity) owned")
 
-            Button {
-                updateQuantity(for: variant, to: quantity + 1)
-            } label: {
-                Image(systemName: "plus")
-                    .frame(width: 22, height: 22)
+                Button {
+                    updateQuantity(for: variant, to: quantity + 1)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isUpdating)
+                .accessibilityLabel("Add one \(variant.displayName)")
+            } else {
+                Button {
+                    updateQuantity(for: variant, to: quantity > 0 ? 0 : 1)
+                } label: {
+                    Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                }
+                .buttonStyle(.plain)
+                .disabled(isUpdating)
+                .accessibilityLabel(
+                    quantity > 0 ? "Remove \(variant.displayName)" : "Mark \(variant.displayName) as owned"
+                )
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isUpdating)
-            .accessibilityLabel("Add one \(variant.displayName)")
         }
     }
 
@@ -2151,6 +2173,10 @@ private struct CustomCollectionFolderDetailView: View {
         Task {
             defer { updatingCardIDs.remove(card.id) }
             do {
+                if collectionStore.owns(cardID: card.id) {
+                    try await collectionStore.removeAllOwnership(cardID: card.id)
+                    return
+                }
                 let snapshot = try await catalogStore.details(for: card)
                 let preference: [CatalogVariantKind] = [
                     .normal,
@@ -2158,17 +2184,15 @@ private struct CustomCollectionFolderDetailView: View {
                     .reverseHolo,
                     .firstEdition,
                     .watermarkedPromo,
+                    .prerelease,
+                    .prereleaseStaff,
                 ]
                 guard let standardVariant = preference.first(where: snapshot.variants.contains) else {
                     message = "Printing information isn’t available for \(card.name) yet."
                     return
                 }
-                let currentQuantity = collectionStore.quantity(
-                    cardID: card.id,
-                    variant: standardVariant
-                )
                 try await collectionStore.setQuantity(
-                    currentQuantity > 0 ? 0 : 1,
+                    1,
                     cardID: card.id,
                     variant: standardVariant
                 )
@@ -2198,6 +2222,8 @@ struct SettingsView: View {
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
+    private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
 
     var body: some View {
         NavigationStack {
@@ -2232,6 +2258,18 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                }
+
+                Section {
+                    Toggle("Track multiple copies", isOn: $allowsMultipleCopies)
+                } header: {
+                    Text("Collection")
+                } footer: {
+                    Text(
+                        allowsMultipleCopies
+                            ? "Use − and + controls to save exact quantities for each printing."
+                            : "A checkmark only records whether you own a printing. Existing quantities are preserved."
+                    )
                 }
 
                 Section("Storage") {
