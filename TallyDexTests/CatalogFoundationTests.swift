@@ -100,7 +100,37 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
     }
 
-    func testLucarioPrereleaseOverridesFillProviderGap() {
+    func testTCGdexCombinesLegacyAndDetailedVariantData() async throws {
+        let response = #"""
+        {
+          "id": "me04-001",
+          "localId": "001",
+          "name": "Weedle",
+          "set": { "id": "me04" },
+          "variants": { "normal": true, "reverse": false },
+          "variants_detailed": [
+            { "type": "normal" },
+            { "type": "reverse" }
+          ]
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "me04-001")
+
+        XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
+    }
+
+    func testVariantOverridesFillKnownTCGdexGaps() {
+        XCTAssertEqual(
+            CatalogVariantOverrides.apply(to: [.normal], cardID: "me04-001"),
+            [.normal, .reverseHolo]
+        )
         XCTAssertEqual(
             CatalogVariantOverrides.apply(to: [.normal, .reverseHolo], cardID: "pl1-53"),
             [.normal, .reverseHolo, .prerelease, .prereleaseStaff]
@@ -179,7 +209,7 @@ final class CatalogFoundationTests: XCTestCase {
         }
     }
 
-    func testRepositoryAtomicallyReplacesDetailedCardAndVariants() async throws {
+    func testRepositoryRefreshPreservesPreviouslyCachedVariants() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         try await repository.upsertSeries([
             CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil),
@@ -207,7 +237,7 @@ final class CatalogFoundationTests: XCTestCase {
         let storedCards = try await repository.fetchCards(setID: "sv03.5")
         let storedVariants = try await repository.fetchVariants(cardID: card.id)
         XCTAssertEqual(storedCards, [card])
-        XCTAssertEqual(storedVariants, [.holo])
+        XCTAssertEqual(storedVariants, [.normal, .reverseHolo, .holo])
     }
 
     func testRepositoryReplacesWholeCatalogInDisplayOrder() async throws {
