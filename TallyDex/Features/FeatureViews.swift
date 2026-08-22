@@ -256,24 +256,6 @@ private struct CatalogSeriesHeader: View {
 private struct CatalogSetRow: View {
     let set: CatalogSet
 
-    private var secretCardCount: Int {
-        max(0, set.totalCardCount - set.officialCardCount)
-    }
-
-    private var cardCountText: String {
-        if secretCardCount > 0 {
-            "\(set.officialCardCount) cards + \(secretCardCount) secret"
-        } else {
-            "\(set.officialCardCount) cards"
-        }
-    }
-
-    private var metadataText: String {
-        [set.abbreviation, cardCountText]
-            .compactMap { $0 }
-            .joined(separator: "  •  ")
-    }
-
     var body: some View {
         HStack(spacing: 12) {
             AsyncImage(url: set.logoURL?.appendingPathExtension("png")) { phase in
@@ -289,7 +271,7 @@ private struct CatalogSetRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 96, height: 64)
+            .frame(width: 116, height: 76)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -297,9 +279,11 @@ private struct CatalogSetRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                Text(metadataText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let abbreviation = set.abbreviation {
+                    Text(abbreviation)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)
@@ -359,6 +343,18 @@ private struct CatalogSeriesSetsView: View {
 private struct CatalogSetDetailView: View {
     let set: CatalogSet
 
+    private var secretCardCount: Int {
+        max(0, set.totalCardCount - set.officialCardCount)
+    }
+
+    private var cardCountText: String {
+        if secretCardCount > 0 {
+            "\(set.officialCardCount) cards + \(secretCardCount) secret"
+        } else {
+            "\(set.officialCardCount) cards"
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -375,14 +371,19 @@ private struct CatalogSetDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .frame(maxWidth: 260, minHeight: 110, maxHeight: 150)
+                .frame(maxWidth: 300, minHeight: 120, maxHeight: 170)
                 .padding(.top)
 
-                HStack(spacing: 32) {
-                    LabeledContent("Official", value: "\(set.officialCardCount)")
-                    LabeledContent("Total", value: "\(set.totalCardCount)")
+                VStack(spacing: 6) {
+                    if let abbreviation = set.abbreviation {
+                        Text(abbreviation)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(cardCountText)
+                        .font(.title3.weight(.semibold))
                 }
-                .font(.subheadline)
+                .accessibilityElement(children: .combine)
 
                 ContentUnavailableView(
                     "Card List Coming Next",
