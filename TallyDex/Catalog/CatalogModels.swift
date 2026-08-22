@@ -133,6 +133,7 @@ protocol CatalogRepository: Sendable {
     func fetchCards(setID: String) async throws -> [CatalogCard]
     func fetchDownloadedSetIDs() async throws -> [String]
     func searchCards(query: String) async throws -> [CatalogCardSearchResult]
+    func fetchCards(matchingName query: String) async throws -> [CatalogCardSearchResult]
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func metadataDate(forKey key: String) async throws -> Date?

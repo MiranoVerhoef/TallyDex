@@ -7,6 +7,7 @@ final class CollectionStore {
     private(set) var quantitiesByCardID: [String: [CatalogVariantKind: Int]] = [:]
     private(set) var ownedEntries: [CollectionVariantEntry] = []
     private(set) var goalsBySetID: [String: CollectionGoal] = [:]
+    private(set) var customFolders: [CustomCollectionFolder] = []
     private(set) var isInitialLoading = true
     private(set) var loadMessage: String?
 
@@ -29,8 +30,10 @@ final class CollectionStore {
             let repository = try resolveRepository()
             async let entries = repository.fetchOwnedEntries()
             async let goals = repository.fetchSetGoals()
+            async let folders = repository.fetchCustomFolders()
             ownedEntries = try await entries
             goalsBySetID = try await goals
+            customFolders = try await folders
         } catch {
             loadMessage = "Your saved collection couldn’t be loaded."
         }
@@ -44,6 +47,18 @@ final class CollectionStore {
     func setGoal(_ goal: CollectionGoal, for setID: String) async throws {
         try await resolveRepository().setGoal(goal, setID: setID, updatedAt: now())
         goalsBySetID[setID] = goal
+    }
+
+    func saveCustomFolder(_ folder: CustomCollectionFolder) async throws {
+        try await resolveRepository().saveCustomFolder(folder)
+        customFolders.removeAll { $0.id == folder.id }
+        customFolders.append(folder)
+        sortCustomFolders()
+    }
+
+    func deleteCustomFolder(id: UUID) async throws {
+        try await resolveRepository().deleteCustomFolder(id: id)
+        customFolders.removeAll { $0.id == id }
     }
 
     func quantity(cardID: String, variant: CatalogVariantKind) -> Int {
@@ -117,5 +132,16 @@ final class CollectionStore {
         )
         self.repository = repository
         return repository
+    }
+
+    private func sortCustomFolders() {
+        customFolders.sort {
+            let comparison = $0.name.localizedCaseInsensitiveCompare($1.name)
+            if comparison == .orderedSame {
+                if $0.createdAt == $1.createdAt { return $0.id.uuidString < $1.id.uuidString }
+                return $0.createdAt < $1.createdAt
+            }
+            return comparison == .orderedAscending
+        }
     }
 }
