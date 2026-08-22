@@ -105,6 +105,13 @@ struct CatalogCardSnapshot: Codable, Equatable, Sendable {
 struct CatalogCardSearchResult: Equatable, Identifiable, Sendable {
     let card: CatalogCard
     let setName: String
+    let setReleaseDate: String?
+
+    init(card: CatalogCard, setName: String, setReleaseDate: String? = nil) {
+        self.card = card
+        self.setName = setName
+        self.setReleaseDate = setReleaseDate
+    }
 
     var id: String { card.id }
 }
@@ -136,6 +143,7 @@ protocol CatalogRepository: Sendable {
     func fetchCards(matchingName query: String) async throws -> [CatalogCardSearchResult]
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
+    func fetchVariants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>]
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
     func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws

@@ -20,12 +20,22 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.2/TallyDex-v0.2.2-collection-filters.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.1/TallyDex-v0.2.1-custom-folders.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.0/TallyDex-v0.2.0-Set-Edit.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.4/TallyDex-v0.1.4-Search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.2.2",
+          "buildVersion": "8",
+          "date": "2026-08-22",
+          "localizedDescription": "Makes My Sets and Hidden functional, adds All/Owned/Missing set filters, Complete/Holo Chase/Custom goals with goal-aware progress, collection-folder search/filter/sort, and per-card wishlist and notes.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.2/TallyDex-v0.2.2.ipa",
+          "size": 6648543,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.2.1",
           "buildVersion": "7",
