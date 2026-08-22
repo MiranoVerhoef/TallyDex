@@ -12,6 +12,11 @@
 		A20000000000000000000003 /* FeatureViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* FeatureViews.swift */; };
 		A20000000000000000000004 /* TallyDexSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000004 /* TallyDexSmokeTests.swift */; };
 		A20000000000000000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* Assets.xcassets */; };
+		A20000000000000000000006 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = G20000000000000000000001 /* GRDB */; };
+		A20000000000000000000007 /* CatalogModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* CatalogModels.swift */; };
+		A20000000000000000000008 /* TCGdexClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* TCGdexClient.swift */; };
+		A20000000000000000000009 /* CatalogDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000009 /* CatalogDatabase.swift */; };
+		A2000000000000000000000A /* CatalogFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2000000000000000000000A /* CatalogFoundationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +37,10 @@
 		B20000000000000000000003 /* FeatureViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureViews.swift; sourceTree = "<group>"; };
 		B20000000000000000000004 /* TallyDexSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TallyDexSmokeTests.swift; sourceTree = "<group>"; };
 		B20000000000000000000005 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B20000000000000000000007 /* CatalogModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogModels.swift; sourceTree = "<group>"; };
+		B20000000000000000000008 /* TCGdexClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCGdexClient.swift; sourceTree = "<group>"; };
+		B20000000000000000000009 /* CatalogDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogDatabase.swift; sourceTree = "<group>"; };
+		B2000000000000000000000A /* CatalogFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogFoundationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -39,6 +48,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A20000000000000000000006 /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +75,7 @@
 			isa = PBXGroup;
 			children = (
 				D10000000000000000000002 /* App */,
+				D10000000000000000000007 /* Catalog */,
 				D10000000000000000000003 /* Features */,
 				D10000000000000000000006 /* Resources */,
 			);
@@ -92,6 +103,7 @@
 			isa = PBXGroup;
 			children = (
 				B20000000000000000000004 /* TallyDexSmokeTests.swift */,
+				B2000000000000000000000A /* CatalogFoundationTests.swift */,
 			);
 			path = TallyDexTests;
 			sourceTree = "<group>";
@@ -113,6 +125,16 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		D10000000000000000000007 /* Catalog */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000007 /* CatalogModels.swift */,
+				B20000000000000000000008 /* TCGdexClient.swift */,
+				B20000000000000000000009 /* CatalogDatabase.swift */,
+			);
+			path = Catalog;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -130,6 +152,7 @@
 			);
 			name = TallyDex;
 			packageProductDependencies = (
+				G20000000000000000000001 /* GRDB */,
 			);
 			productName = TallyDex;
 			productReference = B10000000000000000000001 /* TallyDex.app */;
@@ -184,6 +207,9 @@
 			mainGroup = D00000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			packageReferences = (
+				G10000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
 			productRefGroup = D10000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -220,6 +246,9 @@
 				A20000000000000000000001 /* TallyDexApp.swift in Sources */,
 				A20000000000000000000002 /* RootTabView.swift in Sources */,
 				A20000000000000000000003 /* FeatureViews.swift in Sources */,
+				A20000000000000000000007 /* CatalogModels.swift in Sources */,
+				A20000000000000000000008 /* TCGdexClient.swift in Sources */,
+				A20000000000000000000009 /* CatalogDatabase.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,6 +257,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000004 /* TallyDexSmokeTests.swift in Sources */,
+				A2000000000000000000000A /* CatalogFoundationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -380,6 +410,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		G10000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.11.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		G20000000000000000000001 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = G10000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A00000000000000000000001 /* Project object */;
 }

@@ -1,0 +1,70 @@
+import Foundation
+
+struct CatalogSeries: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let name: String
+    let logoURL: URL?
+}
+
+struct CatalogSet: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let seriesID: String
+    let name: String
+    let logoURL: URL?
+    let symbolURL: URL?
+    let officialCardCount: Int
+    let totalCardCount: Int
+    let releaseDate: String?
+}
+
+struct CatalogCard: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let setID: String
+    let localID: String
+    let name: String
+    let imageURL: URL?
+    let category: String?
+    let illustrator: String?
+    let rarity: String?
+}
+
+enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
+    case normal
+    case reverseHolo
+    case holo
+    case firstEdition
+    case watermarkedPromo
+}
+
+struct CatalogCardSnapshot: Equatable, Sendable {
+    let card: CatalogCard
+    let variants: Set<CatalogVariantKind>
+}
+
+struct CatalogSeriesSnapshot: Equatable, Sendable {
+    let series: CatalogSeries
+    let sets: [CatalogSet]
+}
+
+struct CatalogSetSnapshot: Equatable, Sendable {
+    let set: CatalogSet
+    let cards: [CatalogCard]
+}
+
+protocol CatalogProvider: Sendable {
+    func fetchSeriesIndex() async throws -> [CatalogSeries]
+    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot
+    func fetchSet(id: String) async throws -> CatalogSetSnapshot
+    func fetchCard(id: String) async throws -> CatalogCardSnapshot
+}
+
+protocol CatalogRepository: Sendable {
+    func fetchSeries() async throws -> [CatalogSeries]
+    func fetchSets(seriesID: String?) async throws -> [CatalogSet]
+    func fetchCards(setID: String) async throws -> [CatalogCard]
+    func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
+    func upsertSeries(_ series: [CatalogSeries]) async throws
+    func replaceSets(_ sets: [CatalogSet], forSeriesID seriesID: String) async throws
+    func replaceSet(_ snapshot: CatalogSetSnapshot) async throws
+    func replaceCard(_ snapshot: CatalogCardSnapshot) async throws
+}
