@@ -290,6 +290,40 @@ final class CatalogFoundationTests: XCTestCase {
         )
     }
 
+    func testArtworkCacheAddsPNGExtensionOnlyWhenNeeded() {
+        let extensionless = URL(string: "https://assets.tcgdex.net/en/sv/sv01/logo")!
+        let png = URL(string: "https://example.com/logo.png")!
+
+        XCTAssertEqual(
+            CatalogArtworkCache.resolvedAssetURL(extensionless).absoluteString,
+            "https://assets.tcgdex.net/en/sv/sv01/logo.png"
+        )
+        XCTAssertEqual(CatalogArtworkCache.resolvedAssetURL(png), png)
+    }
+
+    func testArtworkCacheReportsAndSelectivelyClearsCategories() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let seriesDirectory = root.appendingPathComponent("series-logos", isDirectory: true)
+        let symbolDirectory = root.appendingPathComponent("expansion-symbols", isDirectory: true)
+        try FileManager.default.createDirectory(at: seriesDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: symbolDirectory, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 12).write(to: seriesDirectory.appendingPathComponent("one.png"))
+        try Data(repeating: 2, count: 7).write(to: symbolDirectory.appendingPathComponent("two.png"))
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cache = CatalogArtworkCache(rootDirectory: root)
+        let initial = await cache.snapshot()
+        XCTAssertEqual(initial.statistics(for: .seriesLogos).fileCount, 1)
+        XCTAssertEqual(initial.statistics(for: .expansionSymbols).byteCount, 7)
+        XCTAssertEqual(initial.totalFileCount, 2)
+
+        try await cache.remove(.seriesLogos)
+        let remaining = await cache.snapshot()
+        XCTAssertEqual(remaining.statistics(for: .seriesLogos), .empty)
+        XCTAssertEqual(remaining.statistics(for: .expansionSymbols).fileCount, 1)
+    }
+
     private func set(
         id: String,
         seriesID: String,
