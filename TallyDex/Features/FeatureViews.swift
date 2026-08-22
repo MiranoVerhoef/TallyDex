@@ -118,6 +118,7 @@ struct SetsView: View {
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @State private var selectedScope = SetsScope.all
     @State private var didApplyDefault = false
+    @State private var editingSet: CatalogSet?
 
     var body: some View {
         NavigationStack {
@@ -168,6 +169,11 @@ struct SetsView: View {
             .onChange(of: defaultScope) { _, newValue in
                 selectedScope = SetsScope.resolve(newValue)
             }
+            .sheet(item: $editingSet) { set in
+                CatalogSetCollectionSettingsView(set: set)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -206,11 +212,7 @@ struct SetsView: View {
                 ForEach(catalogStore.groups) { group in
                     Section {
                         ForEach(group.sets) { set in
-                            NavigationLink {
-                                CatalogSetDetailView(set: set)
-                            } label: {
-                                CatalogSetRow(set: set)
-                            }
+                            CatalogSetLink(set: set) { editingSet = $0 }
                             .listRowBackground(Color.clear)
                         }
                     } header: {
@@ -368,6 +370,94 @@ private struct CatalogSetRow: View {
     }
 }
 
+private struct CatalogSetLink: View {
+    let set: CatalogSet
+    let onEdit: (CatalogSet) -> Void
+
+    var body: some View {
+        NavigationLink {
+            CatalogSetDetailView(set: set)
+        } label: {
+            CatalogSetRow(set: set)
+        }
+        .contextMenu {
+            Button("Edit", systemImage: "slider.horizontal.3") {
+                onEdit(set)
+            }
+        }
+    }
+}
+
+private struct CatalogSetCollectionSettingsView: View {
+    let set: CatalogSet
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedGoal = CollectionGoal.main
+    @State private var isSaving = false
+    @State private var message: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Collecting \(set.name)") {
+                    Picker("Collection goal", selection: $selectedGoal) {
+                        ForEach(CollectionGoal.allCases, id: \.self) { goal in
+                            Text(goal.displayName).tag(goal)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(selectedGoal.explanation)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Text("Changing this setting never removes cards or quantities you already saved.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let message {
+                    Section {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Edit set")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(isSaving)
+                }
+            }
+            .onAppear {
+                selectedGoal = collectionStore.goal(for: set.id)
+            }
+        }
+    }
+
+    private func save() {
+        guard !isSaving else { return }
+        isSaving = true
+        message = nil
+        Task {
+            defer { isSaving = false }
+            do {
+                try await collectionStore.setGoal(selectedGoal, for: set.id)
+                dismiss()
+            } catch {
+                message = "That collection goal couldn’t be saved. Please try again."
+            }
+        }
+    }
+}
+
 private struct CatalogSeriesRow: View {
     let group: CatalogSeriesGroup
 
@@ -391,15 +481,12 @@ private struct CatalogSeriesRow: View {
 
 private struct CatalogSeriesSetsView: View {
     let group: CatalogSeriesGroup
+    @State private var editingSet: CatalogSet?
 
     var body: some View {
         List {
             ForEach(group.sets) { set in
-                NavigationLink {
-                    CatalogSetDetailView(set: set)
-                } label: {
-                    CatalogSetRow(set: set)
-                }
+                CatalogSetLink(set: set) { editingSet = $0 }
                 .listRowBackground(Color.clear)
             }
         }
@@ -408,20 +495,44 @@ private struct CatalogSeriesSetsView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(group.series.name)
         .navigationBarTitleDisplayMode(.large)
+        .sheet(item: $editingSet) { set in
+            CatalogSetCollectionSettingsView(set: set)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
 private struct CatalogSetDetailView: View {
     let set: CatalogSet
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
     @State private var isShowingInformation = false
     @State private var cards: [CatalogCard] = []
     @State private var isLoadingCards = true
     @State private var cardMessage: String?
+    @State private var collectionMessage: String?
+    @State private var selectedVariantCard: CatalogCard?
+    @State private var updatingCardIDs: Set<String> = []
 
     private let columns = [
         GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
     ]
+
+    private var collectionGoal: CollectionGoal {
+        collectionStore.goal(for: set.id)
+    }
+
+    private var ownedCardCount: Int {
+        cards.reduce(into: 0) { count, card in
+            if collectionStore.owns(cardID: card.id) { count += 1 }
+        }
+    }
+
+    private var ownedPercentage: Int {
+        guard !cards.isEmpty else { return 0 }
+        return Int((Double(ownedCardCount) / Double(cards.count) * 100).rounded())
+    }
 
     var body: some View {
         ScrollView {
@@ -431,17 +542,32 @@ private struct CatalogSetDetailView: View {
                 .padding(.top)
 
                 VStack(spacing: 6) {
-                    if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
-                        Text(abbreviation)
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                    } else if set.logoURL != nil, let symbolURL = set.symbolURL {
-                        CatalogSymbol(url: symbolURL)
-                            .frame(width: 42, height: 28)
-                            .accessibilityLabel("Expansion symbol")
+                    HStack(spacing: 10) {
+                        if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
+                            Text(abbreviation)
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                        } else if set.logoURL != nil, let symbolURL = set.symbolURL {
+                            CatalogSymbol(url: symbolURL)
+                                .frame(width: 42, height: 28)
+                                .accessibilityLabel("Expansion symbol")
+                        }
+
+                        Text("\(ownedPercentage)% owned")
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.tint)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.tint.opacity(0.12), in: Capsule())
                     }
                 }
-                .accessibilityElement(children: .combine)
+                .frame(maxWidth: .infinity)
+
+                if let collectionMessage {
+                    Label(collectionMessage, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
 
                 if isLoadingCards && cards.isEmpty {
                     ProgressView("Updating card list…")
@@ -465,12 +591,46 @@ private struct CatalogSetDetailView: View {
 
                     LazyVGrid(columns: columns, spacing: 18) {
                         ForEach(cards) { card in
-                            NavigationLink {
-                                CatalogCardDetailView(card: card)
-                            } label: {
-                                CatalogCardTile(card: card)
+                            ZStack(alignment: .topTrailing) {
+                                NavigationLink {
+                                    CatalogCardDetailView(card: card)
+                                } label: {
+                                    CatalogCardTile(card: card)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    handleCheckmarkTap(for: card)
+                                } label: {
+                                    if updatingCardIDs.contains(card.id) {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                            .frame(width: 34, height: 34)
+                                    } else {
+                                        Image(
+                                            systemName: collectionStore.owns(cardID: card.id)
+                                                ? "checkmark.circle.fill"
+                                                : "circle"
+                                        )
+                                        .font(.title2.weight(.semibold))
+                                        .foregroundStyle(
+                                            collectionStore.owns(cardID: card.id)
+                                                ? Color.accentColor
+                                                : Color.secondary
+                                        )
+                                        .frame(width: 34, height: 34)
+                                    }
+                                }
+                                .background(.regularMaterial, in: Circle())
+                                .contentShape(Circle())
+                                .offset(x: 7, y: -7)
+                                .disabled(updatingCardIDs.contains(card.id))
+                                .accessibilityLabel(
+                                    collectionStore.owns(cardID: card.id)
+                                        ? "Edit owned printings for \(card.name)"
+                                        : "Mark \(card.name) as owned"
+                                )
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -492,9 +652,59 @@ private struct CatalogSetDetailView: View {
         .sheet(isPresented: $isShowingInformation) {
             CatalogSetInformationView(set: set)
         }
+        .sheet(item: $selectedVariantCard) { card in
+            CatalogVariantPickerView(card: card)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .task(id: set.id) {
             await loadCards()
         }
+    }
+
+    private func handleCheckmarkTap(for card: CatalogCard) {
+        collectionMessage = nil
+        if collectionGoal == .master {
+            selectedVariantCard = card
+            return
+        }
+
+        guard !updatingCardIDs.contains(card.id) else { return }
+        updatingCardIDs.insert(card.id)
+        Task {
+            defer { updatingCardIDs.remove(card.id) }
+            do {
+                let snapshot = try await catalogStore.details(for: card)
+                guard let standardVariant = preferredStandardVariant(in: snapshot.variants) else {
+                    collectionMessage = "Printing information isn’t available for \(card.name) yet."
+                    return
+                }
+                let currentQuantity = collectionStore.quantity(
+                    cardID: card.id,
+                    variant: standardVariant
+                )
+                try await collectionStore.setQuantity(
+                    currentQuantity > 0 ? 0 : 1,
+                    cardID: card.id,
+                    variant: standardVariant
+                )
+            } catch {
+                collectionMessage = "TallyDex couldn’t update \(card.name). Check your connection and try again."
+            }
+        }
+    }
+
+    private func preferredStandardVariant(
+        in variants: Set<CatalogVariantKind>
+    ) -> CatalogVariantKind? {
+        let preference: [CatalogVariantKind] = [
+            .normal,
+            .holo,
+            .reverseHolo,
+            .firstEdition,
+            .watermarkedPromo,
+        ]
+        return preference.first(where: variants.contains)
     }
 
     private func loadCards(forceRefresh: Bool = false) async {
@@ -507,6 +717,149 @@ private struct CatalogSetDetailView: View {
             cardMessage = set.isUpcoming()
                 ? "The card list will appear automatically after it is published."
                 : "TallyDex couldn’t update this card list. Check your connection and pull down to retry."
+        }
+    }
+}
+
+private struct CatalogVariantPickerView: View {
+    let card: CatalogCard
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var snapshot: CatalogCardSnapshot?
+    @State private var quantities: [CatalogVariantKind: Int] = [:]
+    @State private var isLoading = true
+    @State private var message: String?
+    @State private var updatingVariants: Set<CatalogVariantKind> = []
+
+    private var availableVariants: [CatalogVariantKind] {
+        guard let variants = snapshot?.variants else { return [] }
+        return CatalogVariantKind.allCases.filter(variants.contains)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 14) {
+                        CachedCardImage(reference: card.thumbnailArtworkReference)
+                            .aspectRatio(245 / 337, contentMode: .fit)
+                            .frame(width: 68)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(card.name)
+                                .font(.headline)
+                            Text("#\(card.localID)")
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section("Owned printings") {
+                    if isLoading {
+                        ProgressView("Loading printings…")
+                    } else if availableVariants.isEmpty {
+                        Text("Printing information is not available for this card yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(availableVariants, id: \.self) { variant in
+                            variantRow(variant)
+                        }
+                    }
+                }
+
+                if let message {
+                    Section {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Choose printings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task(id: card.id) {
+                await load()
+            }
+        }
+    }
+
+    private func variantRow(_ variant: CatalogVariantKind) -> some View {
+        let quantity = quantities[variant, default: 0]
+        let isUpdating = updatingVariants.contains(variant)
+
+        return HStack(spacing: 12) {
+            Button {
+                update(variant, to: quantity > 0 ? 0 : 1)
+            } label: {
+                Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .disabled(isUpdating)
+            .accessibilityLabel(quantity > 0 ? "Remove \(variant.displayName)" : "Add \(variant.displayName)")
+
+            Text(variant.displayName)
+            Spacer()
+
+            Button {
+                update(variant, to: max(0, quantity - 1))
+            } label: {
+                Image(systemName: "minus")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.bordered)
+            .disabled(quantity == 0 || isUpdating)
+
+            Text("\(quantity)")
+                .font(.body.monospacedDigit().weight(.semibold))
+                .frame(minWidth: 24)
+
+            Button {
+                update(variant, to: quantity + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isUpdating)
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            async let details = catalogStore.details(for: card)
+            async let savedQuantities = collectionStore.quantities(for: card.id)
+            snapshot = try await details
+            quantities = try await savedQuantities
+        } catch {
+            message = "TallyDex couldn’t load this card’s printings. Please try again."
+        }
+    }
+
+    private func update(_ variant: CatalogVariantKind, to quantity: Int) {
+        guard !updatingVariants.contains(variant) else { return }
+        updatingVariants.insert(variant)
+        message = nil
+        Task {
+            defer { updatingVariants.remove(variant) }
+            do {
+                try await collectionStore.setQuantity(quantity, cardID: card.id, variant: variant)
+                if quantity == 0 {
+                    quantities.removeValue(forKey: variant)
+                } else {
+                    quantities[variant] = quantity
+                }
+            } catch {
+                message = "That quantity couldn’t be saved. Please try again."
+            }
         }
     }
 }
@@ -562,10 +915,20 @@ private struct CachedCardImage: View {
 private struct CatalogCardDetailView: View {
     let card: CatalogCard
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
     @State private var snapshot: CatalogCardSnapshot?
+    @State private var isLoadingDetails = true
     @State private var message: String?
+    @State private var quantities: [CatalogVariantKind: Int] = [:]
+    @State private var isLoadingCollection = true
+    @State private var collectionMessage: String?
+    @State private var updatingVariants: Set<CatalogVariantKind> = []
 
     private var displayedCard: CatalogCard { snapshot?.card ?? card }
+    private var availableVariants: [CatalogVariantKind] {
+        guard let variants = snapshot?.variants else { return [] }
+        return CatalogVariantKind.allCases.filter(variants.contains)
+    }
 
     var body: some View {
         ScrollView {
@@ -592,10 +955,12 @@ private struct CatalogCardDetailView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Available variants")
                             .font(.headline)
-                        Text(variants.map(variantTitle).sorted().joined(separator: " · "))
+                        Text(variants.map(\.displayName).sorted().joined(separator: " · "))
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                collectionSection
 
                 if let message {
                     Label(message, systemImage: "icloud.slash")
@@ -608,21 +973,121 @@ private struct CatalogCardDetailView: View {
         .navigationTitle(card.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: card.id) {
+            isLoadingDetails = true
+            defer { isLoadingDetails = false }
             do {
                 snapshot = try await catalogStore.details(for: card)
             } catch {
                 message = "Detailed card data will be retried the next time you open this card."
             }
         }
+        .task(id: card.id) {
+            isLoadingCollection = true
+            defer { isLoadingCollection = false }
+            do {
+                quantities = try await collectionStore.quantities(for: card.id)
+            } catch {
+                collectionMessage = "Your saved quantities couldn’t be loaded."
+            }
+        }
     }
 
-    private func variantTitle(_ variant: CatalogVariantKind) -> String {
-        switch variant {
-        case .normal: "Normal"
-        case .reverseHolo: "Reverse holo"
-        case .holo: "Holo"
-        case .firstEdition: "First edition"
-        case .watermarkedPromo: "Watermarked promo"
+    @ViewBuilder
+    private var collectionSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Your collection")
+                .font(.headline)
+
+            if isLoadingDetails {
+                ProgressView("Loading supported variants…")
+            } else if availableVariants.isEmpty {
+                Label("Variant information is unavailable for this card.", systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(availableVariants, id: \.self) { variant in
+                    quantityRow(for: variant)
+                }
+            }
+
+            if isLoadingCollection {
+                ProgressView("Loading saved quantities…")
+                    .controlSize(.small)
+            }
+
+            if let collectionMessage {
+                Label(collectionMessage, systemImage: "externaldrive.badge.exclamationmark")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func quantityRow(for variant: CatalogVariantKind) -> some View {
+        let quantity = quantities[variant, default: 0]
+        let isUpdating = updatingVariants.contains(variant)
+
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(variant.displayName)
+                    .font(.body.weight(.medium))
+                Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                updateQuantity(for: variant, to: max(0, quantity - 1))
+            } label: {
+                Image(systemName: "minus")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.bordered)
+            .disabled(quantity == 0 || isUpdating)
+            .accessibilityLabel("Remove one \(variant.displayName)")
+
+            Text("\(quantity)")
+                .font(.body.monospacedDigit().weight(.semibold))
+                .frame(minWidth: 28)
+                .accessibilityLabel("\(quantity) owned")
+
+            Button {
+                updateQuantity(for: variant, to: quantity + 1)
+            } label: {
+                Image(systemName: "plus")
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isUpdating)
+            .accessibilityLabel("Add one \(variant.displayName)")
+        }
+    }
+
+    private func updateQuantity(for variant: CatalogVariantKind, to newQuantity: Int) {
+        guard !updatingVariants.contains(variant) else { return }
+        updatingVariants.insert(variant)
+        collectionMessage = nil
+
+        Task {
+            defer { updatingVariants.remove(variant) }
+            do {
+                try await collectionStore.setQuantity(
+                    newQuantity,
+                    cardID: card.id,
+                    variant: variant
+                )
+                if newQuantity == 0 {
+                    quantities.removeValue(forKey: variant)
+                } else {
+                    quantities[variant] = newQuantity
+                }
+            } catch {
+                collectionMessage = "That quantity couldn’t be saved. Please try again."
+            }
         }
     }
 }
@@ -831,14 +1296,97 @@ struct SearchView: View {
 }
 
 struct CollectionView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var cards: [CatalogCardSearchResult] = []
+    @State private var isLoadingCards = false
+    @State private var message: String?
+
+    private var ownedCardIDs: [String] {
+        Array(Set(collectionStore.ownedEntries.map(\.cardID))).sorted()
+    }
+
+    private var ownedCardIDsKey: String {
+        ownedCardIDs.joined(separator: "|")
+    }
+
     var body: some View {
         NavigationStack {
-            ContentUnavailableView(
-                "Your Collection Is Empty",
-                systemImage: "rectangle.stack.badge.plus",
-                description: Text("Cards you collect will appear here.")
-            )
+            Group {
+                if collectionStore.isInitialLoading || isLoadingCards && cards.isEmpty {
+                    ProgressView("Loading your collection…")
+                } else if ownedCardIDs.isEmpty {
+                    ContentUnavailableView(
+                        "Your Collection Is Empty",
+                        systemImage: "rectangle.stack.badge.plus",
+                        description: Text("Use the quantity controls on a card to add it here.")
+                    )
+                } else if cards.isEmpty {
+                    ContentUnavailableView(
+                        "Collection Details Unavailable",
+                        systemImage: "externaldrive.badge.exclamationmark",
+                        description: Text(
+                            message
+                                ?? collectionStore.loadMessage
+                                ?? "Your quantities are safe and will appear after the catalog is available."
+                        )
+                    )
+                } else {
+                    List(cards) { result in
+                        NavigationLink {
+                            CatalogCardDetailView(card: result.card)
+                        } label: {
+                            HStack(spacing: 12) {
+                                CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                                    .frame(width: 52, height: 72)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(result.card.name)
+                                        .font(.body.weight(.semibold))
+                                    Text("\(result.setName) · #\(result.card.localID)")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                    Text(collectionSummary(cardID: result.card.id))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                }
+            }
             .navigationTitle("Collection")
+            .task(id: ownedCardIDsKey) {
+                await loadCards()
+            }
+        }
+    }
+
+    private func collectionSummary(cardID: String) -> String {
+        let entries = collectionStore.ownedEntries.filter { $0.cardID == cardID }
+        let total = entries.reduce(0) { $0 + $1.quantity }
+        let variants = entries
+            .sorted { $0.variant.displayName < $1.variant.displayName }
+            .map { "\($0.variant.displayName) ×\($0.quantity)" }
+            .joined(separator: " · ")
+        let copies = total == 1 ? "1 copy" : "\(total) copies"
+        return variants.isEmpty ? copies : "\(copies) · \(variants)"
+    }
+
+    private func loadCards() async {
+        guard !ownedCardIDs.isEmpty else {
+            cards = []
+            return
+        }
+        isLoadingCards = true
+        message = nil
+        defer { isLoadingCards = false }
+        do {
+            cards = try await catalogStore.searchResults(cardIDs: ownedCardIDs)
+        } catch {
+            cards = []
+            message = "Your quantities are safe, but their card details couldn’t be loaded."
         }
     }
 }

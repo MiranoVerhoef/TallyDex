@@ -413,11 +413,13 @@ final class CatalogFoundationTests: XCTestCase {
         let byName = try await repository.searchCards(query: "sprig")
         let byNumber = try await repository.searchCards(query: "001")
         let bySetAndName = try await repository.searchCards(query: "Scarlet sprig")
+        let byCardID = try await repository.fetchSearchResults(cardIDs: [card.id])
         let searchOnlyDownloadedSetIDs = try await repository.fetchDownloadedSetIDs()
         let expectedResult = CatalogCardSearchResult(card: card, setName: "Scarlet & Violet")
         XCTAssertEqual(byName, [expectedResult])
         XCTAssertEqual(byNumber, [expectedResult])
         XCTAssertEqual(bySetAndName, [expectedResult])
+        XCTAssertEqual(byCardID, [expectedResult])
         XCTAssertTrue(searchOnlyDownloadedSetIDs.isEmpty)
 
         try await repository.replaceSet(CatalogSetSnapshot(set: catalogSet, cards: [card]))
