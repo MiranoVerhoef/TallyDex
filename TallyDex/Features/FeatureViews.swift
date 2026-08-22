@@ -413,13 +413,21 @@ private struct CatalogSeriesSetsView: View {
 
 private struct CatalogSetDetailView: View {
     let set: CatalogSet
+    @Environment(CatalogStore.self) private var catalogStore
     @State private var isShowingInformation = false
+    @State private var cards: [CatalogCard] = []
+    @State private var isLoadingCards = true
+    @State private var cardMessage: String?
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
+    ]
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            LazyVStack(spacing: 20) {
                 CatalogArtwork(reference: set.preferredArtworkReference)
-                .frame(maxWidth: 300, minHeight: 120, maxHeight: 170)
+                .frame(maxWidth: 260, minHeight: 96, maxHeight: 140)
                 .padding(.top)
 
                 VStack(spacing: 6) {
@@ -435,13 +443,42 @@ private struct CatalogSetDetailView: View {
                 }
                 .accessibilityElement(children: .combine)
 
-                ContentUnavailableView(
-                    "Card List Coming Next",
-                    systemImage: "rectangle.grid.3x2",
-                    description: Text("This set is connected to the local catalog. The card grid and collection controls are the next slice.")
-                )
+                if isLoadingCards && cards.isEmpty {
+                    ProgressView("Updating card list…")
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                } else if cards.isEmpty {
+                    ContentUnavailableView(
+                        set.isUpcoming() ? "Cards Not Announced Yet" : "Card List Unavailable",
+                        systemImage: "rectangle.grid.3x2",
+                        description: Text(cardMessage ?? "Pull down to check for this set’s cards again.")
+                    )
+                } else {
+                    HStack {
+                        Text("\(cards.count) cards")
+                            .font(.headline)
+                        Spacer()
+                        if isLoadingCards {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+
+                    LazyVGrid(columns: columns, spacing: 18) {
+                        ForEach(cards) { card in
+                            NavigationLink {
+                                CatalogCardDetailView(card: card)
+                            } label: {
+                                CatalogCardTile(card: card)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
             }
             .padding()
+        }
+        .refreshable {
+            await loadCards(forceRefresh: true)
         }
         .navigationTitle(set.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -454,6 +491,138 @@ private struct CatalogSetDetailView: View {
         }
         .sheet(isPresented: $isShowingInformation) {
             CatalogSetInformationView(set: set)
+        }
+        .task(id: set.id) {
+            await loadCards()
+        }
+    }
+
+    private func loadCards(forceRefresh: Bool = false) async {
+        isLoadingCards = true
+        cardMessage = nil
+        defer { isLoadingCards = false }
+        do {
+            cards = try await catalogStore.cards(for: set, forceRefresh: forceRefresh)
+        } catch {
+            cardMessage = set.isUpcoming()
+                ? "The card list will appear automatically after it is published."
+                : "TallyDex couldn’t update this card list. Check your connection and pull down to retry."
+        }
+    }
+}
+
+private struct CatalogCardTile: View {
+    let card: CatalogCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            CachedCardImage(reference: card.thumbnailArtworkReference)
+                .aspectRatio(245 / 337, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            Text(card.name)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Text("#\(card.localID)")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct CachedCardImage: View {
+    let reference: CatalogArtworkReference?
+    @State private var imageData: Data?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+
+            if let imageData, let image = UIImage(data: imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .interpolation(.medium)
+                    .scaledToFit()
+            } else {
+                Image(systemName: "rectangle.portrait")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .task(id: reference) {
+            guard let reference else { return }
+            imageData = try? await CatalogArtworkCache.shared.data(for: reference)
+        }
+    }
+}
+
+private struct CatalogCardDetailView: View {
+    let card: CatalogCard
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var snapshot: CatalogCardSnapshot?
+    @State private var message: String?
+
+    private var displayedCard: CatalogCard { snapshot?.card ?? card }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                CachedCardImage(reference: displayedCard.fullArtworkReference)
+                    .aspectRatio(245 / 337, contentMode: .fit)
+                    .frame(maxWidth: 360)
+                    .frame(maxWidth: .infinity)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    LabeledContent("Collector number", value: displayedCard.localID)
+                    if let category = displayedCard.category {
+                        LabeledContent("Category", value: category)
+                    }
+                    if let rarity = displayedCard.rarity {
+                        LabeledContent("Rarity", value: rarity)
+                    }
+                    if let illustrator = displayedCard.illustrator {
+                        LabeledContent("Illustrator", value: illustrator)
+                    }
+                }
+
+                if let variants = snapshot?.variants, !variants.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Available variants")
+                            .font(.headline)
+                        Text(variants.map(variantTitle).sorted().joined(separator: " · "))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let message {
+                    Label(message, systemImage: "icloud.slash")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+        }
+        .navigationTitle(card.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: card.id) {
+            do {
+                snapshot = try await catalogStore.details(for: card)
+            } catch {
+                message = "Detailed card data will be retried the next time you open this card."
+            }
+        }
+    }
+
+    private func variantTitle(_ variant: CatalogVariantKind) -> String {
+        switch variant {
+        case .normal: "Normal"
+        case .reverseHolo: "Reverse holo"
+        case .holo: "Holo"
+        case .firstEdition: "First edition"
+        case .watermarkedPromo: "Watermarked promo"
         }
     }
 }
@@ -598,17 +767,58 @@ private struct CatalogSetInformationView: View {
 }
 
 struct SearchView: View {
+    @Environment(CatalogStore.self) private var catalogStore
     @State private var query = ""
+    @State private var results: [CatalogCard] = []
+    @State private var isSearching = false
 
     var body: some View {
         NavigationStack {
-            ContentUnavailableView(
-                "Search the Catalog",
-                systemImage: "magnifyingglass",
-                description: Text("Find cards by name, set, or collector number.")
-            )
+            Group {
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ContentUnavailableView(
+                        "Search the Catalog",
+                        systemImage: "magnifyingglass",
+                        description: Text("Find cards from sets you’ve opened by name or collector number.")
+                    )
+                } else if isSearching && results.isEmpty {
+                    ProgressView("Searching…")
+                } else if results.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                } else {
+                    List(results) { card in
+                        NavigationLink {
+                            CatalogCardDetailView(card: card)
+                        } label: {
+                            HStack(spacing: 12) {
+                                CachedCardImage(reference: card.thumbnailArtworkReference)
+                                    .frame(width: 52, height: 72)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(card.name)
+                                        .font(.body.weight(.semibold))
+                                    Text("#\(card.localID)")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
             .navigationTitle("Search")
             .searchable(text: $query, prompt: "Card, set, or number")
+            .task(id: query) {
+                guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    results = []
+                    return
+                }
+                isSearching = true
+                defer { isSearching = false }
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                results = (try? await catalogStore.searchCards(query: query)) ?? []
+            }
         }
     }
 }
@@ -743,7 +953,7 @@ private struct ArtworkCacheSettingsView: View {
                     )
                 )
             } footer: {
-                Text("TallyDex stores TCGdex series logos, set logos, and expansion symbols on this iPhone so they appear immediately after a cold launch.")
+                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch.")
             }
 
             Section("Choose What to Remove") {
@@ -834,6 +1044,7 @@ private struct AboutTallyDexView: View {
             }
 
             Section("Copyright & Ownership") {
+                Text("TallyDex original code, interface, name, and artwork © 2026 Mirano Verhoef. All rights reserved.")
                 Text("Pokémon and all related card, set, expansion, character, logo, and artwork rights belong to their respective owners.")
                 Text("© Pokémon. © Nintendo/Creatures Inc./GAME FREAK inc. TM, ® Nintendo.")
                 Text("TallyDex is an unofficial fan-made app. It is not affiliated with, endorsed by, or sponsored by The Pokémon Company, Nintendo, Creatures Inc., or GAME FREAK inc.")

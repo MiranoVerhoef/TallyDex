@@ -240,7 +240,7 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertTrue(set(id: "me04", seriesID: "me", name: "Chaos Rising").usesPrintedExpansionCode)
     }
 
-    func testSeriesArtworkFallsBackToAChildSetSymbol() {
+    func testSeriesWithoutLogoUsesTallyDexPlaceholderInsteadOfChildArtwork() {
         let symbolURL = URL(string: "https://assets.tcgdex.net/univ/mc/2021swsh/symbol")!
         let collection = CatalogSeriesGroup(
             series: CatalogSeries(id: "mc", name: "McDonald's Collection", logoURL: nil),
@@ -260,7 +260,27 @@ final class CatalogFoundationTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(collection.preferredArtworkURL, symbolURL)
+        XCTAssertNil(collection.preferredArtworkURL)
+        XCTAssertNil(collection.preferredArtworkReference)
+    }
+
+    func testSetWithoutLogoUsesTallyDexPlaceholderWhileKeepingItsSymbol() {
+        let symbolURL = URL(string: "https://assets.tcgdex.net/en/sm/sm115/symbol")!
+        let hiddenFates = CatalogSet(
+            id: "sm115",
+            seriesID: "sm",
+            name: "Hidden Fates",
+            abbreviation: nil,
+            logoURL: nil,
+            symbolURL: symbolURL,
+            officialCardCount: 68,
+            totalCardCount: 69,
+            releaseDate: nil,
+            rarityCounts: nil
+        )
+
+        XCTAssertNil(hiddenFates.preferredArtworkReference)
+        XCTAssertEqual(hiddenFates.symbolURL, symbolURL)
     }
 
     func testUpcomingSetUsesItsAnnouncedReleaseDate() {
@@ -299,6 +319,78 @@ final class CatalogFoundationTests: XCTestCase {
             "https://assets.tcgdex.net/en/sv/sv01/logo.png"
         )
         XCTAssertEqual(CatalogArtworkCache.resolvedAssetURL(png), png)
+    }
+
+    func testArtworkCacheBuildsTCGdexCardImageURLs() {
+        let card = URL(string: "https://assets.tcgdex.net/en/sv/sv03.5/001")!
+
+        XCTAssertEqual(
+            CatalogArtworkCache.resolvedAssetURL(card, category: .cardThumbnails).absoluteString,
+            "https://assets.tcgdex.net/en/sv/sv03.5/001/low.webp"
+        )
+        XCTAssertEqual(
+            CatalogArtworkCache.resolvedAssetURL(card, category: .cardArtwork).absoluteString,
+            "https://assets.tcgdex.net/en/sv/sv03.5/001/high.webp"
+        )
+    }
+
+    func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let firstSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [firstSet]),
+        ])
+        let card = CatalogCard(
+            id: "sv01-001",
+            setID: "sv01",
+            localID: "001",
+            name: "Sprigatito",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        try await repository.replaceSet(CatalogSetSnapshot(set: firstSet, cards: [card]))
+
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(
+                series: CatalogSeries(id: "sv", name: "Scarlet & Violet Updated", logoURL: nil),
+                sets: [set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet Updated")]
+            ),
+        ])
+
+        let storedCards = try await repository.fetchCards(setID: "sv01")
+        let storedSeries = try await repository.fetchSeries()
+        XCTAssertEqual(storedCards, [card])
+        XCTAssertEqual(storedSeries.first?.name, "Scarlet & Violet Updated")
+    }
+
+    func testRepositorySearchesDownloadedCardsByNameOrNumber() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let card = CatalogCard(
+            id: "sv01-001",
+            setID: "sv01",
+            localID: "001",
+            name: "Sprigatito",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceSet(CatalogSetSnapshot(set: catalogSet, cards: [card]))
+
+        let byName = try await repository.searchCards(query: "sprig")
+        let byNumber = try await repository.searchCards(query: "001")
+        let downloadedSetIDs = try await repository.fetchDownloadedSetIDs()
+        XCTAssertEqual(byName, [card])
+        XCTAssertEqual(byNumber, [card])
+        XCTAssertEqual(downloadedSetIDs, ["sv01"])
     }
 
     func testArtworkCacheReportsAndSelectivelyClearsCategories() async throws {
