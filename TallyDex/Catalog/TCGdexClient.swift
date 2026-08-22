@@ -111,10 +111,12 @@ struct TCGdexClient: CatalogProvider, Sendable {
 
     func fetchCard(id: String) async throws -> CatalogCardSnapshot {
         let response: CardDTO = try await request(path: "cards/\(id)")
+        let providerVariants = (response.variants?.availableKinds ?? [])
+            .union(response.variantsDetailed?.availableKinds ?? [])
         return CatalogCardSnapshot(
             card: response.catalogCard,
             variants: CatalogVariantOverrides.apply(
-                to: response.variants?.availableKinds ?? [],
+                to: providerVariants,
                 cardID: response.id
             )
         )
@@ -289,6 +291,12 @@ private struct CardDTO: Decodable, Sendable {
     let rarity: String?
     let set: SetReferenceDTO
     let variants: VariantsDTO?
+    let variantsDetailed: [DetailedVariantDTO]?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, localId, name, image, category, illustrator, rarity, set, variants
+        case variantsDetailed = "variants_detailed"
+    }
 
     var catalogCard: CatalogCard {
         CatalogCard(
@@ -301,6 +309,34 @@ private struct CardDTO: Decodable, Sendable {
             illustrator: illustrator,
             rarity: rarity
         )
+    }
+}
+
+private struct DetailedVariantDTO: Decodable, Sendable {
+    let type: String
+    let stamp: [String]?
+
+    var availableKinds: Set<CatalogVariantKind> {
+        var kinds = Set<CatalogVariantKind>()
+        switch type {
+        case "normal": kinds.insert(.normal)
+        case "reverse": kinds.insert(.reverseHolo)
+        case "holo": kinds.insert(.holo)
+        default: break
+        }
+        if stamp?.contains("1st-edition") == true { kinds.insert(.firstEdition) }
+        if stamp?.contains("w-promo") == true { kinds.insert(.watermarkedPromo) }
+        if stamp?.contains("pre-release") == true { kinds.insert(.prerelease) }
+        if stamp?.contains("staff") == true { kinds.insert(.prereleaseStaff) }
+        return kinds
+    }
+}
+
+private extension Array where Element == DetailedVariantDTO {
+    var availableKinds: Set<CatalogVariantKind> {
+        reduce(into: Set<CatalogVariantKind>()) { result, variant in
+            result.formUnion(variant.availableKinds)
+        }
     }
 }
 

@@ -217,7 +217,8 @@ final class CatalogStore {
         do {
             let snapshot = try await provider.fetchCard(id: card.id)
             try await repository.replaceCard(snapshot)
-            return snapshot
+            let cachedVariants = try await repository.fetchVariants(cardID: card.id)
+            return CatalogCardSnapshot(card: snapshot.card, variants: cachedVariants)
         } catch {
             let variants = try await repository.fetchVariants(cardID: card.id)
             if card.category != nil || card.illustrator != nil || card.rarity != nil || !variants.isEmpty {

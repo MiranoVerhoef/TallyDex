@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.4/TallyDex-v0.2.4-default-goal.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.3/TallyDex-v0.2.3-set-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.2/TallyDex-v0.2.2-collection-filters.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.1/TallyDex-v0.2.1-custom-folders.png",
@@ -28,6 +29,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.2.4",
+          "buildVersion": "10",
+          "date": "2026-08-22",
+          "localizedDescription": "Loads and caches all TCGdex printing variants independently of each set goal, hides extra printings in Normal while revealing them instantly in Master, preserves richer cached variant data, adds a default collection-goal setting, and creates restorable backups before goal changes.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.4/TallyDex-v0.2.4.ipa",
+          "size": 6738196,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.2.3",
           "buildVersion": "9",

@@ -98,6 +98,97 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(entries.first?.quantity, 1)
     }
 
+    func testAutomaticBackupRestoresEntireCollectionAndCreatesSafetyBackup() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let folderID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
+        let before = Date(timeIntervalSince1970: 100)
+        let after = Date(timeIntervalSince1970: 200)
+
+        try await repository.setQuantity(1, cardID: "me01-001", variant: .normal, updatedAt: before)
+        try await repository.saveSetPreference(
+            SetCollectionPreference(
+                setID: "me01",
+                status: .collecting,
+                goal: .custom,
+                includedVariants: [.reverseHolo],
+                includesSecretCards: false,
+                updatedAt: before
+            )
+        )
+        try await repository.saveCustomFolder(
+            CustomCollectionFolder(
+                id: folderID,
+                name: "Before",
+                cardNameQuery: "Lucario",
+                displayMode: .allMatching,
+                createdAt: before,
+                updatedAt: before
+            )
+        )
+        try await repository.saveCardMetadata(
+            CardCollectionMetadata(
+                cardID: "me01-001",
+                isWishlisted: false,
+                notes: "Before",
+                updatedAt: before
+            )
+        )
+        let backup = try await repository.createBackup(
+            reason: "Test Set: Custom → Master",
+            createdAt: before
+        )
+
+        try await repository.setQuantity(0, cardID: "me01-001", variant: .normal, updatedAt: after)
+        try await repository.setQuantity(3, cardID: "me01-001", variant: .holo, updatedAt: after)
+        try await repository.saveSetPreference(
+            SetCollectionPreference(
+                setID: "me01",
+                status: .hidden,
+                goal: .master,
+                includedVariants: Set(CatalogVariantKind.allCases),
+                includesSecretCards: true,
+                updatedAt: after
+            )
+        )
+        try await repository.saveCustomFolder(
+            CustomCollectionFolder(
+                id: folderID,
+                name: "After",
+                cardNameQuery: "Riolu",
+                displayMode: .ownedOnly,
+                createdAt: before,
+                updatedAt: after
+            )
+        )
+        try await repository.saveCardMetadata(
+            CardCollectionMetadata(
+                cardID: "me01-001",
+                isWishlisted: true,
+                notes: "After",
+                updatedAt: after
+            )
+        )
+
+        try await repository.restoreBackup(
+            id: backup.id,
+            safetyBackupReason: "Before restore",
+            restoredAt: after
+        )
+
+        let restoredEntries = try await repository.fetchEntries(cardID: "me01-001")
+        let restoredPreferences = try await repository.fetchSetPreferences()
+        let restoredFolders = try await repository.fetchCustomFolders()
+        let restoredMetadata = try await repository.fetchCardMetadata(cardID: "me01-001")
+        XCTAssertEqual(restoredEntries.map(\.variant), [.normal])
+        XCTAssertEqual(restoredPreferences["me01"]?.goal, .custom)
+        XCTAssertEqual(restoredPreferences["me01"]?.includedVariants, [.reverseHolo])
+        XCTAssertEqual(restoredFolders.first?.name, "Before")
+        XCTAssertEqual(restoredMetadata.notes, "Before")
+        let backups = try await repository.fetchBackups()
+        XCTAssertEqual(backups.count, 2)
+        XCTAssertEqual(backups.first?.reason, "Before restore")
+    }
+
     func testCustomFolderPersistsAndCanBeEdited() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let id = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
@@ -401,8 +492,54 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertNil(CollectionGoal.migrated(persistedValue: "unknown"))
     }
 
+    func testGoalRulesDoNotRetainCustomConfigurationWhenSwitching() {
+        let customRules = SetCollectionPreference(
+            setID: "me01",
+            status: .collecting,
+            goal: .master,
+            includedVariants: [.reverseHolo],
+            includesSecretCards: false,
+            updatedAt: .now
+        )
+
+        let master = customRules.applyingCanonicalGoalRules()
+        XCTAssertEqual(master.includedVariants, Set(CatalogVariantKind.allCases))
+        XCTAssertTrue(master.includesSecretCards)
+
+        let normal = SetCollectionPreference(
+            setID: "me01",
+            status: .collecting,
+            goal: .normal,
+            includedVariants: [.holo, .reverseHolo],
+            includesSecretCards: false,
+            updatedAt: .now
+        ).applyingCanonicalGoalRules()
+        XCTAssertEqual(normal.includedVariants, [.normal])
+        XCTAssertTrue(normal.includesSecretCards)
+    }
+
     func testMultipleCopyTrackingDefaultsOff() {
         XCTAssertFalse(CollectionSettings.allowsMultipleCopiesDefault)
+    }
+
+    func testDefaultMasterPreferenceStartsWithEveryPrintingType() {
+        let preference = SetCollectionPreference.defaultPreference(
+            setID: "me04",
+            goal: .master
+        )
+
+        XCTAssertEqual(preference.goal, .master)
+        XCTAssertEqual(preference.includedVariants, Set(CatalogVariantKind.allCases))
+        XCTAssertTrue(preference.includesSecretCards)
+    }
+
+    func testNormalHidesExtraPrintingTypesWithoutDiscardingThem() {
+        let knownVariants: Set<CatalogVariantKind> = [.normal, .reverseHolo, .holo]
+        let normal = SetCollectionPreference.defaultPreference(setID: "me04", goal: .normal)
+        let master = SetCollectionPreference.defaultPreference(setID: "me04", goal: .master)
+
+        XCTAssertEqual(normal.visibleVariants(in: knownVariants), [.normal])
+        XCTAssertEqual(master.visibleVariants(in: knownVariants), knownVariants)
     }
 
     private func card(id: String, number: String) -> CatalogCard {

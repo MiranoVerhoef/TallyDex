@@ -411,6 +411,9 @@ private struct CatalogSetCollectionSettingsView: View {
     @State private var includesSecretCards = false
     @State private var isSaving = false
     @State private var message: String?
+    @State private var originalPreference: SetCollectionPreference?
+    @State private var pendingPreference: SetCollectionPreference?
+    @State private var isConfirmingGoalChange = false
 
     var body: some View {
         NavigationStack {
@@ -451,7 +454,7 @@ private struct CatalogSetCollectionSettingsView: View {
                 }
 
                 Section {
-                    Text("Changing this setting never removes cards or quantities you already saved.")
+                    Text("Changing goals creates a local backup first. Existing cards and quantities remain saved.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -476,12 +479,46 @@ private struct CatalogSetCollectionSettingsView: View {
             }
             .onAppear {
                 let preference = collectionStore.preference(for: set.id)
+                originalPreference = preference
                 selectedStatus = preference.status
                 selectedGoal = preference.goal
                 includedVariants = preference.includedVariants
                 includesSecretCards = preference.includesSecretCards
             }
+            .confirmationDialog(
+                goalChangeTitle,
+                isPresented: $isConfirmingGoalChange,
+                titleVisibility: .visible
+            ) {
+                Button("Create Backup & Change Goal") {
+                    guard let pendingPreference else { return }
+                    persist(pendingPreference, creatingBackup: true)
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingPreference = nil
+                }
+            } message: {
+                Text(goalChangeWarning)
+            }
         }
+    }
+
+    private var goalChangeTitle: String {
+        guard let originalPreference else { return "Change collection goal?" }
+        return "Change \(originalPreference.goal.displayName) to \(selectedGoal.displayName)?"
+    }
+
+    private var goalChangeWarning: String {
+        guard let originalPreference else {
+            return "TallyDex will create a local collection backup before applying this change."
+        }
+        if originalPreference.goal == .master && selectedGoal == .normal {
+            return "Your owned cards and printings will not be reset. Normal counts any owned printing as one card. If you later uncheck that card in Normal, all of its saved printings are removed. TallyDex will create a backup first."
+        }
+        if originalPreference.goal == .custom && selectedGoal == .master {
+            return "Master will replace the Custom rules with every available printing and every numbered card. Your ownership stays saved, and TallyDex will back up the old Custom setup first."
+        }
+        return "The new goal will replace the previous goal rules without deleting ownership. TallyDex will create a local collection backup first."
     }
 
     private func variantToggle(_ variant: CatalogVariantKind) -> some View {
@@ -499,28 +536,49 @@ private struct CatalogSetCollectionSettingsView: View {
 
     private func save() {
         guard !isSaving else { return }
+        message = nil
+        let preference = preferenceToSave()
+        if let originalPreference, originalPreference.goal != preference.goal {
+            pendingPreference = preference
+            isConfirmingGoalChange = true
+            return
+        }
+        persist(preference, creatingBackup: false)
+    }
+
+    private func preferenceToSave() -> SetCollectionPreference {
+        SetCollectionPreference(
+            setID: set.id,
+            status: selectedStatus,
+            goal: selectedGoal,
+            includedVariants: includedVariants,
+            includesSecretCards: includesSecretCards,
+            updatedAt: Date()
+        )
+        .applyingCanonicalGoalRules()
+    }
+
+    private func persist(
+        _ preference: SetCollectionPreference,
+        creatingBackup: Bool
+    ) {
+        guard !isSaving else { return }
         isSaving = true
         message = nil
         Task {
             defer { isSaving = false }
             do {
-                var selectedVariants = includedVariants
-                if selectedGoal == .custom && selectedVariants.isEmpty {
-                    selectedVariants = [.normal]
-                }
-                try await collectionStore.saveSetPreference(
-                    SetCollectionPreference(
-                        setID: set.id,
-                        status: selectedStatus,
-                        goal: selectedGoal,
-                        includedVariants: selectedVariants,
-                        includesSecretCards: includesSecretCards,
-                        updatedAt: Date()
+                if creatingBackup, let originalPreference {
+                    try await collectionStore.createBackup(
+                        reason: "\(set.name): \(originalPreference.goal.displayName) → \(preference.goal.displayName)"
                     )
-                )
+                }
+                try await collectionStore.saveSetPreference(preference)
                 dismiss()
             } catch {
-                message = "That collection goal couldn’t be saved. Please try again."
+                message = creatingBackup
+                    ? "A backup couldn’t be created, so the goal was not changed."
+                    : "That collection goal couldn’t be saved. Please try again."
             }
         }
     }
@@ -790,6 +848,10 @@ private struct CatalogSetDetailView: View {
         .task(id: set.id) {
             await loadCards()
         }
+        .task(id: collectionGoal) {
+            guard !cards.isEmpty else { return }
+            await loadGoalVariants()
+        }
         .onAppear {
             guard !cards.isEmpty else { return }
             Task {
@@ -860,14 +922,9 @@ private struct CatalogSetDetailView: View {
     }
 
     private func loadGoalVariants() async {
-        switch collectionGoal {
-        case .master, .custom:
-            isPreparingGoalMetadata = true
-            defer { isPreparingGoalMetadata = false }
-            availableVariantsByCardID = await catalogStore.prepareVariants(for: cards)
-        case .normal:
-            break
-        }
+        isPreparingGoalMetadata = true
+        defer { isPreparingGoalMetadata = false }
+        availableVariantsByCardID = await catalogStore.prepareVariants(for: cards)
     }
 }
 
@@ -886,7 +943,8 @@ private struct CatalogVariantPickerView: View {
 
     private var availableVariants: [CatalogVariantKind] {
         guard let variants = snapshot?.variants else { return [] }
-        return CatalogVariantKind.allCases.filter(variants.contains)
+        let visibleVariants = collectionStore.preference(for: card.setID).visibleVariants(in: variants)
+        return CatalogVariantKind.allCases.filter(visibleVariants.contains)
     }
 
     var body: some View {
@@ -1087,7 +1145,8 @@ private struct CatalogCardDetailView: View {
     private var displayedCard: CatalogCard { snapshot?.card ?? card }
     private var availableVariants: [CatalogVariantKind] {
         guard let variants = snapshot?.variants else { return [] }
-        return CatalogVariantKind.allCases.filter(variants.contains)
+        let visibleVariants = collectionStore.preference(for: card.setID).visibleVariants(in: variants)
+        return CatalogVariantKind.allCases.filter(visibleVariants.contains)
     }
 
     var body: some View {
@@ -2219,11 +2278,14 @@ private struct CustomCollectionFolderDetailView: View {
 }
 
 struct SettingsView: View {
+    @Environment(CollectionStore.self) private var collectionStore
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
     @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
+    @AppStorage(CollectionSettings.defaultGoalKey)
+    private var defaultCollectionGoal = CollectionSettings.defaultGoal.rawValue
 
     var body: some View {
         NavigationStack {
@@ -2261,15 +2323,22 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Default collection goal", selection: $defaultCollectionGoal) {
+                        ForEach(CollectionGoal.allCases, id: \.self) { goal in
+                            Text(goal.displayName).tag(goal.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+
                     Toggle("Track multiple copies", isOn: $allowsMultipleCopies)
                 } header: {
                     Text("Collection")
                 } footer: {
-                    Text(
+                    Text("The default goal applies to sets you have not configured yet. Existing set choices remain unchanged. " + (
                         allowsMultipleCopies
                             ? "Use − and + controls to save exact quantities for each printing."
                             : "A checkmark only records whether you own a printing. Existing quantities are preserved."
-                    )
+                    ))
                 }
 
                 Section("Storage") {
@@ -2286,10 +2355,16 @@ struct SettingsView: View {
                 }
 
                 Section("Data") {
-                    Button("Export Backup") {}
-                        .disabled(true)
-                    Button("Import Backup") {}
-                        .disabled(true)
+                    NavigationLink {
+                        CollectionBackupsView()
+                    } label: {
+                        LabeledContent {
+                            Text("\(collectionStore.backups.count)")
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("Collection Backups", systemImage: "clock.arrow.circlepath")
+                        }
+                    }
                 }
 
                 Section("iCloud") {
@@ -2305,6 +2380,90 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+        }
+    }
+}
+
+private struct CollectionBackupsView: View {
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var selectedBackup: CollectionBackup?
+    @State private var isRestoring = false
+    @State private var message: String?
+
+    var body: some View {
+        Form {
+            if collectionStore.backups.isEmpty {
+                ContentUnavailableView(
+                    "No Backups Yet",
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text("TallyDex automatically creates one before a collection goal changes.")
+                )
+            } else {
+                Section {
+                    ForEach(collectionStore.backups) { backup in
+                        Button {
+                            selectedBackup = backup
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(backup.reason)
+                                    .foregroundStyle(.primary)
+                                Text(backup.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .disabled(isRestoring)
+                    }
+                } header: {
+                    Text("Automatic Backups")
+                } footer: {
+                    Text("The newest 10 backups stay on this iPhone. Restoring also saves the current collection first, so the restore can be undone.")
+                }
+            }
+
+            if let message {
+                Section {
+                    Label(message, systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Collection Backups")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Restore this collection backup?",
+            isPresented: Binding(
+                get: { selectedBackup != nil },
+                set: { if !$0 { selectedBackup = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Restore Backup", role: .destructive) {
+                guard let backup = selectedBackup else { return }
+                selectedBackup = nil
+                restore(backup)
+            }
+            Button("Cancel", role: .cancel) {
+                selectedBackup = nil
+            }
+        } message: {
+            Text("This replaces current ownership, set goals, folders, wishlist, and notes with the saved snapshot. TallyDex will back up the current collection before restoring.")
+        }
+    }
+
+    private func restore(_ backup: CollectionBackup) {
+        guard !isRestoring else { return }
+        isRestoring = true
+        message = nil
+        Task {
+            defer { isRestoring = false }
+            do {
+                try await collectionStore.restoreBackup(backup)
+                message = "Collection restored."
+            } catch {
+                message = "That backup couldn’t be restored. No collection data was changed."
+            }
         }
     }
 }
