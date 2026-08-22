@@ -187,6 +187,7 @@ private struct SeriesDTO: Decodable, Sendable {
 private struct SetBriefDTO: Decodable, Sendable {
     let id: String
     let name: String
+    let abbreviation: SetAbbreviationDTO?
     let logo: URL?
     let symbol: URL?
     let cardCount: CardCountDTO
@@ -196,6 +197,7 @@ private struct SetBriefDTO: Decodable, Sendable {
             id: id,
             seriesID: seriesID,
             name: name,
+            abbreviation: abbreviation?.official,
             logoURL: logo,
             symbolURL: symbol,
             officialCardCount: cardCount.official,
@@ -208,6 +210,7 @@ private struct SetBriefDTO: Decodable, Sendable {
 private struct SetDTO: Decodable, Sendable {
     let id: String
     let name: String
+    let abbreviation: SetAbbreviationDTO?
     let logo: URL?
     let symbol: URL?
     let cardCount: CardCountDTO
@@ -220,6 +223,7 @@ private struct SetDTO: Decodable, Sendable {
             id: id,
             seriesID: serie.id,
             name: name,
+            abbreviation: abbreviation?.official,
             logoURL: logo,
             symbolURL: symbol,
             officialCardCount: cardCount.official,
@@ -227,6 +231,10 @@ private struct SetDTO: Decodable, Sendable {
             releaseDate: releaseDate
         )
     }
+}
+
+private struct SetAbbreviationDTO: Decodable, Sendable {
+    let official: String?
 }
 
 private struct CardCountDTO: Decodable, Sendable {

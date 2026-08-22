@@ -9,6 +9,7 @@ working_directory="$(mktemp -d)"
 snapshot_file="${working_directory}/catalog-en.json"
 next_snapshot_file="${working_directory}/catalog-en-next.json"
 series_index_file="${working_directory}/series.json"
+set_metadata_file="${working_directory}/set-metadata.json"
 
 cleanup() {
     rm -rf "${working_directory}"
@@ -41,6 +42,7 @@ while IFS= read -r series_id; do
                 id: .id,
                 seriesID: $detail[0].id,
                 name: .name,
+                abbreviation: null,
                 logoURL: (.logo // null),
                 symbolURL: (.symbol // null),
                 officialCardCount: .cardCount.official,
@@ -51,6 +53,24 @@ while IFS= read -r series_id; do
         "${snapshot_file}" > "${next_snapshot_file}"
     mv "${next_snapshot_file}" "${snapshot_file}"
 done < <(jq -r '[.[] | select(.id != "tcgp") | .id] | reverse[]' "${series_index_file}")
+
+while IFS= read -r set_id; do
+    curl --fail --silent --show-error --retry 3 \
+        "https://api.tcgdex.net/v2/en/sets/${set_id}" \
+        --output "${working_directory}/set-${set_id}.json"
+done < <(jq -r '.series[].sets[].id' "${snapshot_file}")
+
+jq -s \
+    'map({key: .id, value: {
+        abbreviation: (.abbreviation.official // null),
+        releaseDate: (.releaseDate // null)
+    }}) | from_entries' \
+    "${working_directory}"/set-*.json > "${set_metadata_file}"
+
+jq --slurpfile metadata "${set_metadata_file}" \
+    '.series |= map(.sets |= map(. + ($metadata[0][.id] // {})))' \
+    "${snapshot_file}" > "${next_snapshot_file}"
+mv "${next_snapshot_file}" "${snapshot_file}"
 
 mkdir -p "${output_file:h}"
 mv "${snapshot_file}" "${output_file}"

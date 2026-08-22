@@ -45,6 +45,7 @@ final class CatalogStore {
     @ObservationIgnored private let bundle: Bundle
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var repository: (any CatalogRepository)?
+    @ObservationIgnored private var bundledSetsByID: [String: CatalogSet] = [:]
     @ObservationIgnored private var hasStarted = false
 
     private static let lastCatalogRefreshKey = "catalog.lastRefresh"
@@ -68,8 +69,19 @@ final class CatalogStore {
 
         do {
             let repository = try resolveRepository()
+            let bundledSnapshot = try? BundledCatalogLoader(bundle: bundle).load()
+            if let bundledSnapshot {
+                bundledSetsByID = Dictionary(
+                    uniqueKeysWithValues: bundledSnapshot.series
+                        .flatMap(\.sets)
+                        .map { ($0.id, $0) }
+                )
+            }
+
             if try await repository.fetchSeries().isEmpty {
-                let snapshot = try BundledCatalogLoader(bundle: bundle).load()
+                guard let snapshot = bundledSnapshot else {
+                    throw BundledCatalogError.missingResource
+                }
                 try await repository.replaceCatalog(snapshot.series)
             }
 
@@ -118,7 +130,9 @@ final class CatalogStore {
 
     private func loadCachedCatalog(from repository: any CatalogRepository) async throws {
         let series = try await repository.fetchSeries()
-        let sets = try await repository.fetchSets(seriesID: nil)
+        let sets = try await repository.fetchSets(seriesID: nil).map { set in
+            set.fillingMissingMetadata(from: bundledSetsByID[set.id])
+        }
         let setsBySeries = Dictionary(grouping: sets, by: \.seriesID)
         groups = series.map { item in
             CatalogSeriesGroup(series: item, sets: setsBySeries[item.id] ?? [])
@@ -148,9 +162,57 @@ final class CatalogStore {
                 )
                 snapshots.append(newestSetsFirst)
             }
-            return snapshots.sorted {
+            let sortedSnapshots = snapshots.sorted {
                 order[$0.series.id, default: .max] < order[$1.series.id, default: .max]
             }
+            return await enrichSetMetadata(in: sortedSnapshots)
+        }
+    }
+
+    private func enrichSetMetadata(
+        in snapshots: [CatalogSeriesSnapshot]
+    ) async -> [CatalogSeriesSnapshot] {
+        let cachedSetsByID = Dictionary(
+            uniqueKeysWithValues: groups.flatMap(\.sets).map { ($0.id, $0) }
+        )
+        let fallbackSetsByID = bundledSetsByID.merging(cachedSetsByID) { _, cached in cached }
+        let initiallyEnriched = snapshots.map { snapshot in
+            CatalogSeriesSnapshot(
+                series: snapshot.series,
+                sets: snapshot.sets.map { set in
+                    set.fillingMissingMetadata(from: fallbackSetsByID[set.id])
+                }
+            )
+        }
+        let missingIDs = initiallyEnriched
+            .flatMap(\.sets)
+            .filter { $0.abbreviation == nil }
+            .map(\.id)
+
+        guard !missingIDs.isEmpty else { return initiallyEnriched }
+
+        let provider = self.provider
+        let detailedSets = await withTaskGroup(of: CatalogSet?.self) { group in
+            for id in missingIDs {
+                group.addTask {
+                    try? await provider.fetchSet(id: id).set
+                }
+            }
+
+            var sets: [CatalogSet] = []
+            for await set in group {
+                if let set { sets.append(set) }
+            }
+            return Dictionary(uniqueKeysWithValues: sets.map { ($0.id, $0) })
+        }
+
+        return initiallyEnriched.map { snapshot in
+            CatalogSeriesSnapshot(
+                series: snapshot.series,
+                sets: snapshot.sets.map { set in
+                    set.fillingMissingMetadata(from: detailedSets[set.id])
+                }
+            )
         }
     }
 
