@@ -234,6 +234,62 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(storedBaseSetIDs, ["base1"])
     }
 
+    func testPrintedExpansionCodesBeginWithScarletViolet() {
+        XCTAssertFalse(set(id: "sm115", seriesID: "sm", name: "Hidden Fates").usesPrintedExpansionCode)
+        XCTAssertTrue(set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet").usesPrintedExpansionCode)
+        XCTAssertTrue(set(id: "me04", seriesID: "me", name: "Chaos Rising").usesPrintedExpansionCode)
+    }
+
+    func testSeriesArtworkFallsBackToAChildSetSymbol() {
+        let symbolURL = URL(string: "https://assets.tcgdex.net/univ/mc/2021swsh/symbol")!
+        let collection = CatalogSeriesGroup(
+            series: CatalogSeries(id: "mc", name: "McDonald's Collection", logoURL: nil),
+            sets: [
+                CatalogSet(
+                    id: "2021swsh",
+                    seriesID: "mc",
+                    name: "McDonald's Collection 2021",
+                    abbreviation: nil,
+                    logoURL: nil,
+                    symbolURL: symbolURL,
+                    officialCardCount: 25,
+                    totalCardCount: 25,
+                    releaseDate: nil,
+                    rarityCounts: nil
+                ),
+            ]
+        )
+
+        XCTAssertEqual(collection.preferredArtworkURL, symbolURL)
+    }
+
+    func testUpcomingSetUsesItsAnnouncedReleaseDate() {
+        let upcoming = CatalogSet(
+            id: "upcoming-30c",
+            seriesID: "me",
+            name: "30th Celebration",
+            abbreviation: "30C",
+            logoURL: nil,
+            symbolURL: nil,
+            officialCardCount: 0,
+            totalCardCount: 0,
+            releaseDate: "2026-09-16",
+            rarityCounts: nil
+        )
+        let referenceDate = Calendar(identifier: .gregorian).date(
+            from: DateComponents(year: 2026, month: 8, day: 22)
+        )!
+
+        XCTAssertTrue(upcoming.isUpcoming(relativeTo: referenceDate))
+        XCTAssertEqual(
+            Calendar(identifier: .gregorian).dateComponents(
+                [.year, .month, .day],
+                from: upcoming.releaseDateValue!
+            ),
+            DateComponents(year: 2026, month: 9, day: 16)
+        )
+    }
+
     private func set(
         id: String,
         seriesID: String,

@@ -25,6 +25,31 @@ struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
     let releaseDate: String?
     let rarityCounts: [CatalogRarityCount]?
 
+    /// Scarlet & Violet introduced printed expansion codes in place of the
+    /// expansion symbols used by earlier English releases. Mega Evolution
+    /// continues that modern convention.
+    var usesPrintedExpansionCode: Bool {
+        seriesID == "sv" || seriesID == "me"
+    }
+
+    var preferredArtworkURL: URL? {
+        logoURL ?? symbolURL
+    }
+
+    var releaseDateValue: Date? {
+        guard let releaseDate else { return nil }
+        let parts = releaseDate.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return Calendar(identifier: .gregorian).date(
+            from: DateComponents(year: parts[0], month: parts[1], day: parts[2])
+        )
+    }
+
+    func isUpcoming(relativeTo date: Date = .now) -> Bool {
+        guard let releaseDateValue else { return false }
+        return releaseDateValue > date
+    }
+
     func fillingMissingMetadata(from fallback: CatalogSet?) -> CatalogSet {
         CatalogSet(
             id: id,
@@ -103,4 +128,10 @@ struct CatalogSeriesGroup: Equatable, Identifiable, Sendable {
     let sets: [CatalogSet]
 
     var id: String { series.id }
+
+    var preferredArtworkURL: URL? {
+        series.logoURL
+            ?? sets.first(where: { $0.logoURL != nil })?.logoURL
+            ?? sets.first(where: { $0.symbolURL != nil })?.symbolURL
+    }
 }
