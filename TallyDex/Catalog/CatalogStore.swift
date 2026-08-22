@@ -169,6 +169,10 @@ final class CatalogStore {
         try await resolveRepository().searchCards(query: query)
     }
 
+    func cards(matchingName query: String) async throws -> [CatalogCardSearchResult] {
+        try await resolveRepository().fetchCards(matchingName: query)
+    }
+
     func searchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult] {
         try await resolveRepository().fetchSearchResults(cardIDs: cardIDs)
     }

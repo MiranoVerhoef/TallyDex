@@ -427,6 +427,44 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(downloadedSetIDs, ["sv01"])
     }
 
+    func testCustomFolderNameSearchReturnsEveryNameMatchOnly() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let lucarioSet = set(id: "sv01", seriesID: "sv", name: "Lucario Collection")
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [lucarioSet]),
+        ])
+        let matches = (0..<105).map { index in
+            CatalogCard(
+                id: "sv01-\(index)",
+                setID: "sv01",
+                localID: String(format: "%03d", index),
+                name: index.isMultiple(of: 2) ? "Lucario" : "Lucario ex",
+                imageURL: nil,
+                category: nil,
+                illustrator: nil,
+                rarity: nil
+            )
+        }
+        let unrelated = CatalogCard(
+            id: "sv01-other",
+            setID: "sv01",
+            localID: "999",
+            name: "Riolu",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        try await repository.replaceSearchIndex(matches + [unrelated])
+
+        let results = try await repository.fetchCards(matchingName: "lucario")
+
+        XCTAssertEqual(results.count, 105)
+        XCTAssertFalse(results.contains { $0.card.id == unrelated.id })
+        XCTAssertTrue(results.allSatisfy { $0.card.name.localizedCaseInsensitiveContains("lucario") })
+    }
+
     func testArtworkCacheReportsAndSelectivelyClearsCategories() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
