@@ -84,6 +84,77 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(entries.first?.quantity, 1)
     }
 
+    func testCustomFolderPersistsAndCanBeEdited() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let id = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
+        let createdAt = Date(timeIntervalSince1970: 100)
+        let updatedAt = Date(timeIntervalSince1970: 200)
+        let folder = CustomCollectionFolder(
+            id: id,
+            name: "All Lucario",
+            cardNameQuery: "Lucario",
+            displayMode: .allMatching,
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+        try await repository.saveCustomFolder(folder)
+
+        let edited = CustomCollectionFolder(
+            id: id,
+            name: "Owned Lucario",
+            cardNameQuery: "Lucario",
+            displayMode: .ownedOnly,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+        try await repository.saveCustomFolder(edited)
+
+        let savedFolders = try await repository.fetchCustomFolders()
+        XCTAssertEqual(savedFolders, [edited])
+    }
+
+    func testDeletingCustomFolderDoesNotDeleteOwnedCards() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let update = Date(timeIntervalSince1970: 100)
+        let folder = CustomCollectionFolder(
+            id: UUID(),
+            name: "Lucario",
+            cardNameQuery: "Lucario",
+            displayMode: .allMatching,
+            createdAt: update,
+            updatedAt: update
+        )
+        try await repository.setQuantity(1, cardID: "sv06-113", variant: .normal, updatedAt: update)
+        try await repository.saveCustomFolder(folder)
+
+        try await repository.deleteCustomFolder(id: folder.id)
+
+        let savedFolders = try await repository.fetchCustomFolders()
+        let ownedEntries = try await repository.fetchEntries(cardID: "sv06-113")
+        XCTAssertTrue(savedFolders.isEmpty)
+        XCTAssertEqual(ownedEntries.first?.quantity, 1)
+    }
+
+    func testCustomFolderRequiresNameAndCardRule() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let update = Date(timeIntervalSince1970: 100)
+        let folder = CustomCollectionFolder(
+            id: UUID(),
+            name: "  ",
+            cardNameQuery: "Lucario",
+            displayMode: .allMatching,
+            createdAt: update,
+            updatedAt: update
+        )
+
+        do {
+            try await repository.saveCustomFolder(folder)
+            XCTFail("Expected an invalid custom folder error")
+        } catch {
+            XCTAssertEqual(error as? CollectionRepositoryError, .invalidCustomFolder)
+        }
+    }
+
     @MainActor
     func testCollectionStoreDefaultsToMainGoal() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
@@ -92,5 +163,25 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(store.goal(for: "sv01"), .main)
         try await store.setGoal(.master, for: "sv01")
         XCTAssertEqual(store.goal(for: "sv01"), .master)
+    }
+
+    @MainActor
+    func testCollectionStoreReloadsCustomFolders() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let update = Date(timeIntervalSince1970: 100)
+        let folder = CustomCollectionFolder(
+            id: UUID(),
+            name: "Lucario",
+            cardNameQuery: "Lucario",
+            displayMode: .allMatching,
+            createdAt: update,
+            updatedAt: update
+        )
+        try await repository.saveCustomFolder(folder)
+
+        let store = CollectionStore(repository: repository)
+        await store.start()
+
+        XCTAssertEqual(store.customFolders, [folder])
     }
 }

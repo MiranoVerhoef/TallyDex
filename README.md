@@ -44,6 +44,12 @@ apps can use this source URL:
 https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.json
 ```
 
+## Planned pricing preferences
+
+The planned Cardmarket integration will let collectors choose the cheapest
+listing across all countries or restrict results to a selected country, with
+prices displayed in EUR or converted to USD.
+
 ## License
 
 TallyDex's original source code, interface, documentation, name, and artwork

@@ -20,12 +20,21 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.1/TallyDex-v0.2.1-custom-folders.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.0/TallyDex-v0.2.0-Set-Edit.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.4/TallyDex-v0.1.4-Search.png",
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png",
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Detail.png"
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.2.1",
+          "buildVersion": "7",
+          "date": "2026-08-22",
+          "localizedDescription": "Adds persistent custom collection folders powered by card-name rules, All or Owned display modes, cross-set completion progress, source-set labels, quick ownership checkmarks, and long-press folder editing.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.1/TallyDex-v0.2.1.ipa",
+          "size": 6529064,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.2.0",
           "buildVersion": "6",

@@ -1301,6 +1301,8 @@ struct CollectionView: View {
     @State private var cards: [CatalogCardSearchResult] = []
     @State private var isLoadingCards = false
     @State private var message: String?
+    @State private var isCreatingFolder = false
+    @State private var editingFolder: CustomCollectionFolder?
 
     private var ownedCardIDs: [String] {
         Array(Set(collectionStore.ownedEntries.map(\.cardID))).sorted()
@@ -1312,27 +1314,50 @@ struct CollectionView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if collectionStore.isInitialLoading || isLoadingCards && cards.isEmpty {
-                    ProgressView("Loading your collection…")
-                } else if ownedCardIDs.isEmpty {
-                    ContentUnavailableView(
-                        "Your Collection Is Empty",
-                        systemImage: "rectangle.stack.badge.plus",
-                        description: Text("Use the quantity controls on a card to add it here.")
-                    )
-                } else if cards.isEmpty {
-                    ContentUnavailableView(
-                        "Collection Details Unavailable",
-                        systemImage: "externaldrive.badge.exclamationmark",
-                        description: Text(
+            List {
+                Section {
+                    if collectionStore.customFolders.isEmpty {
+                        Button {
+                            isCreatingFolder = true
+                        } label: {
+                            Label("Create your first folder", systemImage: "folder.badge.plus")
+                        }
+                    } else {
+                        ForEach(collectionStore.customFolders) { folder in
+                            NavigationLink {
+                                CustomCollectionFolderDetailView(folder: folder)
+                            } label: {
+                                CustomCollectionFolderRow(folder: folder)
+                            }
+                            .contextMenu {
+                                Button("Edit", systemImage: "slider.horizontal.3") {
+                                    editingFolder = folder
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Custom folders")
+                } footer: {
+                    Text("Folders find cards by name. Ownership is shared with Sets and the rest of your collection.")
+                }
+
+                Section("Owned cards") {
+                    if collectionStore.isInitialLoading || isLoadingCards && cards.isEmpty {
+                        ProgressView("Loading your collection…")
+                    } else if ownedCardIDs.isEmpty {
+                        Text("No cards owned yet. Open a set or an All folder to start checking cards off.")
+                            .foregroundStyle(.secondary)
+                    } else if cards.isEmpty {
+                        Label(
                             message
                                 ?? collectionStore.loadMessage
-                                ?? "Your quantities are safe and will appear after the catalog is available."
+                                ?? "Your quantities are safe and will appear after the catalog is available.",
+                            systemImage: "externaldrive.badge.exclamationmark"
                         )
-                    )
-                } else {
-                    List(cards) { result in
+                        .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(cards) { result in
                         NavigationLink {
                             CatalogCardDetailView(card: result.card)
                         } label: {
@@ -1353,10 +1378,28 @@ struct CollectionView: View {
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
+                    }
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Collection")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("New folder", systemImage: "folder.badge.plus") {
+                        isCreatingFolder = true
+                    }
+                }
+            }
+            .sheet(isPresented: $isCreatingFolder) {
+                CustomCollectionFolderEditorView(folder: nil)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $editingFolder) { folder in
+                CustomCollectionFolderEditorView(folder: folder)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
             .task(id: ownedCardIDsKey) {
                 await loadCards()
             }
@@ -1387,6 +1430,369 @@ struct CollectionView: View {
         } catch {
             cards = []
             message = "Your quantities are safe, but their card details couldn’t be loaded."
+        }
+    }
+}
+
+private struct CustomCollectionFolderRow: View {
+    let folder: CustomCollectionFolder
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder.fill")
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(folder.name)
+                    .font(.body.weight(.semibold))
+                Text("Matches “\(folder.cardNameQuery)” · \(folder.displayMode.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct CustomCollectionFolderEditorView: View {
+    let folder: CustomCollectionFolder?
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var cardNameQuery: String
+    @State private var displayMode: CustomCollectionFolderDisplayMode
+    @State private var isSaving = false
+    @State private var isConfirmingDelete = false
+    @State private var message: String?
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedQuery: String {
+        cardNameQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    init(folder: CustomCollectionFolder?) {
+        self.folder = folder
+        _name = State(initialValue: folder?.name ?? "")
+        _cardNameQuery = State(initialValue: folder?.cardNameQuery ?? "")
+        _displayMode = State(initialValue: folder?.displayMode ?? .allMatching)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Folder") {
+                    TextField("Name, e.g. All Lucario", text: $name)
+                        .textInputAutocapitalization(.words)
+                    TextField("Card name, e.g. Lucario", text: $cardNameQuery)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                }
+
+                Section("Show cards") {
+                    Picker("Cards", selection: $displayMode) {
+                        ForEach(CustomCollectionFolderDisplayMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(displayMode.explanation)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Text("The folder updates automatically as the catalog and your ownership change.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if folder != nil {
+                    Section {
+                        Button("Delete Folder", role: .destructive) {
+                            isConfirmingDelete = true
+                        }
+                    } footer: {
+                        Text("Deleting a folder never removes cards or quantities from your collection.")
+                    }
+                }
+
+                if let message {
+                    Section {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle(folder == nil ? "New folder" : "Edit folder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(trimmedName.isEmpty || trimmedQuery.isEmpty || isSaving)
+                }
+            }
+            .alert("Delete \(folder?.name ?? "folder")?", isPresented: $isConfirmingDelete) {
+                Button("Delete", role: .destructive) { deleteFolder() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your owned cards and quantities will stay unchanged.")
+            }
+        }
+    }
+
+    private func save() {
+        guard !trimmedName.isEmpty, !trimmedQuery.isEmpty, !isSaving else { return }
+        isSaving = true
+        message = nil
+        let timestamp = Date()
+        let savedFolder = CustomCollectionFolder(
+            id: folder?.id ?? UUID(),
+            name: trimmedName,
+            cardNameQuery: trimmedQuery,
+            displayMode: displayMode,
+            createdAt: folder?.createdAt ?? timestamp,
+            updatedAt: timestamp
+        )
+        Task {
+            do {
+                try await collectionStore.saveCustomFolder(savedFolder)
+                dismiss()
+            } catch {
+                message = "That folder couldn’t be saved. Please try again."
+                isSaving = false
+            }
+        }
+    }
+
+    private func deleteFolder() {
+        guard let folder, !isSaving else { return }
+        isSaving = true
+        message = nil
+        Task {
+            do {
+                try await collectionStore.deleteCustomFolder(id: folder.id)
+                dismiss()
+            } catch {
+                message = "That folder couldn’t be deleted. Please try again."
+                isSaving = false
+            }
+        }
+    }
+}
+
+private struct CustomCollectionFolderDetailView: View {
+    let folder: CustomCollectionFolder
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var matches: [CatalogCardSearchResult] = []
+    @State private var isLoading = true
+    @State private var message: String?
+    @State private var selectedVariantCard: CatalogCard?
+    @State private var updatingCardIDs: Set<String> = []
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
+    ]
+
+    private var visibleMatches: [CatalogCardSearchResult] {
+        switch folder.displayMode {
+        case .allMatching: matches
+        case .ownedOnly: matches.filter { collectionStore.owns(cardID: $0.card.id) }
+        }
+    }
+
+    private var ownedCount: Int {
+        matches.reduce(into: 0) { count, result in
+            if collectionStore.owns(cardID: result.card.id) { count += 1 }
+        }
+    }
+
+    private var ownedPercentage: Int {
+        guard !matches.isEmpty else { return 0 }
+        return Int((Double(ownedCount) / Double(matches.count) * 100).rounded())
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Matches card names containing “\(folder.cardNameQuery)”", systemImage: "text.magnifyingglass")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    HStack(spacing: 10) {
+                        Text("\(ownedPercentage)% owned")
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.tint)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(.tint.opacity(0.12), in: Capsule())
+                        Text("\(ownedCount) of \(matches.count)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let message {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if isLoading && matches.isEmpty {
+                    ProgressView("Finding matching cards…")
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                } else if matches.isEmpty {
+                    ContentUnavailableView(
+                        "No Matching Cards",
+                        systemImage: "rectangle.stack.badge.questionmark",
+                        description: Text("Long-press this folder from Collection and edit its card-name rule.")
+                    )
+                } else if visibleMatches.isEmpty {
+                    ContentUnavailableView(
+                        "No Owned Matches Yet",
+                        systemImage: "checkmark.circle",
+                        description: Text("Edit this folder to show All cards, then check cards off here.")
+                    )
+                } else {
+                    HStack {
+                        Text("\(visibleMatches.count) cards")
+                            .font(.headline)
+                        Spacer()
+                        Text(folder.displayMode == .allMatching ? "All" : "Owned")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    LazyVGrid(columns: columns, spacing: 18) {
+                        ForEach(visibleMatches) { result in
+                            VStack(alignment: .leading, spacing: 5) {
+                                ZStack(alignment: .topTrailing) {
+                                    NavigationLink {
+                                        CatalogCardDetailView(card: result.card)
+                                    } label: {
+                                        CatalogCardTile(card: result.card)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        handleCheckmarkTap(for: result.card)
+                                    } label: {
+                                        if updatingCardIDs.contains(result.card.id) {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .frame(width: 34, height: 34)
+                                        } else {
+                                            Image(
+                                                systemName: collectionStore.owns(cardID: result.card.id)
+                                                    ? "checkmark.circle.fill"
+                                                    : "circle"
+                                            )
+                                            .font(.title2.weight(.semibold))
+                                            .foregroundStyle(
+                                                collectionStore.owns(cardID: result.card.id)
+                                                    ? Color.accentColor
+                                                    : Color.secondary
+                                            )
+                                            .frame(width: 34, height: 34)
+                                        }
+                                    }
+                                    .background(.regularMaterial, in: Circle())
+                                    .contentShape(Circle())
+                                    .offset(x: 7, y: -7)
+                                    .disabled(updatingCardIDs.contains(result.card.id))
+                                    .contextMenu {
+                                        Button("Choose printings", systemImage: "square.stack.3d.up") {
+                                            selectedVariantCard = result.card
+                                        }
+                                    }
+                                    .accessibilityLabel(
+                                        collectionStore.owns(cardID: result.card.id)
+                                            ? "Toggle standard printing for \(result.card.name)"
+                                            : "Mark \(result.card.name) as owned"
+                                    )
+                                }
+
+                                Text(result.setName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding()
+        }
+        .navigationTitle(folder.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $selectedVariantCard) { card in
+            CatalogVariantPickerView(card: card)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .task(id: "\(folder.updatedAt.timeIntervalSince1970)|\(catalogStore.isPreparingSearchIndex)") {
+            await loadMatches()
+        }
+    }
+
+    private func handleCheckmarkTap(for card: CatalogCard) {
+        guard !updatingCardIDs.contains(card.id) else { return }
+        updatingCardIDs.insert(card.id)
+        message = nil
+        Task {
+            defer { updatingCardIDs.remove(card.id) }
+            do {
+                let snapshot = try await catalogStore.details(for: card)
+                let preference: [CatalogVariantKind] = [
+                    .normal,
+                    .holo,
+                    .reverseHolo,
+                    .firstEdition,
+                    .watermarkedPromo,
+                ]
+                guard let standardVariant = preference.first(where: snapshot.variants.contains) else {
+                    message = "Printing information isn’t available for \(card.name) yet."
+                    return
+                }
+                let currentQuantity = collectionStore.quantity(
+                    cardID: card.id,
+                    variant: standardVariant
+                )
+                try await collectionStore.setQuantity(
+                    currentQuantity > 0 ? 0 : 1,
+                    cardID: card.id,
+                    variant: standardVariant
+                )
+            } catch {
+                message = "TallyDex couldn’t update \(card.name). Check your connection and try again."
+            }
+        }
+    }
+
+    private func loadMatches() async {
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            matches = try await catalogStore.cards(matchingName: folder.cardNameQuery)
+            if matches.isEmpty, catalogStore.isPreparingSearchIndex {
+                message = "TallyDex is preparing the complete card catalog. This folder will refresh automatically."
+            }
+        } catch {
+            matches = []
+            message = "Matching cards couldn’t be loaded. Please try again."
         }
     }
 }
