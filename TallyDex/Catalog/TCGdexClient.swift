@@ -86,6 +86,11 @@ struct TCGdexClient: CatalogProvider, Sendable {
         return response.map(\.catalogSeries)
     }
 
+    func fetchCardIndex() async throws -> [CatalogCard] {
+        let response: [CardBriefDTO] = try await request(path: "cards")
+        return response.compactMap(\.searchIndexCard)
+    }
+
     func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
         let response: SeriesDTO = try await request(path: "series/\(id)")
         let series = response.catalogSeries
@@ -249,6 +254,13 @@ private struct CardBriefDTO: Decodable, Sendable {
     let localId: String
     let name: String
     let image: URL?
+
+    var searchIndexCard: CatalogCard? {
+        let setID = image?.deletingLastPathComponent().lastPathComponent
+            ?? id.split(separator: "-").dropLast().joined(separator: "-")
+        guard !setID.isEmpty else { return nil }
+        return catalogCard(setID: setID)
+    }
 
     func catalogCard(setID: String) -> CatalogCard {
         CatalogCard(
