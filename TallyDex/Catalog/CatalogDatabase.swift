@@ -112,6 +112,29 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v5-pricing") { database in
+            try database.create(table: "catalogPrice") { table in
+                table.column("cardID", .text).notNull().indexed()
+                    .references("catalogCard", onDelete: .cascade)
+                table.column("variant", .text).notNull()
+                table.column("source", .text).notNull()
+                table.column("currencyCode", .text).notNull()
+                table.column("amount", .double).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.primaryKey(["cardID", "variant", "source"])
+            }
+            try database.create(table: "catalogPriceHistory") { table in
+                table.column("cardID", .text).notNull().indexed()
+                table.column("variant", .text).notNull()
+                table.column("source", .text).notNull()
+                table.column("day", .text).notNull()
+                table.column("currencyCode", .text).notNull()
+                table.column("amount", .double).notNull()
+                table.column("sourceUpdatedAt", .datetime).notNull()
+                table.primaryKey(["cardID", "variant", "source", "day"])
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -326,6 +349,19 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func fetchPrices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]] {
+        guard !cardIDs.isEmpty else { return [:] }
+        return try await database.queue.read { database in
+            let placeholders = Array(repeating: "?", count: cardIDs.count).joined(separator: ",")
+            let rows = try Row.fetchAll(
+                database,
+                sql: "SELECT * FROM catalogPrice WHERE cardID IN (\(placeholders))",
+                arguments: StatementArguments(cardIDs)
+            )
+            return Dictionary(grouping: rows.compactMap(Self.priceQuote), by: \.cardID)
+        }
+    }
+
     func metadataDate(forKey key: String) async throws -> Date? {
         try await database.queue.read { database in
             try Date.fetchOne(
@@ -508,6 +544,38 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     arguments: [card.id, variant.rawValue]
                 )
             }
+            let dayFormatter = DateFormatter()
+            dayFormatter.calendar = Calendar(identifier: .gregorian)
+            dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+            dayFormatter.dateFormat = "yyyy-MM-dd"
+            for quote in snapshot.prices {
+                try database.execute(
+                    sql: """
+                    INSERT INTO catalogPrice (cardID, variant, source, currencyCode, amount, updatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(cardID, variant, source) DO UPDATE SET
+                        currencyCode = excluded.currencyCode,
+                        amount = excluded.amount,
+                        updatedAt = excluded.updatedAt
+                    """,
+                    arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
+                                quote.currencyCode, quote.amount, quote.updatedAt]
+                )
+                try database.execute(
+                    sql: """
+                    INSERT INTO catalogPriceHistory
+                        (cardID, variant, source, day, currencyCode, amount, sourceUpdatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(cardID, variant, source, day) DO UPDATE SET
+                        currencyCode = excluded.currencyCode,
+                        amount = excluded.amount,
+                        sourceUpdatedAt = excluded.sourceUpdatedAt
+                    """,
+                    arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
+                                dayFormatter.string(from: quote.updatedAt), quote.currencyCode,
+                                quote.amount, quote.updatedAt]
+                )
+            }
         }
     }
 
@@ -583,6 +651,15 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 encodeRarityCounts(set.rarityCounts),
                 sortIndex,
             ]
+        )
+    }
+
+    private static func priceQuote(_ row: Row) -> CatalogPriceQuote? {
+        guard let variant = CatalogVariantKind(rawValue: row["variant"]),
+              let source = CatalogPriceSource(rawValue: row["source"]) else { return nil }
+        return CatalogPriceQuote(
+            cardID: row["cardID"], variant: variant, source: source,
+            currencyCode: row["currencyCode"], amount: row["amount"], updatedAt: row["updatedAt"]
         )
     }
 

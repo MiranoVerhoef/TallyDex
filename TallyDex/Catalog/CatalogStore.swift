@@ -54,6 +54,7 @@ final class CatalogStore {
     private static let lastCatalogRefreshKey = "catalog.lastRefresh"
     private static let lastSearchIndexRefreshKey = "catalog.searchIndex.lastRefresh"
     private static let staleInterval: TimeInterval = 6 * 60 * 60
+    private static let pricingStaleInterval: TimeInterval = 18 * 60 * 60
 
     init(
         provider: any CatalogProvider = TCGdexClient(),
@@ -181,15 +182,37 @@ final class CatalogStore {
         try await resolveRepository().fetchVariants(cardIDs: cardIDs)
     }
 
+    func prices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]] {
+        try await resolveRepository().fetchPrices(cardIDs: cardIDs)
+    }
+
     /// TCGdex's set response contains card summaries but not printing variants.
     /// Hydrate missing detail records with a small concurrency window so
     /// variant-aware goals can calculate an exact denominator without flooding
     /// the provider.
-    func prepareVariants(for cards: [CatalogCard]) async -> [String: Set<CatalogVariantKind>] {
+    func prepareVariants(
+        for cards: [CatalogCard],
+        forcePriceRefresh: Bool = false
+    ) async -> [String: Set<CatalogVariantKind>] {
         guard let repository = try? resolveRepository() else { return [:] }
-        var cached = (try? await repository.fetchVariants(cardIDs: cards.map(\.id))) ?? [:]
-        var remaining = cards.filter { cached[$0.id]?.isEmpty != false }.makeIterator()
+        let cardIDs = cards.map(\.id)
+        var cached = (try? await repository.fetchVariants(cardIDs: cardIDs)) ?? [:]
+        let cachedPrices = (try? await repository.fetchPrices(cardIDs: cardIDs)) ?? [:]
+        var cardsNeedingRefresh: [CatalogCard] = []
+        for card in cards {
+            let lastPriceRefresh: Date? = (try? await repository.metadataDate(
+                forKey: priceRefreshKey(card.id)
+            )) ?? nil
+            if forcePriceRefresh
+                || cached[card.id]?.isEmpty != false
+                || cachedPrices[card.id]?.isEmpty != false && lastPriceRefresh == nil
+                || needsPricingRefresh(lastPriceRefresh) {
+                cardsNeedingRefresh.append(card)
+            }
+        }
+        var remaining = cardsNeedingRefresh.makeIterator()
         let provider = self.provider
+        let refreshDate = now()
 
         await withTaskGroup(of: CatalogCardSnapshot?.self) { group in
             let concurrencyLimit = 4
@@ -201,6 +224,10 @@ final class CatalogStore {
             while let snapshot = await group.next() {
                 if let snapshot {
                     try? await repository.replaceCard(snapshot)
+                    try? await repository.setMetadataDate(
+                        refreshDate,
+                        forKey: priceRefreshKey(snapshot.card.id)
+                    )
                 }
                 if let card = remaining.next() {
                     group.addTask { try? await provider.fetchCard(id: card.id) }
@@ -208,7 +235,7 @@ final class CatalogStore {
             }
         }
 
-        cached = (try? await repository.fetchVariants(cardIDs: cards.map(\.id))) ?? cached
+        cached = (try? await repository.fetchVariants(cardIDs: cardIDs)) ?? cached
         return cached
     }
 
@@ -217,12 +244,17 @@ final class CatalogStore {
         do {
             let snapshot = try await provider.fetchCard(id: card.id)
             try await repository.replaceCard(snapshot)
+            try await repository.setMetadataDate(now(), forKey: priceRefreshKey(card.id))
             let cachedVariants = try await repository.fetchVariants(cardID: card.id)
-            return CatalogCardSnapshot(card: snapshot.card, variants: cachedVariants)
+            let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
+            let cachedPrices = pricesByCardID[card.id] ?? []
+            return CatalogCardSnapshot(card: snapshot.card, variants: cachedVariants, prices: cachedPrices)
         } catch {
             let variants = try await repository.fetchVariants(cardID: card.id)
+            let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
+            let prices = pricesByCardID[card.id] ?? []
             if card.category != nil || card.illustrator != nil || card.rarity != nil || !variants.isEmpty {
-                return CatalogCardSnapshot(card: card, variants: variants)
+                return CatalogCardSnapshot(card: card, variants: variants, prices: prices)
             }
             throw error
         }
@@ -235,6 +267,15 @@ final class CatalogStore {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.applicationDatabase())
         self.repository = repository
         return repository
+    }
+
+    private func priceRefreshKey(_ cardID: String) -> String {
+        "catalog.price.\(cardID).lastRefresh"
+    }
+
+    private func needsPricingRefresh(_ date: Date?) -> Bool {
+        guard let date else { return true }
+        return now().timeIntervalSince(date) >= Self.pricingStaleInterval
     }
 
     private func loadCachedCatalog(from repository: any CatalogRepository) async throws {

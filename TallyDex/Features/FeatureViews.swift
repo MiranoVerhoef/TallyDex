@@ -1,6 +1,44 @@
 import SwiftUI
 import UIKit
 
+private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> String {
+    amount.formatted(
+        .currency(code: currencyCode)
+            .precision(.fractionLength(2))
+    )
+}
+
+private struct CollectionValueSummaryView: View {
+    let summary: CatalogValueSummary
+    var title = "Estimated value"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(title, systemImage: "chart.line.uptrend.xyaxis")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(formattedCatalogPrice(summary.amount, currencyCode: summary.currencyCode))
+                    .font(.headline.monospacedDigit())
+            }
+            Text(detailText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detailText: String {
+        let priced = "\(summary.pricedVariants) priced printing\(summary.pricedVariants == 1 ? "" : "s")"
+        guard summary.missingVariants > 0 else {
+            return "\(summary.source.displayName) · \(priced)"
+        }
+        return "\(summary.source.displayName) · \(priced) · \(summary.missingVariants) without an exact price"
+    }
+}
+
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system
     case light
@@ -642,6 +680,8 @@ private struct CatalogSetDetailView: View {
     let set: CatalogSet
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var isShowingInformation = false
     @State private var cards: [CatalogCard] = []
     @State private var isLoadingCards = true
@@ -652,6 +692,7 @@ private struct CatalogSetDetailView: View {
     @State private var selectedFilter = SetCardFilter.all
     @State private var searchText = ""
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
+    @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isPreparingGoalMetadata = false
 
     private let columns = [
@@ -674,6 +715,22 @@ private struct CatalogSetDetailView: View {
             availableVariants: availableVariantsByCardID,
             ownedEntries: collectionStore.ownedEntries
         )
+    }
+
+    private var valueSummary: CatalogValueSummary {
+        let cardIDs = Set(cards.map(\.id))
+        return CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries.filter { cardIDs.contains($0.cardID) },
+            prices: pricesByCardID,
+            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        )
+    }
+
+    private var hasOwnedSetCards: Bool {
+        let cardIDs = Set(cards.map(\.id))
+        return collectionStore.ownedEntries.contains {
+            $0.quantity > 0 && cardIDs.contains($0.cardID)
+        }
     }
 
     private var visibleCards: [CatalogCard] {
@@ -730,6 +787,10 @@ private struct CatalogSetDetailView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+
+                if hasOwnedSetCards {
+                    CollectionValueSummaryView(summary: valueSummary, title: "Owned value")
+                }
 
                 if let collectionMessage {
                     Label(collectionMessage, systemImage: "exclamationmark.triangle")
@@ -913,7 +974,7 @@ private struct CatalogSetDetailView: View {
         defer { isLoadingCards = false }
         do {
             cards = try await catalogStore.cards(for: set, forceRefresh: forceRefresh)
-            await loadGoalVariants()
+            await loadGoalVariants(forcePriceRefresh: forceRefresh)
         } catch {
             cardMessage = set.isUpcoming()
                 ? "The card list will appear automatically after it is published."
@@ -921,10 +982,14 @@ private struct CatalogSetDetailView: View {
         }
     }
 
-    private func loadGoalVariants() async {
+    private func loadGoalVariants(forcePriceRefresh: Bool = false) async {
         isPreparingGoalMetadata = true
         defer { isPreparingGoalMetadata = false }
-        availableVariantsByCardID = await catalogStore.prepareVariants(for: cards)
+        availableVariantsByCardID = await catalogStore.prepareVariants(
+            for: cards,
+            forcePriceRefresh: forcePriceRefresh
+        )
+        pricesByCardID = (try? await catalogStore.prices(cardIDs: cards.map(\.id))) ?? [:]
     }
 }
 
@@ -935,6 +1000,8 @@ private struct CatalogVariantPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var snapshot: CatalogCardSnapshot?
     @State private var quantities: [CatalogVariantKind: Int] = [:]
     @State private var isLoading = true
@@ -1013,7 +1080,12 @@ private struct CatalogVariantPickerView: View {
             .disabled(isUpdating)
             .accessibilityLabel(quantity > 0 ? "Remove \(variant.displayName)" : "Add \(variant.displayName)")
 
-            Text(variant.displayName)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(variant.displayName)
+                Text(priceText(for: variant))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
 
             if allowsMultipleCopies {
@@ -1040,6 +1112,16 @@ private struct CatalogVariantPickerView: View {
                 .disabled(isUpdating)
             }
         }
+    }
+
+    private func priceText(for variant: CatalogVariantKind) -> String {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        guard let quote = snapshot?.prices.first(where: {
+            $0.variant == variant && $0.source == source
+        }) else {
+            return "No exact \(source.displayName) price"
+        }
+        return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
     }
 
     private func load() async {
@@ -1130,6 +1212,8 @@ private struct CatalogCardDetailView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var snapshot: CatalogCardSnapshot?
     @State private var isLoadingDetails = true
     @State private var message: String?
@@ -1297,6 +1381,9 @@ private struct CatalogCardDetailView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(variant.displayName)
                     .font(.body.weight(.medium))
+                Text(priceText(for: variant))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if allowsMultipleCopies {
                     Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
                         .font(.caption)
@@ -1345,6 +1432,16 @@ private struct CatalogCardDetailView: View {
                 )
             }
         }
+    }
+
+    private func priceText(for variant: CatalogVariantKind) -> String {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        guard let quote = snapshot?.prices.first(where: {
+            $0.variant == variant && $0.source == source
+        }) else {
+            return "No exact \(source.displayName) price"
+        }
+        return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
     }
 
     private func updateQuantity(for variant: CatalogVariantKind, to newQuantity: Int) {
@@ -1599,7 +1696,10 @@ struct SearchView: View {
 struct CollectionView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var cards: [CatalogCardSearchResult] = []
+    @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isLoadingCards = false
     @State private var message: String?
     @State private var isCreatingFolder = false
@@ -1613,9 +1713,25 @@ struct CollectionView: View {
         ownedCardIDs.joined(separator: "|")
     }
 
+    private var valueSummary: CatalogValueSummary {
+        CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries,
+            prices: pricesByCardID,
+            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        )
+    }
+
     var body: some View {
         NavigationStack {
             List {
+                if !ownedCardIDs.isEmpty {
+                    Section {
+                        CollectionValueSummaryView(summary: valueSummary)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
                 Section {
                     if collectionStore.customFolders.isEmpty {
                         Button {
@@ -1721,13 +1837,17 @@ struct CollectionView: View {
     private func loadCards() async {
         guard !ownedCardIDs.isEmpty else {
             cards = []
+            pricesByCardID = [:]
             return
         }
         isLoadingCards = true
         message = nil
         defer { isLoadingCards = false }
         do {
-            cards = try await catalogStore.searchResults(cardIDs: ownedCardIDs)
+            let loadedCards = try await catalogStore.searchResults(cardIDs: ownedCardIDs)
+            cards = loadedCards
+            _ = await catalogStore.prepareVariants(for: loadedCards.map(\.card))
+            pricesByCardID = (try? await catalogStore.prices(cardIDs: ownedCardIDs)) ?? [:]
         } catch {
             cards = []
             message = "Your quantities are safe, but their card details couldn’t be loaded."
@@ -1924,7 +2044,10 @@ private struct CustomCollectionFolderDetailView: View {
     let folder: CustomCollectionFolder
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var matches: [CatalogCardSearchResult] = []
+    @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isLoading = true
     @State private var message: String?
     @State private var selectedVariantCard: CatalogCard?
@@ -2012,6 +2135,22 @@ private struct CustomCollectionFolderDetailView: View {
         return Int((Double(ownedCount) / Double(matches.count) * 100).rounded())
     }
 
+    private var ownedMatchIDs: Set<String> {
+        Set(matches.lazy.map(\.card.id).filter { collectionStore.owns(cardID: $0) })
+    }
+
+    private var ownedMatchIDsKey: String {
+        ownedMatchIDs.sorted().joined(separator: "|")
+    }
+
+    private var valueSummary: CatalogValueSummary {
+        CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries.filter { ownedMatchIDs.contains($0.cardID) },
+            prices: pricesByCardID,
+            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        )
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
@@ -2030,6 +2169,11 @@ private struct CustomCollectionFolderDetailView: View {
                         Text("\(ownedCount) of \(matches.count)")
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
+                    }
+
+                    if !ownedMatchIDs.isEmpty {
+                        CollectionValueSummaryView(summary: valueSummary, title: "Folder value")
+                            .padding(.top, 4)
                     }
                 }
 
@@ -2223,6 +2367,9 @@ private struct CustomCollectionFolderDetailView: View {
         .task(id: "\(folder.updatedAt.timeIntervalSince1970)|\(catalogStore.isPreparingSearchIndex)") {
             await loadMatches()
         }
+        .task(id: ownedMatchIDsKey) {
+            await loadPricesForOwnedMatches()
+        }
     }
 
     private func handleCheckmarkTap(for card: CatalogCard) {
@@ -2267,6 +2414,7 @@ private struct CustomCollectionFolderDetailView: View {
         defer { isLoading = false }
         do {
             matches = try await catalogStore.cards(matchingName: folder.cardNameQuery)
+            await loadPricesForOwnedMatches()
             if matches.isEmpty, catalogStore.isPreparingSearchIndex {
                 message = "TallyDex is preparing the complete card catalog. This folder will refresh automatically."
             }
@@ -2274,6 +2422,19 @@ private struct CustomCollectionFolderDetailView: View {
             matches = []
             message = "Matching cards couldn’t be loaded. Please try again."
         }
+    }
+
+    private func loadPricesForOwnedMatches() async {
+        let ownedCards = matches.lazy.map(\.card).filter {
+            collectionStore.owns(cardID: $0.id)
+        }
+        let cards = Array(ownedCards)
+        guard !cards.isEmpty else {
+            pricesByCardID = [:]
+            return
+        }
+        _ = await catalogStore.prepareVariants(for: cards)
+        pricesByCardID = (try? await catalogStore.prices(cardIDs: cards.map(\.id))) ?? [:]
     }
 }
 
@@ -2286,6 +2447,8 @@ struct SettingsView: View {
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(CollectionSettings.defaultGoalKey)
     private var defaultCollectionGoal = CollectionSettings.defaultGoal.rawValue
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
 
     var body: some View {
         NavigationStack {
@@ -2339,6 +2502,20 @@ struct SettingsView: View {
                             ? "Use − and + controls to save exact quantities for each printing."
                             : "A checkmark only records whether you own a printing. Existing quantities are preserved."
                     ))
+                }
+
+                Section {
+                    Picker("Price source", selection: $preferredPriceSource) {
+                        ForEach(CatalogPriceSource.allCases) { source in
+                            Text("\(source.displayName) (\(source.currencyCode))")
+                                .tag(source.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                } header: {
+                    Text("Prices")
+                } footer: {
+                    Text("Prices come through TCGdex and use each marketplace’s native currency. TallyDex only values a printing when that exact variant has a price; it never guesses or converts currencies.")
                 }
 
                 Section("Storage") {

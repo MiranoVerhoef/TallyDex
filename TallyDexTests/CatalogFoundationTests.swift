@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import XCTest
 @testable import TallyDex
 
@@ -98,6 +99,90 @@ final class CatalogFoundationTests: XCTestCase {
 
         XCTAssertEqual(snapshot.card.setID, "sv03.5")
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
+    }
+
+    func testTCGdexDecodesExactMarketplacePricesPerPrinting() async throws {
+        let response = #"""
+        {
+          "id": "swsh3-136",
+          "localId": "136",
+          "name": "Furret",
+          "set": { "id": "swsh3" },
+          "variants": { "normal": true, "reverse": true },
+          "pricing": {
+            "cardmarket": {
+              "updated": "2026-08-22T08:03:05.134Z",
+              "unit": "EUR",
+              "avg": 0.10,
+              "trend": 0.07,
+              "avg-holo": 0.28,
+              "trend-holo": 0.26
+            },
+            "tcgplayer": {
+              "updated": "2026-08-22T08:03:19.776Z",
+              "unit": "USD",
+              "normal": { "marketPrice": 0.21 },
+              "reverse-holofoil": { "marketPrice": 0.43 }
+            }
+          }
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "swsh3-136")
+
+        XCTAssertEqual(snapshot.prices.count, 4)
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket && $0.variant == .normal }?.amount,
+            0.07
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket && $0.variant == .reverseHolo }?.amount,
+            0.26
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .normal }?.amount,
+            0.21
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .reverseHolo }?.amount,
+            0.43
+        )
+    }
+
+    func testCardmarketDoesNotGuessWhichFoilPriceBelongsToMultipleFoilVariants() async throws {
+        let response = #"""
+        {
+          "id": "example-1",
+          "localId": "1",
+          "name": "Example",
+          "set": { "id": "example" },
+          "variants": { "normal": true, "reverse": true, "holo": true },
+          "pricing": {
+            "cardmarket": {
+              "updated": "2026-08-22T08:03:05.134Z",
+              "unit": "EUR",
+              "trend": 1.00,
+              "trend-holo": 4.00
+            }
+          }
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "example-1")
+
+        XCTAssertEqual(snapshot.prices.map(\.variant), [.normal])
     }
 
     func testTCGdexCombinesLegacyAndDetailedVariantData() async throws {
@@ -474,6 +559,66 @@ final class CatalogFoundationTests: XCTestCase {
         try await repository.replaceSet(CatalogSetSnapshot(set: catalogSet, cards: [card]))
         let downloadedSetIDs = try await repository.fetchDownloadedSetIDs()
         XCTAssertEqual(downloadedSetIDs, ["sv01"])
+    }
+
+    func testRepositoryCachesCurrentPricesAndDailyHistory() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let card = CatalogCard(
+            id: "sv01-001", setID: "sv01", localID: "001", name: "Sprigatito",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        let firstDate = ISO8601DateFormatter().date(from: "2026-08-21T08:00:00Z")!
+        let secondDate = ISO8601DateFormatter().date(from: "2026-08-22T08:00:00Z")!
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(cardID: card.id, variant: .normal, source: .cardmarket,
+                           currencyCode: "EUR", amount: 1.25, updatedAt: firstDate)]
+        ))
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(cardID: card.id, variant: .normal, source: .cardmarket,
+                           currencyCode: "EUR", amount: 1.50, updatedAt: secondDate)]
+        ))
+
+        let current = try await repository.fetchPrices(cardIDs: [card.id])[card.id]
+        let historyCount = try await database.queue.read { database in
+            try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM catalogPriceHistory")
+        }
+
+        XCTAssertEqual(current?.first?.amount, 1.50)
+        XCTAssertEqual(historyCount, 2)
+    }
+
+    func testCollectionValueUsesExactVariantsQuantitiesAndReportsMissingPrices() {
+        let date = Date(timeIntervalSince1970: 1)
+        let entries = [
+            CollectionVariantEntry(cardID: "one", variant: .normal, quantity: 2, updatedAt: date),
+            CollectionVariantEntry(cardID: "one", variant: .reverseHolo, quantity: 1, updatedAt: date),
+        ]
+        let prices = [
+            "one": [
+                CatalogPriceQuote(cardID: "one", variant: .normal, source: .cardmarket,
+                                  currencyCode: "EUR", amount: 1.25, updatedAt: date),
+            ],
+        ]
+
+        let summary = CatalogValueCalculator.summary(
+            entries: entries,
+            prices: prices,
+            source: .cardmarket
+        )
+
+        XCTAssertEqual(summary.amount, 2.50)
+        XCTAssertEqual(summary.pricedVariants, 1)
+        XCTAssertEqual(summary.missingVariants, 1)
     }
 
     func testCustomFolderNameSearchReturnsEveryNameMatchOnly() async throws {
