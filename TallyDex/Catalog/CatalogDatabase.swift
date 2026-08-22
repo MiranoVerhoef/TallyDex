@@ -27,7 +27,8 @@ final class CatalogDatabase: @unchecked Sendable {
         )
         let directory = applicationSupport.appending(path: "TallyDex", directoryHint: .isDirectory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        return try CatalogDatabase(path: directory.appending(path: "catalog.sqlite").path())
+        let databaseURL = directory.appending(path: "catalog.sqlite")
+        return try CatalogDatabase(path: databaseURL.path(percentEncoded: false))
     }
 
     private func migrate() throws {
@@ -152,6 +153,16 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func metadataDate(forKey key: String) async throws -> Date? {
+        try await database.queue.read { database in
+            try Date.fetchOne(
+                database,
+                sql: "SELECT updatedAt FROM catalogMetadata WHERE key = ?",
+                arguments: [key]
+            )
+        }
+    }
+
     func upsertSeries(_ series: [CatalogSeries]) async throws {
         try await database.queue.write { database in
             for (index, item) in series.enumerated() {
@@ -166,6 +177,37 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     """,
                     arguments: [item.id, item.name, item.logoURL?.absoluteString, index]
                 )
+            }
+        }
+    }
+
+    func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws {
+        let seriesIDs = snapshots.map(\.series.id)
+        let setIDs = snapshots.flatMap { $0.sets.map(\.id) }
+        guard Set(seriesIDs).count == seriesIDs.count,
+              Set(setIDs).count == setIDs.count,
+              snapshots.allSatisfy({ snapshot in
+                  snapshot.sets.allSatisfy { $0.seriesID == snapshot.series.id }
+              }) else {
+            throw CatalogRepositoryError.invalidSnapshot
+        }
+
+        try await database.queue.write { database in
+            try database.execute(sql: "DELETE FROM catalogSeries")
+
+            for (seriesIndex, snapshot) in snapshots.enumerated() {
+                let series = snapshot.series
+                try database.execute(
+                    sql: """
+                    INSERT INTO catalogSeries (id, name, logoURL, sortIndex)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    arguments: [series.id, series.name, series.logoURL?.absoluteString, seriesIndex]
+                )
+
+                for (setIndex, set) in snapshot.sets.enumerated() {
+                    try Self.insert(set, sortIndex: setIndex, database: database)
+                }
             }
         }
     }
@@ -257,6 +299,21 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func setMetadataDate(_ date: Date, forKey key: String) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO catalogMetadata (key, value, updatedAt)
+                VALUES (?, 'date', ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [key, date]
+            )
+        }
+    }
+
     private static func insert(_ set: CatalogSet, sortIndex: Int, database: Database) throws {
         try database.execute(
             sql: """
@@ -320,4 +377,5 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
 
 enum CatalogRepositoryError: Error, Equatable {
     case seriesMismatch
+    case invalidSnapshot
 }
