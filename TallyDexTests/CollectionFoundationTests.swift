@@ -184,4 +184,237 @@ final class CollectionFoundationTests: XCTestCase {
 
         XCTAssertEqual(store.customFolders, [folder])
     }
+
+    func testSetPreferencePersistsTrackingGoalAndCustomRules() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let preference = SetCollectionPreference(
+            setID: "sv03.5",
+            status: .hidden,
+            goal: .custom,
+            includedVariants: [.normal, .reverseHolo],
+            includesSecretCards: true,
+            updatedAt: Date(timeIntervalSince1970: 500)
+        )
+
+        try await repository.saveSetPreference(preference)
+
+        let preferences = try await repository.fetchSetPreferences()
+        XCTAssertEqual(preferences["sv03.5"], preference)
+    }
+
+    func testRemovingSetPreferencePreservesOwnership() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let update = Date(timeIntervalSince1970: 500)
+        try await repository.setQuantity(1, cardID: "sv03.5-001", variant: .normal, updatedAt: update)
+        try await repository.saveSetPreference(
+            SetCollectionPreference(
+                setID: "sv03.5",
+                status: .collecting,
+                goal: .complete,
+                includedVariants: [.normal],
+                includesSecretCards: true,
+                updatedAt: update
+            )
+        )
+
+        try await repository.deleteSetPreference(setID: "sv03.5")
+
+        let preferences = try await repository.fetchSetPreferences()
+        let entries = try await repository.fetchEntries(cardID: "sv03.5-001")
+        XCTAssertNil(preferences["sv03.5"])
+        XCTAssertEqual(entries.first?.quantity, 1)
+    }
+
+    @MainActor
+    func testCollectionStoreExposesMySetsAndHiddenStatus() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let store = CollectionStore(repository: repository)
+        let update = Date(timeIntervalSince1970: 500)
+
+        try await store.saveSetPreference(
+            SetCollectionPreference(
+                setID: "sv01",
+                status: .collecting,
+                goal: .main,
+                includedVariants: [.normal],
+                includesSecretCards: false,
+                updatedAt: update
+            )
+        )
+        try await store.saveSetPreference(
+            SetCollectionPreference(
+                setID: "sv02",
+                status: .hidden,
+                goal: .complete,
+                includedVariants: [.normal],
+                includesSecretCards: true,
+                updatedAt: update
+            )
+        )
+
+        XCTAssertEqual(store.trackingStatus(for: "sv01"), .collecting)
+        XCTAssertEqual(store.trackingStatus(for: "sv02"), .hidden)
+        XCTAssertEqual(store.trackingStatus(for: "sv03"), .notCollecting)
+    }
+
+    func testWishlistAndNotesPersistTogether() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let metadata = CardCollectionMetadata(
+            cardID: "sv03.5-001",
+            isWishlisted: true,
+            notes: "Need a clean binder copy.",
+            updatedAt: Date(timeIntervalSince1970: 600)
+        )
+
+        try await repository.saveCardMetadata(metadata)
+
+        let saved = try await repository.fetchCardMetadata(cardID: metadata.cardID)
+        let missing = try await repository.fetchCardMetadata(cardID: "missing")
+        XCTAssertEqual(saved, metadata)
+        XCTAssertEqual(missing, .empty(cardID: "missing"))
+    }
+
+    func testGoalAwareProgressSeparatesMainCompleteAndMaster() {
+        let set = CatalogSet(
+            id: "sv-test",
+            seriesID: "sv",
+            name: "Test Set",
+            abbreviation: "TST",
+            logoURL: nil,
+            symbolURL: nil,
+            officialCardCount: 2,
+            totalCardCount: 3,
+            releaseDate: "2026-01-01",
+            rarityCounts: nil
+        )
+        let cards = [
+            card(id: "sv-test-001", number: "001"),
+            card(id: "sv-test-002", number: "002"),
+            card(id: "sv-test-003", number: "003"),
+        ]
+        let owned = [
+            CollectionVariantEntry(
+                cardID: cards[0].id,
+                variant: .normal,
+                quantity: 1,
+                updatedAt: .now
+            ),
+            CollectionVariantEntry(
+                cardID: cards[0].id,
+                variant: .reverseHolo,
+                quantity: 1,
+                updatedAt: .now
+            ),
+        ]
+        let variants: [String: Swift.Set<CatalogVariantKind>] = Dictionary(
+            uniqueKeysWithValues: cards.map {
+                ($0.id, Swift.Set([CatalogVariantKind.normal, CatalogVariantKind.reverseHolo]))
+            }
+        )
+
+        let main = CollectionProgressCalculator.progress(
+            cards: cards,
+            set: set,
+            preference: preference(setID: set.id, goal: .main),
+            availableVariants: variants,
+            ownedEntries: owned
+        )
+        let complete = CollectionProgressCalculator.progress(
+            cards: cards,
+            set: set,
+            preference: preference(setID: set.id, goal: .complete),
+            availableVariants: variants,
+            ownedEntries: owned
+        )
+        let master = CollectionProgressCalculator.progress(
+            cards: cards,
+            set: set,
+            preference: preference(setID: set.id, goal: .master),
+            availableVariants: variants,
+            ownedEntries: owned
+        )
+
+        XCTAssertEqual(main, CollectionProgress(completedSlots: 1, requiredSlots: 2))
+        XCTAssertEqual(complete, CollectionProgress(completedSlots: 1, requiredSlots: 3))
+        XCTAssertEqual(master, CollectionProgress(completedSlots: 2, requiredSlots: 6))
+    }
+
+    func testGoalAwareProgressAppliesHoloChaseAndCustomRules() {
+        let set = CatalogSet(
+            id: "sv-test",
+            seriesID: "sv",
+            name: "Test Set",
+            abbreviation: "TST",
+            logoURL: nil,
+            symbolURL: nil,
+            officialCardCount: 2,
+            totalCardCount: 3,
+            releaseDate: "2026-01-01",
+            rarityCounts: nil
+        )
+        let cards = [
+            card(id: "sv-test-001", number: "001"),
+            card(id: "sv-test-002", number: "002"),
+            card(id: "sv-test-003", number: "003"),
+        ]
+        let variants: [String: Swift.Set<CatalogVariantKind>] = [
+            cards[0].id: [.normal, .holo, .reverseHolo],
+            cards[1].id: [.normal, .holo],
+            cards[2].id: [.normal, .reverseHolo],
+        ]
+        let owned = [
+            CollectionVariantEntry(cardID: cards[0].id, variant: .holo, quantity: 1, updatedAt: .now),
+            CollectionVariantEntry(cardID: cards[0].id, variant: .reverseHolo, quantity: 1, updatedAt: .now),
+            CollectionVariantEntry(cardID: cards[1].id, variant: .holo, quantity: 1, updatedAt: .now),
+            CollectionVariantEntry(cardID: cards[2].id, variant: .normal, quantity: 1, updatedAt: .now),
+        ]
+        let holoChase = CollectionProgressCalculator.progress(
+            cards: cards,
+            set: set,
+            preference: preference(setID: set.id, goal: .holoChase),
+            availableVariants: variants,
+            ownedEntries: owned
+        )
+        let custom = CollectionProgressCalculator.progress(
+            cards: cards,
+            set: set,
+            preference: SetCollectionPreference(
+                setID: set.id,
+                status: .collecting,
+                goal: .custom,
+                includedVariants: [.reverseHolo],
+                includesSecretCards: false,
+                updatedAt: .now
+            ),
+            availableVariants: variants,
+            ownedEntries: owned
+        )
+
+        XCTAssertEqual(holoChase, CollectionProgress(completedSlots: 3, requiredSlots: 4))
+        XCTAssertEqual(custom, CollectionProgress(completedSlots: 1, requiredSlots: 1))
+    }
+
+    private func card(id: String, number: String) -> CatalogCard {
+        CatalogCard(
+            id: id,
+            setID: "sv-test",
+            localID: number,
+            name: "Test Card",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+    }
+
+    private func preference(setID: String, goal: CollectionGoal) -> SetCollectionPreference {
+        SetCollectionPreference(
+            setID: setID,
+            status: .collecting,
+            goal: goal,
+            includedVariants: [.normal, .holo, .reverseHolo],
+            includesSecretCards: true,
+            updatedAt: .now
+        )
+    }
 }

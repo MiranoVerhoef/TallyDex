@@ -7,7 +7,9 @@ final class CollectionStore {
     private(set) var quantitiesByCardID: [String: [CatalogVariantKind: Int]] = [:]
     private(set) var ownedEntries: [CollectionVariantEntry] = []
     private(set) var goalsBySetID: [String: CollectionGoal] = [:]
+    private(set) var setPreferencesByID: [String: SetCollectionPreference] = [:]
     private(set) var customFolders: [CustomCollectionFolder] = []
+    private(set) var cardMetadataByID: [String: CardCollectionMetadata] = [:]
     private(set) var isInitialLoading = true
     private(set) var loadMessage: String?
 
@@ -29,10 +31,11 @@ final class CollectionStore {
         do {
             let repository = try resolveRepository()
             async let entries = repository.fetchOwnedEntries()
-            async let goals = repository.fetchSetGoals()
+            async let preferences = repository.fetchSetPreferences()
             async let folders = repository.fetchCustomFolders()
             ownedEntries = try await entries
-            goalsBySetID = try await goals
+            setPreferencesByID = try await preferences
+            goalsBySetID = setPreferencesByID.mapValues(\.goal)
             customFolders = try await folders
         } catch {
             loadMessage = "Your saved collection couldn’t be loaded."
@@ -44,9 +47,55 @@ final class CollectionStore {
         goalsBySetID[setID] ?? .main
     }
 
+    func preference(for setID: String) -> SetCollectionPreference {
+        setPreferencesByID[setID] ?? .defaultPreference(setID: setID)
+    }
+
+    func trackingStatus(for setID: String) -> SetTrackingStatus {
+        preference(for: setID).status
+    }
+
     func setGoal(_ goal: CollectionGoal, for setID: String) async throws {
-        try await resolveRepository().setGoal(goal, setID: setID, updatedAt: now())
-        goalsBySetID[setID] = goal
+        var preference = preference(for: setID)
+        preference = SetCollectionPreference(
+            setID: setID,
+            status: .collecting,
+            goal: goal,
+            includedVariants: preference.includedVariants,
+            includesSecretCards: preference.includesSecretCards,
+            updatedAt: now()
+        )
+        try await saveSetPreference(preference)
+    }
+
+    func saveSetPreference(_ preference: SetCollectionPreference) async throws {
+        if preference.status == .notCollecting {
+            try await resolveRepository().deleteSetPreference(setID: preference.setID)
+            setPreferencesByID.removeValue(forKey: preference.setID)
+            goalsBySetID.removeValue(forKey: preference.setID)
+        } else {
+            try await resolveRepository().saveSetPreference(preference)
+            setPreferencesByID[preference.setID] = preference
+            goalsBySetID[preference.setID] = preference.goal
+        }
+    }
+
+    func cardMetadata(for cardID: String, forceReload: Bool = false) async throws -> CardCollectionMetadata {
+        if !forceReload, let metadata = cardMetadataByID[cardID] { return metadata }
+        let metadata = try await resolveRepository().fetchCardMetadata(cardID: cardID)
+        cardMetadataByID[cardID] = metadata
+        return metadata
+    }
+
+    func saveCardMetadata(cardID: String, isWishlisted: Bool, notes: String) async throws {
+        let metadata = CardCollectionMetadata(
+            cardID: cardID,
+            isWishlisted: isWishlisted,
+            notes: notes,
+            updatedAt: now()
+        )
+        try await resolveRepository().saveCardMetadata(metadata)
+        cardMetadataByID[cardID] = metadata
     }
 
     func saveCustomFolder(_ folder: CustomCollectionFolder) async throws {

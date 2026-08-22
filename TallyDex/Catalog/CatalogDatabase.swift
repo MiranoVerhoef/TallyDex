@@ -190,7 +190,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             return try Row.fetchAll(
                 database,
                 sql: """
-                SELECT search.*, catalogSet.name AS setName
+                SELECT search.*, catalogSet.name AS setName,
+                       catalogSet.releaseDate AS setReleaseDate
                 FROM catalogSearchCard AS search
                 JOIN catalogSet ON catalogSet.id = search.setID
                 WHERE \(whereClause)
@@ -210,7 +211,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                         illustrator: nil,
                         rarity: nil
                     ),
-                    setName: row["setName"]
+                    setName: row["setName"],
+                    setReleaseDate: row["setReleaseDate"]
                 )
             }
         }
@@ -223,7 +225,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             try Row.fetchAll(
                 database,
                 sql: """
-                SELECT search.*, catalogSet.name AS setName
+                SELECT search.*, catalogSet.name AS setName,
+                       catalogSet.releaseDate AS setReleaseDate
                 FROM catalogSearchCard AS search
                 JOIN catalogSet ON catalogSet.id = search.setID
                 WHERE search.name LIKE ? COLLATE NOCASE
@@ -242,7 +245,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                         illustrator: nil,
                         rarity: nil
                     ),
-                    setName: row["setName"]
+                    setName: row["setName"],
+                    setReleaseDate: row["setReleaseDate"]
                 )
             }
         }
@@ -255,7 +259,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             return try Row.fetchAll(
                 database,
                 sql: """
-                SELECT search.*, catalogSet.name AS setName
+                SELECT search.*, catalogSet.name AS setName,
+                       catalogSet.releaseDate AS setReleaseDate
                 FROM catalogSearchCard AS search
                 JOIN catalogSet ON catalogSet.id = search.setID
                 WHERE search.id IN (\(placeholders))
@@ -274,7 +279,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                         illustrator: nil,
                         rarity: nil
                     ),
-                    setName: row["setName"]
+                    setName: row["setName"],
+                    setReleaseDate: row["setReleaseDate"]
                 )
             }
         }
@@ -288,6 +294,25 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 arguments: [cardID]
             )
             return Set(rawValues.compactMap(CatalogVariantKind.init(rawValue:)))
+        }
+    }
+
+    func fetchVariants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>] {
+        guard !cardIDs.isEmpty else { return [:] }
+        return try await database.queue.read { database in
+            let placeholders = Array(repeating: "?", count: cardIDs.count).joined(separator: ",")
+            let rows = try Row.fetchAll(
+                database,
+                sql: "SELECT cardID, kind FROM catalogVariant WHERE cardID IN (\(placeholders))",
+                arguments: StatementArguments(cardIDs)
+            )
+            return rows.reduce(into: [String: Set<CatalogVariantKind>]()) { result, row in
+                let cardID: String = row["cardID"]
+                let rawKind: String = row["kind"]
+                if let kind = CatalogVariantKind(rawValue: rawKind) {
+                    result[cardID, default: []].insert(kind)
+                }
+            }
         }
     }
 
@@ -397,16 +422,31 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 arguments: [snapshot.set.id]
             ) ?? 0
             try Self.insert(snapshot.set, sortIndex: existingSortIndex, database: database)
-            try database.execute(
-                sql: "DELETE FROM catalogCard WHERE setID = ?",
-                arguments: [snapshot.set.id]
-            )
+            let incomingCardIDs = snapshot.cards.map(\.id)
+            if incomingCardIDs.isEmpty {
+                try database.execute(
+                    sql: "DELETE FROM catalogCard WHERE setID = ?",
+                    arguments: [snapshot.set.id]
+                )
+            } else {
+                let placeholders = Array(repeating: "?", count: incomingCardIDs.count).joined(separator: ",")
+                try database.execute(
+                    sql: "DELETE FROM catalogCard WHERE setID = ? AND id NOT IN (\(placeholders))",
+                    arguments: StatementArguments([snapshot.set.id] + incomingCardIDs)
+                )
+            }
             for (index, card) in snapshot.cards.enumerated() {
                 try database.execute(
                     sql: """
                     INSERT INTO catalogCard
                         (id, setID, localID, name, imageURL, category, illustrator, rarity, sortIndex)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        setID = excluded.setID,
+                        localID = excluded.localID,
+                        name = excluded.name,
+                        imageURL = excluded.imageURL,
+                        sortIndex = excluded.sortIndex
                     """,
                     arguments: [
                         card.id,
