@@ -6,6 +6,8 @@ enum CatalogArtworkCategory: String, CaseIterable, Identifiable, Sendable {
     case seriesLogos = "series-logos"
     case setLogos = "set-logos"
     case expansionSymbols = "expansion-symbols"
+    case cardThumbnails = "card-thumbnails"
+    case cardArtwork = "card-artwork"
 
     var id: String { rawValue }
 
@@ -14,6 +16,8 @@ enum CatalogArtworkCategory: String, CaseIterable, Identifiable, Sendable {
         case .seriesLogos: "Series logos"
         case .setLogos: "Set logos"
         case .expansionSymbols: "Expansion symbols"
+        case .cardThumbnails: "Card thumbnails"
+        case .cardArtwork: "Full card artwork"
         }
     }
 
@@ -22,6 +26,8 @@ enum CatalogArtworkCategory: String, CaseIterable, Identifiable, Sendable {
         case .seriesLogos: "rectangle.stack"
         case .setLogos: "photo.on.rectangle"
         case .expansionSymbols: "seal"
+        case .cardThumbnails: "rectangle.grid.3x2"
+        case .cardArtwork: "rectangle.portrait"
         }
     }
 }
@@ -78,9 +84,19 @@ actor CatalogArtworkCache {
                 .appendingPathComponent("v1", isDirectory: true)
     }
 
-    static func resolvedAssetURL(_ url: URL) -> URL {
+    static func resolvedAssetURL(_ url: URL, category: CatalogArtworkCategory) -> URL {
+        if category == .cardThumbnails {
+            return url.appending(path: "low.webp")
+        }
+        if category == .cardArtwork {
+            return url.appending(path: "high.webp")
+        }
         guard url.pathExtension.isEmpty else { return url }
         return url.appendingPathExtension("png")
+    }
+
+    static func resolvedAssetURL(_ url: URL) -> URL {
+        resolvedAssetURL(url, category: .setLogos)
     }
 
     func data(for reference: CatalogArtworkReference) async throws -> Data {
@@ -89,7 +105,7 @@ actor CatalogArtworkCache {
             return cached
         }
 
-        let sourceURL = Self.resolvedAssetURL(reference.url)
+        let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
         let (data, response) = try await URLSession.shared.data(from: sourceURL)
         guard let response = response as? HTTPURLResponse,
               (200..<300).contains(response.statusCode) else {
@@ -160,7 +176,7 @@ actor CatalogArtworkCache {
     }
 
     private func cachedFileURL(for reference: CatalogArtworkReference) -> URL {
-        let sourceURL = Self.resolvedAssetURL(reference.url)
+        let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
         let digest = SHA256.hash(data: Data(sourceURL.absoluteString.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
@@ -239,27 +255,22 @@ extension CatalogSeriesGroup {
     }
 
     var preferredArtworkReference: CatalogArtworkReference? {
-        if let logoURL = series.logoURL {
-            return .init(url: logoURL, category: .seriesLogos)
-        }
-        if let logoURL = sets.first(where: { $0.logoURL != nil })?.logoURL {
-            return .init(url: logoURL, category: .setLogos)
-        }
-        if let symbolURL = sets.first(where: { $0.symbolURL != nil })?.symbolURL {
-            return .init(url: symbolURL, category: .expansionSymbols)
-        }
-        return nil
+        series.logoURL.map { .init(url: $0, category: .seriesLogos) }
     }
 }
 
 extension CatalogSet {
     var preferredArtworkReference: CatalogArtworkReference? {
-        if let logoURL {
-            return .init(url: logoURL, category: .setLogos)
-        }
-        if let symbolURL {
-            return .init(url: symbolURL, category: .expansionSymbols)
-        }
-        return nil
+        logoURL.map { .init(url: $0, category: .setLogos) }
+    }
+}
+
+extension CatalogCard {
+    var thumbnailArtworkReference: CatalogArtworkReference? {
+        imageURL.map { .init(url: $0, category: .cardThumbnails) }
+    }
+
+    var fullArtworkReference: CatalogArtworkReference? {
+        imageURL.map { .init(url: $0, category: .cardArtwork) }
     }
 }

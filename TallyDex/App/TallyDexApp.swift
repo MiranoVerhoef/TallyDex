@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct TallyDexApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
     @State private var catalogStore = CatalogStore()
     @State private var artworkCacheStore = ArtworkCacheStore()
@@ -14,6 +15,11 @@ struct TallyDexApp: App {
                 .preferredColorScheme(AppAppearance.resolve(appearance).colorScheme)
                 .task {
                     await catalogStore.start()
+                    await artworkCacheStore.prefetch(groups: catalogStore.groups)
+                }
+                .task(id: scenePhase) {
+                    guard scenePhase == .active else { return }
+                    await catalogStore.refreshIfNeeded()
                     await artworkCacheStore.prefetch(groups: catalogStore.groups)
                 }
         }
