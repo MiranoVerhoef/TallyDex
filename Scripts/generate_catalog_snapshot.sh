@@ -10,6 +10,9 @@ snapshot_file="${working_directory}/catalog-en.json"
 next_snapshot_file="${working_directory}/catalog-en-next.json"
 series_index_file="${working_directory}/series.json"
 set_metadata_file="${working_directory}/set-metadata.json"
+rarity_metadata_file="${working_directory}/rarity-metadata.json"
+cards_database_archive="${working_directory}/cards-database.tar.gz"
+cards_database_directory="${working_directory}/cards-database"
 
 cleanup() {
     rm -rf "${working_directory}"
@@ -69,6 +72,20 @@ jq -s \
 
 jq --slurpfile metadata "${set_metadata_file}" \
     '.series |= map(.sets |= map(. + ($metadata[0][.id] // {})))' \
+    "${snapshot_file}" > "${next_snapshot_file}"
+mv "${next_snapshot_file}" "${snapshot_file}"
+
+curl --fail --silent --show-error --location --retry 3 \
+    "https://codeload.github.com/tcgdex/cards-database/tar.gz/refs/heads/master" \
+    --output "${cards_database_archive}"
+mkdir -p "${cards_database_directory}"
+tar -xzf "${cards_database_archive}" -C "${cards_database_directory}" --strip-components=1
+xcrun swift "${script_directory}/generate_rarity_metadata.swift" \
+    "${cards_database_directory}/data" \
+    "${rarity_metadata_file}"
+
+jq --slurpfile rarities "${rarity_metadata_file}" \
+    '.series |= map(.sets |= map(. + {rarityCounts: ($rarities[0][.id] // [])}))' \
     "${snapshot_file}" > "${next_snapshot_file}"
 mv "${next_snapshot_file}" "${snapshot_file}"
 

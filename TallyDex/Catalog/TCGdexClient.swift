@@ -202,7 +202,8 @@ private struct SetBriefDTO: Decodable, Sendable {
             symbolURL: symbol,
             officialCardCount: cardCount.official,
             totalCardCount: cardCount.total ?? cardCount.official,
-            releaseDate: nil
+            releaseDate: nil,
+            rarityCounts: nil
         )
     }
 }
@@ -228,7 +229,8 @@ private struct SetDTO: Decodable, Sendable {
             symbolURL: symbol,
             officialCardCount: cardCount.official,
             totalCardCount: cardCount.total ?? cardCount.official,
-            releaseDate: releaseDate
+            releaseDate: releaseDate,
+            rarityCounts: nil
         )
     }
 }

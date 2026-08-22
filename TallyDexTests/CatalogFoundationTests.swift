@@ -176,7 +176,16 @@ final class CatalogFoundationTests: XCTestCase {
                 series: mega,
                 sets: [
                     set(id: "me05", seriesID: "me", name: "Pitch Black"),
-                    set(id: "me04", seriesID: "me", name: "Chaos Rising", abbreviation: "CRI"),
+                    set(
+                        id: "me04",
+                        seriesID: "me",
+                        name: "Chaos Rising",
+                        abbreviation: "CRI",
+                        rarityCounts: [
+                            CatalogRarityCount(rarity: "Illustration rare", count: 11),
+                            CatalogRarityCount(rarity: "Special illustration rare", count: 6),
+                        ]
+                    ),
                 ]
             ),
             CatalogSeriesSnapshot(
@@ -191,6 +200,10 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(storedSeriesIDs, ["me", "sv"])
         XCTAssertEqual(storedMegaSetNames, ["Pitch Black", "Chaos Rising"])
         XCTAssertEqual(storedChaosRising.abbreviation, "CRI")
+        XCTAssertEqual(storedChaosRising.rarityCounts, [
+            CatalogRarityCount(rarity: "Illustration rare", count: 11),
+            CatalogRarityCount(rarity: "Special illustration rare", count: 6),
+        ])
     }
 
     func testRepositoryRejectsInvalidWholeCatalogWithoutDeletingCache() async throws {
@@ -225,7 +238,8 @@ final class CatalogFoundationTests: XCTestCase {
         id: String,
         seriesID: String,
         name: String,
-        abbreviation: String? = nil
+        abbreviation: String? = nil,
+        rarityCounts: [CatalogRarityCount]? = nil
     ) -> CatalogSet {
         CatalogSet(
             id: id,
@@ -236,7 +250,8 @@ final class CatalogFoundationTests: XCTestCase {
             symbolURL: nil,
             officialCardCount: 1,
             totalCardCount: 1,
-            releaseDate: nil
+            releaseDate: nil,
+            rarityCounts: rarityCounts
         )
     }
 }

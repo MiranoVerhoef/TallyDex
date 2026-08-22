@@ -93,6 +93,12 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v3-set-rarity-counts") { database in
+            try database.alter(table: "catalogSet") { table in
+                table.add(column: "rarityCountsJSON", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -324,8 +330,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         try database.execute(
             sql: """
             INSERT INTO catalogSet
-                (id, seriesID, name, abbreviation, logoURL, symbolURL, officialCardCount, totalCardCount, releaseDate, sortIndex)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, seriesID, name, abbreviation, logoURL, symbolURL, officialCardCount, totalCardCount, releaseDate, rarityCountsJSON, sortIndex)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 seriesID = excluded.seriesID,
                 name = excluded.name,
@@ -335,6 +341,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 officialCardCount = excluded.officialCardCount,
                 totalCardCount = excluded.totalCardCount,
                 releaseDate = COALESCE(excluded.releaseDate, catalogSet.releaseDate),
+                rarityCountsJSON = COALESCE(excluded.rarityCountsJSON, catalogSet.rarityCountsJSON),
                 sortIndex = excluded.sortIndex
             """,
             arguments: [
@@ -347,6 +354,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 set.officialCardCount,
                 set.totalCardCount,
                 set.releaseDate,
+                encodeRarityCounts(set.rarityCounts),
                 sortIndex,
             ]
         )
@@ -362,7 +370,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             symbolURL: url(row["symbolURL"]),
             officialCardCount: row["officialCardCount"],
             totalCardCount: row["totalCardCount"],
-            releaseDate: row["releaseDate"]
+            releaseDate: row["releaseDate"],
+            rarityCounts: decodeRarityCounts(row["rarityCountsJSON"])
         )
     }
 
@@ -381,6 +390,22 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
 
     private static func url(_ string: String?) -> URL? {
         string.flatMap(URL.init(string:))
+    }
+
+    private static func encodeRarityCounts(_ counts: [CatalogRarityCount]?) -> String? {
+        guard let counts,
+              let data = try? JSONEncoder().encode(counts) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func decodeRarityCounts(_ string: String?) -> [CatalogRarityCount]? {
+        guard let string,
+              let data = string.data(using: .utf8) else {
+            return nil
+        }
+        return try? JSONDecoder().decode([CatalogRarityCount].self, from: data)
     }
 }
 
