@@ -52,6 +52,17 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v3-custom-folders") { database in
+            try database.create(table: "customCollectionFolder") { table in
+                table.column("id", .text).primaryKey()
+                table.column("name", .text).notNull()
+                table.column("cardNameQuery", .text).notNull()
+                table.column("displayMode", .text).notNull()
+                table.column("createdAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull()
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -107,6 +118,19 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func fetchCustomFolders() async throws -> [CustomCollectionFolder] {
+        try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT id, name, cardNameQuery, displayMode, createdAt, updatedAt
+                FROM customCollectionFolder
+                ORDER BY name COLLATE NOCASE, createdAt, id
+                """
+            ).compactMap(Self.customFolder)
+        }
+    }
+
     func setGoal(_ goal: CollectionGoal, setID: String, updatedAt: Date) async throws {
         try await database.queue.write { database in
             try database.execute(
@@ -118,6 +142,46 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     updatedAt = excluded.updatedAt
                 """,
                 arguments: [setID, goal.rawValue, updatedAt]
+            )
+        }
+    }
+
+    func saveCustomFolder(_ folder: CustomCollectionFolder) async throws {
+        let name = folder.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = folder.cardNameQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !query.isEmpty else {
+            throw CollectionRepositoryError.invalidCustomFolder
+        }
+
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO customCollectionFolder
+                    (id, name, cardNameQuery, displayMode, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    cardNameQuery = excluded.cardNameQuery,
+                    displayMode = excluded.displayMode,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    folder.id.uuidString,
+                    name,
+                    query,
+                    folder.displayMode.rawValue,
+                    folder.createdAt,
+                    folder.updatedAt,
+                ]
+            )
+        }
+    }
+
+    func deleteCustomFolder(id: UUID) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: "DELETE FROM customCollectionFolder WHERE id = ?",
+                arguments: [id.uuidString]
             )
         }
     }
@@ -160,6 +224,23 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             cardID: row["cardID"],
             variant: variant,
             quantity: row["quantity"],
+            updatedAt: row["updatedAt"]
+        )
+    }
+
+    private static func customFolder(_ row: Row) -> CustomCollectionFolder? {
+        let rawID: String = row["id"]
+        let rawMode: String = row["displayMode"]
+        guard let id = UUID(uuidString: rawID),
+              let displayMode = CustomCollectionFolderDisplayMode(rawValue: rawMode) else {
+            return nil
+        }
+        return CustomCollectionFolder(
+            id: id,
+            name: row["name"],
+            cardNameQuery: row["cardNameQuery"],
+            displayMode: displayMode,
+            createdAt: row["createdAt"],
             updatedAt: row["updatedAt"]
         )
     }
