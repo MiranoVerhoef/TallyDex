@@ -130,9 +130,19 @@ final class CatalogStore {
 
     private func loadCachedCatalog(from repository: any CatalogRepository) async throws {
         let series = try await repository.fetchSeries()
-        let sets = try await repository.fetchSets(seriesID: nil).map { set in
+        let cachedSets = try await repository.fetchSets(seriesID: nil).map { set in
             set.fillingMissingMetadata(from: bundledSetsByID[set.id])
         }
+        let cachedIDs = Set(cachedSets.map(\.id))
+        let cachedNames = Set(cachedSets.map { $0.name.lowercased() })
+        let announcedSets = bundledSetsByID.values
+            .filter { set in
+                set.isUpcoming(relativeTo: now())
+                    && !cachedIDs.contains(set.id)
+                    && !cachedNames.contains(set.name.lowercased())
+            }
+            .sorted { ($0.releaseDate ?? "") > ($1.releaseDate ?? "") }
+        let sets = announcedSets + cachedSets
         let setsBySeries = Dictionary(grouping: sets, by: \.seriesID)
         groups = series.map { item in
             CatalogSeriesGroup(series: item, sets: setsBySeries[item.id] ?? [])

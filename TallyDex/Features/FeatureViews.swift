@@ -274,24 +274,70 @@ private struct CatalogSeriesHeader: View {
     }
 }
 
+private struct CatalogArtwork: View {
+    let url: URL?
+
+    var body: some View {
+        AsyncImage(url: url?.appendingPathExtension("png")) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            default:
+                CatalogPlaceholderMark()
+            }
+        }
+    }
+}
+
+private struct CatalogSymbol: View {
+    let url: URL
+
+    var body: some View {
+        AsyncImage(url: url.appendingPathExtension("png")) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            default:
+                ProgressView()
+                    .controlSize(.mini)
+            }
+        }
+    }
+}
+
+private struct CatalogPlaceholderMark: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.02, green: 0.35, blue: 0.88), .blue],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.yellow.opacity(0.9), lineWidth: 2)
+            Image(systemName: "sparkles")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.yellow)
+        }
+        .padding(6)
+    }
+}
+
 private struct CatalogSetRow: View {
     let set: CatalogSet
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: set.logoURL?.appendingPathExtension("png")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                default:
-                    Image(systemName: "rectangle.stack")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            CatalogArtwork(url: set.preferredArtworkURL)
             .frame(width: 116, height: 76)
             .accessibilityHidden(true)
 
@@ -300,10 +346,24 @@ private struct CatalogSetRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
 
-                if let abbreviation = set.abbreviation {
+                if set.isUpcoming(), let releaseDate = set.releaseDateValue {
+                    Label {
+                        Text("Upcoming · \(releaseDate.formatted(date: .abbreviated, time: .omitted))")
+                    } icon: {
+                        Image(systemName: "calendar.badge.clock")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.blue)
+                }
+
+                if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
                     Text(abbreviation)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
+                } else if let symbolURL = set.symbolURL {
+                    CatalogSymbol(url: symbolURL)
+                        .frame(width: 30, height: 20)
+                        .accessibilityLabel("Expansion symbol")
                 }
             }
         }
@@ -316,19 +376,7 @@ private struct CatalogSeriesRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            AsyncImage(url: group.series.logoURL?.appendingPathExtension("png")) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                default:
-                    Image(systemName: "rectangle.stack")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            CatalogArtwork(url: group.preferredArtworkURL)
             .frame(width: 74, height: 48)
             .accessibilityHidden(true)
 
@@ -373,27 +421,19 @@ private struct CatalogSetDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                AsyncImage(url: set.logoURL?.appendingPathExtension("png")) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
-                    default:
-                        Image(systemName: "rectangle.stack")
-                            .font(.system(size: 52))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                CatalogArtwork(url: set.preferredArtworkURL)
                 .frame(maxWidth: 300, minHeight: 120, maxHeight: 170)
                 .padding(.top)
 
                 VStack(spacing: 6) {
-                    if let abbreviation = set.abbreviation {
+                    if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
                         Text(abbreviation)
                             .font(.headline)
                             .foregroundStyle(.secondary)
+                    } else if set.logoURL != nil, let symbolURL = set.symbolURL {
+                        CatalogSymbol(url: symbolURL)
+                            .frame(width: 42, height: 28)
+                            .accessibilityLabel("Expansion symbol")
                     }
                 }
                 .accessibilityElement(children: .combine)
@@ -491,14 +531,26 @@ private struct CatalogSetInformationView: View {
             Form {
                 Section("Release") {
                     LabeledContent("Date", value: releaseDateText)
-                    if let abbreviation = set.abbreviation {
-                        LabeledContent("Set code", value: abbreviation)
+                    if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
+                        LabeledContent("Expansion code", value: abbreviation)
+                    } else if let symbolURL = set.symbolURL {
+                        LabeledContent("Expansion symbol") {
+                            CatalogSymbol(url: symbolURL)
+                                .frame(width: 34, height: 24)
+                                .accessibilityLabel("Expansion symbol")
+                        }
+                    } else if let abbreviation = set.abbreviation {
+                        LabeledContent("Catalog ID", value: abbreviation)
                     }
                 }
 
                 Section("Cards") {
-                    LabeledContent("Main numbered cards", value: "\(set.officialCardCount)")
-                    LabeledContent("Total cataloged cards", value: "\(set.totalCardCount)")
+                    if set.officialCardCount > 0 {
+                        LabeledContent("Main numbered cards", value: "\(set.officialCardCount)")
+                        LabeledContent("Total cataloged cards", value: "\(set.totalCardCount)")
+                    } else {
+                        LabeledContent("Card counts", value: "To be announced")
+                    }
                 }
 
                 if !additionalRarityCounts.isEmpty {
