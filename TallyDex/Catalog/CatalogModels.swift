@@ -85,6 +85,16 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     case holo
     case firstEdition
     case watermarkedPromo
+
+    var displayName: String {
+        switch self {
+        case .normal: "Normal"
+        case .reverseHolo: "Reverse holo"
+        case .holo: "Holo"
+        case .firstEdition: "First edition"
+        case .watermarkedPromo: "Watermarked promo"
+        }
+    }
 }
 
 struct CatalogCardSnapshot: Codable, Equatable, Sendable {
@@ -123,6 +133,7 @@ protocol CatalogRepository: Sendable {
     func fetchCards(setID: String) async throws -> [CatalogCard]
     func fetchDownloadedSetIDs() async throws -> [String]
     func searchCards(query: String) async throws -> [CatalogCardSearchResult]
+    func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
