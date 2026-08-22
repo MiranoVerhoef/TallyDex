@@ -111,6 +111,9 @@ enum CatalogVariantOverrides {
     }
 
     private static let byCardID: [String: Override] = [
+        // TCGdex's source record lists both printings. Keep Reverse visible
+        // while the compiled API response temporarily reports Normal only.
+        "me04-001": Override(additions: [.normal, .reverseHolo], removals: []),
         // Platinum 53/127 also had Prerelease and gold Staff-stamped prints.
         "pl1-53": Override(
             additions: [.normal, .reverseHolo, .prerelease, .prereleaseStaff],

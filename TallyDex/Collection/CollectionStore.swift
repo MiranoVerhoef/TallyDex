@@ -10,6 +10,7 @@ final class CollectionStore {
     private(set) var setPreferencesByID: [String: SetCollectionPreference] = [:]
     private(set) var customFolders: [CustomCollectionFolder] = []
     private(set) var cardMetadataByID: [String: CardCollectionMetadata] = [:]
+    private(set) var backups: [CollectionBackup] = []
     private(set) var isInitialLoading = true
     private(set) var loadMessage: String?
 
@@ -29,14 +30,7 @@ final class CollectionStore {
         guard !hasStarted else { return }
         hasStarted = true
         do {
-            let repository = try resolveRepository()
-            async let entries = repository.fetchOwnedEntries()
-            async let preferences = repository.fetchSetPreferences()
-            async let folders = repository.fetchCustomFolders()
-            ownedEntries = try await entries
-            setPreferencesByID = try await preferences
-            goalsBySetID = setPreferencesByID.mapValues(\.goal)
-            customFolders = try await folders
+            try await reloadCollectionState()
         } catch {
             loadMessage = "Your saved collection couldn’t be loaded."
         }
@@ -44,11 +38,14 @@ final class CollectionStore {
     }
 
     func goal(for setID: String) -> CollectionGoal {
-        goalsBySetID[setID] ?? .normal
+        goalsBySetID[setID] ?? CollectionSettings.preferredDefaultGoal
     }
 
     func preference(for setID: String) -> SetCollectionPreference {
-        setPreferencesByID[setID] ?? .defaultPreference(setID: setID)
+        setPreferencesByID[setID] ?? .defaultPreference(
+            setID: setID,
+            goal: CollectionSettings.preferredDefaultGoal
+        )
     }
 
     func trackingStatus(for setID: String) -> SetTrackingStatus {
@@ -69,6 +66,7 @@ final class CollectionStore {
     }
 
     func saveSetPreference(_ preference: SetCollectionPreference) async throws {
+        let preference = preference.applyingCanonicalGoalRules()
         if preference.status == .notCollecting {
             try await resolveRepository().deleteSetPreference(setID: preference.setID)
             setPreferencesByID.removeValue(forKey: preference.setID)
@@ -78,6 +76,25 @@ final class CollectionStore {
             setPreferencesByID[preference.setID] = preference
             goalsBySetID[preference.setID] = preference.goal
         }
+    }
+
+    @discardableResult
+    func createBackup(reason: String) async throws -> CollectionBackup {
+        let backup = try await resolveRepository().createBackup(
+            reason: reason,
+            createdAt: now()
+        )
+        backups = try await resolveRepository().fetchBackups()
+        return backup
+    }
+
+    func restoreBackup(_ backup: CollectionBackup) async throws {
+        try await resolveRepository().restoreBackup(
+            id: backup.id,
+            safetyBackupReason: "Before restoring: \(backup.reason)",
+            restoredAt: now()
+        )
+        try await reloadCollectionState()
     }
 
     func cardMetadata(for cardID: String, forceReload: Bool = false) async throws -> CardCollectionMetadata {
@@ -188,6 +205,21 @@ final class CollectionStore {
         )
         self.repository = repository
         return repository
+    }
+
+    private func reloadCollectionState() async throws {
+        let repository = try resolveRepository()
+        async let entries = repository.fetchOwnedEntries()
+        async let preferences = repository.fetchSetPreferences()
+        async let folders = repository.fetchCustomFolders()
+        async let savedBackups = repository.fetchBackups()
+        ownedEntries = try await entries
+        setPreferencesByID = try await preferences
+        goalsBySetID = setPreferencesByID.mapValues(\.goal)
+        customFolders = try await folders
+        backups = try await savedBackups
+        quantitiesByCardID.removeAll()
+        cardMetadataByID.removeAll()
     }
 
     private func sortCustomFolders() {
