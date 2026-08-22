@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system
@@ -275,19 +276,13 @@ private struct CatalogSeriesHeader: View {
 }
 
 private struct CatalogArtwork: View {
-    let url: URL?
+    let reference: CatalogArtworkReference?
 
     var body: some View {
-        AsyncImage(url: url?.appendingPathExtension("png")) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-            default:
-                CatalogPlaceholderMark()
-            }
+        if let reference {
+            CachedCatalogImage(reference: reference)
+        } else {
+            CatalogPlaceholderMark()
         }
     }
 }
@@ -296,39 +291,41 @@ private struct CatalogSymbol: View {
     let url: URL
 
     var body: some View {
-        AsyncImage(url: url.appendingPathExtension("png")) { phase in
-            switch phase {
-            case .success(let image):
-                image
+        CachedCatalogImage(
+            reference: CatalogArtworkReference(url: url, category: .expansionSymbols)
+        )
+    }
+}
+
+private struct CachedCatalogImage: View {
+    let reference: CatalogArtworkReference
+    @State private var imageData: Data?
+
+    var body: some View {
+        Group {
+            if let imageData, let image = UIImage(data: imageData) {
+                Image(uiImage: image)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-            default:
-                ProgressView()
-                    .controlSize(.mini)
+            } else {
+                CatalogPlaceholderMark()
             }
+        }
+        .task(id: reference) {
+            imageData = try? await CatalogArtworkCache.shared.data(for: reference)
         }
     }
 }
 
 private struct CatalogPlaceholderMark: View {
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.02, green: 0.35, blue: 0.88), .blue],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.yellow.opacity(0.9), lineWidth: 2)
-            Image(systemName: "sparkles")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(.yellow)
-        }
-        .padding(6)
+        Image("TallyDexLogo")
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .padding(8)
+            .accessibilityLabel("TallyDex placeholder")
     }
 }
 
@@ -337,7 +334,7 @@ private struct CatalogSetRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CatalogArtwork(url: set.preferredArtworkURL)
+            CatalogArtwork(reference: set.preferredArtworkReference)
             .frame(width: 116, height: 76)
             .accessibilityHidden(true)
 
@@ -376,8 +373,8 @@ private struct CatalogSeriesRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            CatalogArtwork(url: group.preferredArtworkURL)
-            .frame(width: 74, height: 48)
+            CatalogArtwork(reference: group.preferredArtworkReference)
+            .frame(width: 124, height: 72)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -421,7 +418,7 @@ private struct CatalogSetDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                CatalogArtwork(url: set.preferredArtworkURL)
+                CatalogArtwork(reference: set.preferredArtworkReference)
                 .frame(maxWidth: 300, minHeight: 120, maxHeight: 170)
                 .padding(.top)
 
@@ -669,6 +666,14 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
 
+                Section("Storage") {
+                    NavigationLink {
+                        ArtworkCacheSettingsView()
+                    } label: {
+                        Label("Artwork Cache", systemImage: "externaldrive")
+                    }
+                }
+
                 Section("Privacy") {
                     LabeledContent("Storage", value: "On this iPhone")
                     LabeledContent("Analytics", value: "None")
@@ -684,8 +689,157 @@ struct SettingsView: View {
                 Section("iCloud") {
                     LabeledContent("Sync", value: "Off")
                 }
+
+                Section {
+                    NavigationLink {
+                        AboutTallyDexView()
+                    } label: {
+                        Label("About TallyDex", systemImage: "info.circle")
+                    }
+                }
             }
             .navigationTitle("Settings")
         }
+    }
+}
+
+private struct ArtworkCacheSettingsView: View {
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var isConfirmingClearAll = false
+
+    private func sizeDescription(_ statistics: CatalogArtworkCacheStatistics) -> String {
+        guard statistics.fileCount > 0 else { return "Empty" }
+        let size = ByteCountFormatter.string(
+            fromByteCount: statistics.byteCount,
+            countStyle: .file
+        )
+        return "\(statistics.fileCount) · \(size)"
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                Button {
+                    Task {
+                        await artworkCacheStore.prefetch(groups: catalogStore.groups)
+                    }
+                } label: {
+                    if artworkCacheStore.isPrefetching {
+                        Label("Caching Artwork…", systemImage: "arrow.down.circle")
+                    } else {
+                        Label("Cache Missing Artwork", systemImage: "arrow.down.circle")
+                    }
+                }
+                .disabled(artworkCacheStore.isPrefetching || catalogStore.groups.isEmpty)
+
+                LabeledContent(
+                    "Total",
+                    value: sizeDescription(
+                        CatalogArtworkCacheStatistics(
+                            fileCount: artworkCacheStore.snapshot.totalFileCount,
+                            byteCount: artworkCacheStore.snapshot.totalByteCount
+                        )
+                    )
+                )
+            } footer: {
+                Text("TallyDex stores TCGdex series logos, set logos, and expansion symbols on this iPhone so they appear immediately after a cold launch.")
+            }
+
+            Section("Choose What to Remove") {
+                ForEach(CatalogArtworkCategory.allCases) { category in
+                    let statistics = artworkCacheStore.snapshot.statistics(for: category)
+                    HStack(spacing: 12) {
+                        Label(category.title, systemImage: category.systemImage)
+                        Spacer()
+                        Text(sizeDescription(statistics))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Clear", role: .destructive) {
+                            Task { await artworkCacheStore.remove(category) }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(statistics.fileCount == 0)
+                    }
+                }
+            }
+
+            Section {
+                Button("Clear All Artwork", role: .destructive) {
+                    isConfirmingClearAll = true
+                }
+                .disabled(artworkCacheStore.snapshot.totalFileCount == 0)
+            }
+
+            if let statusMessage = artworkCacheStore.statusMessage {
+                Section {
+                    Label(statusMessage, systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Artwork Cache")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await artworkCacheStore.refreshSnapshot()
+        }
+        .confirmationDialog(
+            "Clear every cached logo and symbol?",
+            isPresented: $isConfirmingClearAll,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All Artwork", role: .destructive) {
+                Task { await artworkCacheStore.removeAll() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Artwork will download again when needed.")
+        }
+    }
+}
+
+private struct AboutTallyDexView: View {
+    private var versionDescription: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+            ?? "Unknown"
+        return "Version \(version) (\(build))"
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image("TallyDexLogo")
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(maxWidth: 220, maxHeight: 90)
+                    Text(versionDescription)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+
+            Section("The Name") {
+                Text("TallyDex combines “tally”—keeping a count—with “dex,” a catalog or index. It is a catalog for tallying your card collection.")
+            }
+
+            Section("Data & Artwork") {
+                Text("Catalog metadata, set logos, and expansion symbols are supplied by TCGdex and cached locally by TallyDex.")
+                Link("Visit TCGdex", destination: URL(string: "https://www.tcgdex.net")!)
+            }
+
+            Section("Copyright & Ownership") {
+                Text("Pokémon and all related card, set, expansion, character, logo, and artwork rights belong to their respective owners.")
+                Text("© Pokémon. © Nintendo/Creatures Inc./GAME FREAK inc. TM, ® Nintendo.")
+                Text("TallyDex is an unofficial fan-made app. It is not affiliated with, endorsed by, or sponsored by The Pokémon Company, Nintendo, Creatures Inc., or GAME FREAK inc.")
+            }
+        }
+        .navigationTitle("About TallyDex")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
