@@ -71,6 +71,20 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(quantities[.reverseHolo], 3)
     }
 
+    @MainActor
+    func testSimpleCheckmarkCanRemoveEveryOwnedPrinting() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let store = CollectionStore(repository: repository)
+        try await store.setQuantity(2, cardID: "pl1-53", variant: .normal)
+        try await store.setQuantity(1, cardID: "pl1-53", variant: .prereleaseStaff)
+
+        try await store.removeAllOwnership(cardID: "pl1-53")
+
+        let entries = try await repository.fetchEntries(cardID: "pl1-53")
+        XCTAssertFalse(store.owns(cardID: "pl1-53"))
+        XCTAssertEqual(entries, [])
+    }
+
     func testSetGoalPersistsWithoutChangingOwnership() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let update = Date(timeIntervalSince1970: 100)
@@ -156,11 +170,11 @@ final class CollectionFoundationTests: XCTestCase {
     }
 
     @MainActor
-    func testCollectionStoreDefaultsToMainGoal() async throws {
+    func testCollectionStoreDefaultsToNormalGoal() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let store = CollectionStore(repository: repository)
 
-        XCTAssertEqual(store.goal(for: "sv01"), .main)
+        XCTAssertEqual(store.goal(for: "sv01"), .normal)
         try await store.setGoal(.master, for: "sv01")
         XCTAssertEqual(store.goal(for: "sv01"), .master)
     }
@@ -210,7 +224,7 @@ final class CollectionFoundationTests: XCTestCase {
             SetCollectionPreference(
                 setID: "sv03.5",
                 status: .collecting,
-                goal: .complete,
+                goal: .normal,
                 includedVariants: [.normal],
                 includesSecretCards: true,
                 updatedAt: update
@@ -235,7 +249,7 @@ final class CollectionFoundationTests: XCTestCase {
             SetCollectionPreference(
                 setID: "sv01",
                 status: .collecting,
-                goal: .main,
+                goal: .normal,
                 includedVariants: [.normal],
                 includesSecretCards: false,
                 updatedAt: update
@@ -245,7 +259,7 @@ final class CollectionFoundationTests: XCTestCase {
             SetCollectionPreference(
                 setID: "sv02",
                 status: .hidden,
-                goal: .complete,
+                goal: .master,
                 includedVariants: [.normal],
                 includesSecretCards: true,
                 updatedAt: update
@@ -274,7 +288,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(missing, .empty(cardID: "missing"))
     }
 
-    func testGoalAwareProgressSeparatesMainCompleteAndMaster() {
+    func testGoalAwareProgressSeparatesNormalAndMaster() {
         let set = CatalogSet(
             id: "sv-test",
             seriesID: "sv",
@@ -312,17 +326,10 @@ final class CollectionFoundationTests: XCTestCase {
             }
         )
 
-        let main = CollectionProgressCalculator.progress(
+        let normal = CollectionProgressCalculator.progress(
             cards: cards,
             set: set,
-            preference: preference(setID: set.id, goal: .main),
-            availableVariants: variants,
-            ownedEntries: owned
-        )
-        let complete = CollectionProgressCalculator.progress(
-            cards: cards,
-            set: set,
-            preference: preference(setID: set.id, goal: .complete),
+            preference: preference(setID: set.id, goal: .normal),
             availableVariants: variants,
             ownedEntries: owned
         )
@@ -334,12 +341,11 @@ final class CollectionFoundationTests: XCTestCase {
             ownedEntries: owned
         )
 
-        XCTAssertEqual(main, CollectionProgress(completedSlots: 1, requiredSlots: 2))
-        XCTAssertEqual(complete, CollectionProgress(completedSlots: 1, requiredSlots: 3))
+        XCTAssertEqual(normal, CollectionProgress(completedSlots: 1, requiredSlots: 3))
         XCTAssertEqual(master, CollectionProgress(completedSlots: 2, requiredSlots: 6))
     }
 
-    func testGoalAwareProgressAppliesHoloChaseAndCustomRules() {
+    func testGoalAwareProgressAppliesCustomRules() {
         let set = CatalogSet(
             id: "sv-test",
             seriesID: "sv",
@@ -368,13 +374,6 @@ final class CollectionFoundationTests: XCTestCase {
             CollectionVariantEntry(cardID: cards[1].id, variant: .holo, quantity: 1, updatedAt: .now),
             CollectionVariantEntry(cardID: cards[2].id, variant: .normal, quantity: 1, updatedAt: .now),
         ]
-        let holoChase = CollectionProgressCalculator.progress(
-            cards: cards,
-            set: set,
-            preference: preference(setID: set.id, goal: .holoChase),
-            availableVariants: variants,
-            ownedEntries: owned
-        )
         let custom = CollectionProgressCalculator.progress(
             cards: cards,
             set: set,
@@ -390,8 +389,20 @@ final class CollectionFoundationTests: XCTestCase {
             ownedEntries: owned
         )
 
-        XCTAssertEqual(holoChase, CollectionProgress(completedSlots: 3, requiredSlots: 4))
         XCTAssertEqual(custom, CollectionProgress(completedSlots: 1, requiredSlots: 1))
+    }
+
+    func testGoalChoicesAndLegacyMigration() {
+        XCTAssertEqual(CollectionGoal.allCases, [.normal, .master, .custom])
+        XCTAssertEqual(CollectionGoal.migrated(persistedValue: "main"), .normal)
+        XCTAssertEqual(CollectionGoal.migrated(persistedValue: "complete"), .normal)
+        XCTAssertEqual(CollectionGoal.migrated(persistedValue: "holoChase"), .custom)
+        XCTAssertEqual(CollectionGoal.migrated(persistedValue: "master"), .master)
+        XCTAssertNil(CollectionGoal.migrated(persistedValue: "unknown"))
+    }
+
+    func testMultipleCopyTrackingDefaultsOff() {
+        XCTAssertFalse(CollectionSettings.allowsMultipleCopiesDefault)
     }
 
     private func card(id: String, number: String) -> CatalogCard {

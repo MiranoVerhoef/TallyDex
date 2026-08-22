@@ -10,17 +10,13 @@ struct CollectionVariantEntry: Equatable, Identifiable, Sendable {
 }
 
 enum CollectionGoal: String, Codable, CaseIterable, Sendable {
-    case main
-    case complete
-    case holoChase
+    case normal
     case master
     case custom
 
     var displayName: String {
         switch self {
-        case .main: "Main"
-        case .complete: "Complete"
-        case .holoChase: "Holo Chase"
+        case .normal: "Normal"
         case .master: "Master"
         case .custom: "Custom"
         }
@@ -28,13 +24,24 @@ enum CollectionGoal: String, Codable, CaseIterable, Sendable {
 
     var explanation: String {
         switch self {
-        case .main: "Collect one standard printing of every card in the official numbering."
-        case .complete: "Collect one printing of every main and secret-numbered card."
-        case .holoChase: "Collect the selected Holo and Reverse Holo printings."
+        case .normal: "Collect every card once. Any owned printing counts."
         case .master: "Collect every known printing of every card."
         case .custom: "Choose which numbered cards and printing types count."
         }
     }
+
+    static func migrated(persistedValue: String) -> CollectionGoal? {
+        switch persistedValue {
+        case "main", "complete": .normal
+        case "holoChase": .custom
+        default: CollectionGoal(rawValue: persistedValue)
+        }
+    }
+}
+
+enum CollectionSettings {
+    static let allowsMultipleCopiesKey = "collection.allowsMultipleCopies"
+    static let allowsMultipleCopiesDefault = false
 }
 
 enum SetTrackingStatus: String, Codable, CaseIterable, Sendable {
@@ -63,7 +70,7 @@ struct SetCollectionPreference: Equatable, Sendable {
         SetCollectionPreference(
             setID: setID,
             status: .notCollecting,
-            goal: .main,
+            goal: .normal,
             includedVariants: [.normal],
             includesSecretCards: false,
             updatedAt: updatedAt
@@ -106,6 +113,14 @@ enum CollectionProgressCalculator {
 
         for card in cards where includes(card: card, set: set, preference: preference) {
             let knownVariants = availableVariants[card.id] ?? []
+            let ownedVariants = Set((owned[card.id] ?? []).map(\.variant))
+
+            if preference.goal == .normal {
+                requiredSlots += 1
+                if !ownedVariants.isEmpty { completedSlots += 1 }
+                continue
+            }
+
             let requiredVariants = variants(
                 for: preference,
                 knownVariants: knownVariants
@@ -113,7 +128,6 @@ enum CollectionProgressCalculator {
             if requiredVariants.isEmpty { continue }
 
             requiredSlots += requiredVariants.count
-            let ownedVariants = Set((owned[card.id] ?? []).map(\.variant))
             completedSlots += requiredVariants.intersection(ownedVariants).count
         }
         return CollectionProgress(completedSlots: completedSlots, requiredSlots: requiredSlots)
@@ -125,9 +139,7 @@ enum CollectionProgressCalculator {
         preference: SetCollectionPreference
     ) -> Bool {
         switch preference.goal {
-        case .main:
-            return isMainNumbered(card, in: set)
-        case .complete, .holoChase, .master:
+        case .normal, .master:
             return true
         case .custom:
             return preference.includesSecretCards || isMainNumbered(card, in: set)
@@ -139,16 +151,8 @@ enum CollectionProgressCalculator {
         knownVariants: Set<CatalogVariantKind>
     ) -> Set<CatalogVariantKind> {
         switch preference.goal {
-        case .main, .complete:
-            let preferenceOrder: [CatalogVariantKind] = [
-                .normal, .holo, .reverseHolo, .firstEdition, .watermarkedPromo,
-            ]
-            return [preferenceOrder.first(where: knownVariants.contains) ?? .normal]
-        case .holoChase:
-            let holoVariants: Set<CatalogVariantKind> = [.holo, .reverseHolo]
-            return knownVariants
-                .intersection(preference.includedVariants)
-                .intersection(holoVariants)
+        case .normal:
+            return []
         case .master:
             return knownVariants.isEmpty ? [.normal] : knownVariants
         case .custom:
