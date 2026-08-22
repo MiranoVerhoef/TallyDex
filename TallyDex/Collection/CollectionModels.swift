@@ -42,6 +42,15 @@ enum CollectionGoal: String, Codable, CaseIterable, Sendable {
 enum CollectionSettings {
     static let allowsMultipleCopiesKey = "collection.allowsMultipleCopies"
     static let allowsMultipleCopiesDefault = false
+    static let defaultGoalKey = "collection.defaultGoal"
+    static let defaultGoal = CollectionGoal.normal
+
+    static var preferredDefaultGoal: CollectionGoal {
+        guard let rawValue = UserDefaults.standard.string(forKey: defaultGoalKey) else {
+            return defaultGoal
+        }
+        return CollectionGoal(rawValue: rawValue) ?? defaultGoal
+    }
 }
 
 enum SetTrackingStatus: String, Codable, CaseIterable, Sendable {
@@ -66,13 +75,57 @@ struct SetCollectionPreference: Equatable, Sendable {
     let includesSecretCards: Bool
     let updatedAt: Date
 
-    static func defaultPreference(setID: String, updatedAt: Date = .distantPast) -> SetCollectionPreference {
+    static func defaultPreference(
+        setID: String,
+        goal: CollectionGoal = .normal,
+        updatedAt: Date = .distantPast
+    ) -> SetCollectionPreference {
         SetCollectionPreference(
             setID: setID,
             status: .notCollecting,
-            goal: .normal,
-            includedVariants: [.normal],
-            includesSecretCards: false,
+            goal: goal,
+            includedVariants: goal == .master ? Set(CatalogVariantKind.allCases) : [.normal],
+            includesSecretCards: goal != .custom,
+            updatedAt: updatedAt
+        )
+    }
+
+    func visibleVariants(in knownVariants: Set<CatalogVariantKind>) -> Set<CatalogVariantKind> {
+        switch goal {
+        case .master:
+            return knownVariants
+        case .custom:
+            return knownVariants.intersection(includedVariants)
+        case .normal:
+            let preference: [CatalogVariantKind] = [
+                .normal,
+                .holo,
+                .reverseHolo,
+                .firstEdition,
+                .watermarkedPromo,
+                .prerelease,
+                .prereleaseStaff,
+            ]
+            guard let primary = preference.first(where: knownVariants.contains) else { return [] }
+            return [primary]
+        }
+    }
+
+    func applyingCanonicalGoalRules() -> SetCollectionPreference {
+        let rules: (variants: Set<CatalogVariantKind>, includesSecretCards: Bool) = switch goal {
+        case .normal:
+            ([.normal], true)
+        case .master:
+            (Set(CatalogVariantKind.allCases), true)
+        case .custom:
+            (includedVariants.isEmpty ? [.normal] : includedVariants, includesSecretCards)
+        }
+        return SetCollectionPreference(
+            setID: setID,
+            status: status,
+            goal: goal,
+            includedVariants: rules.variants,
+            includesSecretCards: rules.includesSecretCards,
             updatedAt: updatedAt
         )
     }
@@ -203,6 +256,12 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
     let updatedAt: Date
 }
 
+struct CollectionBackup: Equatable, Identifiable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    let reason: String
+}
+
 protocol CollectionRepository: Sendable {
     func fetchEntries(cardID: String) async throws -> [CollectionVariantEntry]
     func fetchOwnedEntries() async throws -> [CollectionVariantEntry]
@@ -210,6 +269,13 @@ protocol CollectionRepository: Sendable {
     func fetchSetPreferences() async throws -> [String: SetCollectionPreference]
     func fetchCustomFolders() async throws -> [CustomCollectionFolder]
     func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata
+    func fetchBackups() async throws -> [CollectionBackup]
+    func createBackup(reason: String, createdAt: Date) async throws -> CollectionBackup
+    func restoreBackup(
+        id: UUID,
+        safetyBackupReason: String,
+        restoredAt: Date
+    ) async throws
     func setGoal(_ goal: CollectionGoal, setID: String, updatedAt: Date) async throws
     func saveSetPreference(_ preference: SetCollectionPreference) async throws
     func deleteSetPreference(setID: String) async throws
@@ -227,4 +293,5 @@ protocol CollectionRepository: Sendable {
 enum CollectionRepositoryError: Error, Equatable {
     case invalidQuantity
     case invalidCustomFolder
+    case invalidBackup
 }

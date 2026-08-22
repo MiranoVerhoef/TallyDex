@@ -502,13 +502,9 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     card.rarity,
                 ]
             )
-            try database.execute(
-                sql: "DELETE FROM catalogVariant WHERE cardID = ?",
-                arguments: [card.id]
-            )
             for variant in snapshot.variants.sorted(by: { $0.rawValue < $1.rawValue }) {
                 try database.execute(
-                    sql: "INSERT INTO catalogVariant (cardID, kind) VALUES (?, ?)",
+                    sql: "INSERT OR IGNORE INTO catalogVariant (cardID, kind) VALUES (?, ?)",
                     arguments: [card.id, variant.rawValue]
                 )
             }
