@@ -20,11 +20,20 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Series.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.4/TallyDex-v0.1.4-Search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Detail.png"
       ],
       "versions": [
+        {
+          "version": "0.1.4",
+          "buildVersion": "5",
+          "date": "2026-08-22",
+          "localizedDescription": "Preloads and caches the complete searchable card index, identifies each result by set and collector number, and supports combined searches such as Hidden Fates Metapod without opening the set first.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.4/TallyDex-v0.1.4.ipa",
+          "size": 6229512,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.1.3",
           "buildVersion": "4",
