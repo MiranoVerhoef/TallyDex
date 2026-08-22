@@ -20,11 +20,20 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1-Series.png",
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1-Upcoming-Sets.png",
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.1/TallyDex-v0.1.1-Expansion-Symbols.png"
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.2/TallyDex-v0.1.2-Series.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.2/TallyDex-v0.1.2-Set-Logos.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.2/TallyDex-v0.1.2-Artwork-Cache.png"
       ],
       "versions": [
+        {
+          "version": "0.1.2",
+          "buildVersion": "3",
+          "date": "2026-08-22",
+          "localizedDescription": "Caches all catalog artwork for faster cold launches, adds selective cache controls and copyright attribution, uses the TallyDex mark for missing artwork, and enlarges series logos on the main Sets page.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.2/TallyDex-v0.1.2.ipa",
+          "size": 6120804,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.1.1",
           "buildVersion": "2",
