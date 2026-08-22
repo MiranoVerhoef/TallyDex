@@ -106,8 +106,10 @@ final class CatalogStore {
 
         do {
             let repository = try resolveRepository()
+            let downloadedSetIDs = try await repository.fetchDownloadedSetIDs()
             let snapshots = try await fetchRemoteCatalog()
             try await repository.replaceCatalog(snapshots)
+            await refreshDownloadedSets(downloadedSetIDs, in: repository)
             let refreshDate = now()
             try await repository.setMetadataDate(refreshDate, forKey: Self.lastCatalogRefreshKey)
             try await loadCachedCatalog(from: repository)
@@ -116,6 +118,55 @@ final class CatalogStore {
             refreshMessage = groups.isEmpty
                 ? "The catalog could not be downloaded. Pull down to try again."
                 : "You’re viewing the saved catalog because refresh is unavailable."
+        }
+    }
+
+    /// Re-checks the six-hour catalog window without forcing a network request.
+    /// Called whenever the app becomes active so newly announced sets and artwork
+    /// appear even when TallyDex has remained installed and suspended for days.
+    func refreshIfNeeded() async {
+        guard hasStarted, needsRefresh(lastUpdated) else { return }
+        await refresh()
+    }
+
+    func cards(for set: CatalogSet, forceRefresh: Bool = false) async throws -> [CatalogCard] {
+        let repository = try resolveRepository()
+        let cachedCards = try await repository.fetchCards(setID: set.id)
+        let refreshKey = setRefreshKey(set.id)
+        let setLastUpdated = try await repository.metadataDate(forKey: refreshKey)
+
+        guard forceRefresh || cachedCards.isEmpty || needsRefresh(setLastUpdated) else {
+            return cachedCards
+        }
+
+        do {
+            let snapshot = try await provider.fetchSet(id: set.id)
+            try await repository.replaceSet(snapshot)
+            try await repository.setMetadataDate(now(), forKey: refreshKey)
+            try await loadCachedCatalog(from: repository)
+            return try await repository.fetchCards(setID: set.id)
+        } catch {
+            guard !cachedCards.isEmpty else { throw error }
+            return cachedCards
+        }
+    }
+
+    func searchCards(query: String) async throws -> [CatalogCard] {
+        try await resolveRepository().searchCards(query: query)
+    }
+
+    func details(for card: CatalogCard) async throws -> CatalogCardSnapshot {
+        let repository = try resolveRepository()
+        do {
+            let snapshot = try await provider.fetchCard(id: card.id)
+            try await repository.replaceCard(snapshot)
+            return snapshot
+        } catch {
+            let variants = try await repository.fetchVariants(cardID: card.id)
+            if card.category != nil || card.illustrator != nil || card.rarity != nil || !variants.isEmpty {
+                return CatalogCardSnapshot(card: card, variants: variants)
+            }
+            throw error
         }
     }
 
@@ -179,6 +230,30 @@ final class CatalogStore {
         }
     }
 
+    private func refreshDownloadedSets(
+        _ setIDs: [String],
+        in repository: any CatalogRepository
+    ) async {
+        guard !setIDs.isEmpty else { return }
+        let provider = self.provider
+        let snapshots = await withTaskGroup(of: CatalogSetSnapshot?.self) { group in
+            for id in setIDs {
+                group.addTask { try? await provider.fetchSet(id: id) }
+            }
+
+            var result: [CatalogSetSnapshot] = []
+            for await snapshot in group {
+                if let snapshot { result.append(snapshot) }
+            }
+            return result
+        }
+
+        for snapshot in snapshots {
+            try? await repository.replaceSet(snapshot)
+            try? await repository.setMetadataDate(now(), forKey: setRefreshKey(snapshot.set.id))
+        }
+    }
+
     private func enrichSetMetadata(
         in snapshots: [CatalogSeriesSnapshot]
     ) async -> [CatalogSeriesSnapshot] {
@@ -229,5 +304,9 @@ final class CatalogStore {
     private func needsRefresh(_ lastUpdated: Date?) -> Bool {
         guard let lastUpdated else { return true }
         return now().timeIntervalSince(lastUpdated) >= Self.staleInterval
+    }
+
+    private func setRefreshKey(_ setID: String) -> String {
+        "catalog.set.\(setID).lastRefresh"
     }
 }

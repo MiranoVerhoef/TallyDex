@@ -154,6 +154,33 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func fetchDownloadedSetIDs() async throws -> [String] {
+        try await database.queue.read { database in
+            try String.fetchAll(
+                database,
+                sql: "SELECT DISTINCT setID FROM catalogCard ORDER BY setID"
+            )
+        }
+    }
+
+    func searchCards(query: String) async throws -> [CatalogCard] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return try await database.queue.read { database in
+            let pattern = "%\(trimmed)%"
+            return try Row.fetchAll(
+                database,
+                sql: """
+                SELECT * FROM catalogCard
+                WHERE name LIKE ? COLLATE NOCASE OR localID LIKE ? COLLATE NOCASE
+                ORDER BY name COLLATE NOCASE, localID
+                LIMIT 100
+                """,
+                arguments: [pattern, pattern]
+            ).map(Self.catalogCard)
+        }
+    }
+
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind> {
         try await database.queue.read { database in
             let rawValues = try String.fetchAll(
@@ -205,7 +232,26 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
 
         try await database.queue.write { database in
-            try database.execute(sql: "DELETE FROM catalogSeries")
+            if seriesIDs.isEmpty {
+                try database.execute(sql: "DELETE FROM catalogSeries")
+                return
+            }
+
+            let seriesPlaceholders = Array(repeating: "?", count: seriesIDs.count).joined(separator: ",")
+            try database.execute(
+                sql: "DELETE FROM catalogSeries WHERE id NOT IN (\(seriesPlaceholders))",
+                arguments: StatementArguments(seriesIDs)
+            )
+
+            if setIDs.isEmpty {
+                try database.execute(sql: "DELETE FROM catalogSet")
+            } else {
+                let setPlaceholders = Array(repeating: "?", count: setIDs.count).joined(separator: ",")
+                try database.execute(
+                    sql: "DELETE FROM catalogSet WHERE id NOT IN (\(setPlaceholders))",
+                    arguments: StatementArguments(setIDs)
+                )
+            }
 
             for (seriesIndex, snapshot) in snapshots.enumerated() {
                 let series = snapshot.series
@@ -213,6 +259,10 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     sql: """
                     INSERT INTO catalogSeries (id, name, logoURL, sortIndex)
                     VALUES (?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        logoURL = excluded.logoURL,
+                        sortIndex = excluded.sortIndex
                     """,
                     arguments: [series.id, series.name, series.logoURL?.absoluteString, seriesIndex]
                 )
@@ -242,7 +292,12 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
 
     func replaceSet(_ snapshot: CatalogSetSnapshot) async throws {
         try await database.queue.write { database in
-            try Self.insert(snapshot.set, sortIndex: 0, database: database)
+            let existingSortIndex = try Int.fetchOne(
+                database,
+                sql: "SELECT sortIndex FROM catalogSet WHERE id = ?",
+                arguments: [snapshot.set.id]
+            ) ?? 0
+            try Self.insert(snapshot.set, sortIndex: existingSortIndex, database: database)
             try database.execute(
                 sql: "DELETE FROM catalogCard WHERE setID = ?",
                 arguments: [snapshot.set.id]

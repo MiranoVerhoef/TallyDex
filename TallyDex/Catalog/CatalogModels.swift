@@ -113,6 +113,8 @@ protocol CatalogRepository: Sendable {
     func fetchSeries() async throws -> [CatalogSeries]
     func fetchSets(seriesID: String?) async throws -> [CatalogSet]
     func fetchCards(setID: String) async throws -> [CatalogCard]
+    func fetchDownloadedSetIDs() async throws -> [String]
+    func searchCards(query: String) async throws -> [CatalogCard]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
@@ -131,7 +133,5 @@ struct CatalogSeriesGroup: Equatable, Identifiable, Sendable {
 
     var preferredArtworkURL: URL? {
         series.logoURL
-            ?? sets.first(where: { $0.logoURL != nil })?.logoURL
-            ?? sets.first(where: { $0.symbolURL != nil })?.symbolURL
     }
 }
