@@ -75,6 +75,29 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
     }
 
+    func testTCGdexDecodesOfficialSetAbbreviation() async throws {
+        let response = #"""
+        {
+          "id": "me04",
+          "name": "Chaos Rising",
+          "abbreviation": { "official": "CRI" },
+          "cardCount": { "official": 86, "total": 122 },
+          "serie": { "id": "me", "name": "Mega Evolution" },
+          "cards": []
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchSet(id: "me04")
+
+        XCTAssertEqual(snapshot.set.abbreviation, "CRI")
+    }
+
     func testRepositoryReplacesOnlySetsForRequestedSeries() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let firstSeries = CatalogSeries(id: "base", name: "Base", logoURL: nil)
@@ -143,16 +166,92 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(storedVariants, [.holo])
     }
 
-    private func set(id: String, seriesID: String, name: String) -> CatalogSet {
+    func testRepositoryReplacesWholeCatalogInDisplayOrder() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let mega = CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil)
+        let scarletViolet = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(
+                series: mega,
+                sets: [
+                    set(id: "me05", seriesID: "me", name: "Pitch Black"),
+                    set(
+                        id: "me04",
+                        seriesID: "me",
+                        name: "Chaos Rising",
+                        abbreviation: "CRI",
+                        rarityCounts: [
+                            CatalogRarityCount(rarity: "Illustration rare", count: 11),
+                            CatalogRarityCount(rarity: "Special illustration rare", count: 6),
+                        ]
+                    ),
+                ]
+            ),
+            CatalogSeriesSnapshot(
+                series: scarletViolet,
+                sets: [set(id: "sv10", seriesID: "sv", name: "Destined Rivals")]
+            ),
+        ])
+
+        let storedSeriesIDs = try await repository.fetchSeries().map(\.id)
+        let storedMegaSetNames = try await repository.fetchSets(seriesID: "me").map(\.name)
+        let storedChaosRising = try await repository.fetchSets(seriesID: "me")[1]
+        XCTAssertEqual(storedSeriesIDs, ["me", "sv"])
+        XCTAssertEqual(storedMegaSetNames, ["Pitch Black", "Chaos Rising"])
+        XCTAssertEqual(storedChaosRising.abbreviation, "CRI")
+        XCTAssertEqual(storedChaosRising.rarityCounts, [
+            CatalogRarityCount(rarity: "Illustration rare", count: 11),
+            CatalogRarityCount(rarity: "Special illustration rare", count: 6),
+        ])
+    }
+
+    func testRepositoryRejectsInvalidWholeCatalogWithoutDeletingCache() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let base = CatalogSeries(id: "base", name: "Base", logoURL: nil)
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(
+                series: base,
+                sets: [set(id: "base1", seriesID: "base", name: "Base Set")]
+            ),
+        ])
+
+        do {
+            try await repository.replaceCatalog([
+                CatalogSeriesSnapshot(
+                    series: CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil),
+                    sets: [set(id: "me05", seriesID: "wrong", name: "Pitch Black")]
+                ),
+            ])
+            XCTFail("Expected invalid snapshot error")
+        } catch {
+            XCTAssertEqual(error as? CatalogRepositoryError, .invalidSnapshot)
+        }
+
+        let storedSeries = try await repository.fetchSeries()
+        let storedBaseSetIDs = try await repository.fetchSets(seriesID: "base").map(\.id)
+        XCTAssertEqual(storedSeries, [base])
+        XCTAssertEqual(storedBaseSetIDs, ["base1"])
+    }
+
+    private func set(
+        id: String,
+        seriesID: String,
+        name: String,
+        abbreviation: String? = nil,
+        rarityCounts: [CatalogRarityCount]? = nil
+    ) -> CatalogSet {
         CatalogSet(
             id: id,
             seriesID: seriesID,
             name: name,
+            abbreviation: abbreviation,
             logoURL: nil,
             symbolURL: nil,
             officialCardCount: 1,
             totalCardCount: 1,
-            releaseDate: nil
+            releaseDate: nil,
+            rarityCounts: rarityCounts
         )
     }
 }

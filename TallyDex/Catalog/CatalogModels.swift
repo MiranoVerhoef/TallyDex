@@ -1,23 +1,49 @@
 import Foundation
 
-struct CatalogSeries: Codable, Equatable, Identifiable, Sendable {
+struct CatalogSeries: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let name: String
     let logoURL: URL?
 }
 
-struct CatalogSet: Codable, Equatable, Identifiable, Sendable {
+struct CatalogRarityCount: Codable, Equatable, Hashable, Identifiable, Sendable {
+    let rarity: String
+    let count: Int
+
+    var id: String { rarity }
+}
+
+struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let seriesID: String
     let name: String
+    let abbreviation: String?
     let logoURL: URL?
     let symbolURL: URL?
     let officialCardCount: Int
     let totalCardCount: Int
     let releaseDate: String?
+    let rarityCounts: [CatalogRarityCount]?
+
+    func fillingMissingMetadata(from fallback: CatalogSet?) -> CatalogSet {
+        CatalogSet(
+            id: id,
+            seriesID: seriesID,
+            name: name,
+            abbreviation: abbreviation ?? fallback?.abbreviation,
+            logoURL: logoURL,
+            symbolURL: symbolURL,
+            officialCardCount: officialCardCount,
+            totalCardCount: totalCardCount,
+            releaseDate: releaseDate ?? fallback?.releaseDate,
+            rarityCounts: rarityCounts?.isEmpty == false
+                ? rarityCounts
+                : fallback?.rarityCounts
+        )
+    }
 }
 
-struct CatalogCard: Codable, Equatable, Identifiable, Sendable {
+struct CatalogCard: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let setID: String
     let localID: String
@@ -36,17 +62,17 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     case watermarkedPromo
 }
 
-struct CatalogCardSnapshot: Equatable, Sendable {
+struct CatalogCardSnapshot: Codable, Equatable, Sendable {
     let card: CatalogCard
     let variants: Set<CatalogVariantKind>
 }
 
-struct CatalogSeriesSnapshot: Equatable, Sendable {
+struct CatalogSeriesSnapshot: Codable, Equatable, Sendable {
     let series: CatalogSeries
     let sets: [CatalogSet]
 }
 
-struct CatalogSetSnapshot: Equatable, Sendable {
+struct CatalogSetSnapshot: Codable, Equatable, Sendable {
     let set: CatalogSet
     let cards: [CatalogCard]
 }
@@ -63,8 +89,18 @@ protocol CatalogRepository: Sendable {
     func fetchSets(seriesID: String?) async throws -> [CatalogSet]
     func fetchCards(setID: String) async throws -> [CatalogCard]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
+    func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
+    func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws
     func replaceSets(_ sets: [CatalogSet], forSeriesID seriesID: String) async throws
     func replaceSet(_ snapshot: CatalogSetSnapshot) async throws
     func replaceCard(_ snapshot: CatalogCardSnapshot) async throws
+    func setMetadataDate(_ date: Date, forKey key: String) async throws
+}
+
+struct CatalogSeriesGroup: Equatable, Identifiable, Sendable {
+    let series: CatalogSeries
+    let sets: [CatalogSet]
+
+    var id: String { series.id }
 }

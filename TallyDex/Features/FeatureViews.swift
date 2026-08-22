@@ -1,5 +1,43 @@
 import SwiftUI
 
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    static let storageKey = "app.appearance"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    static func resolve(_ storedValue: String) -> AppAppearance {
+        AppAppearance(rawValue: storedValue) ?? .system
+    }
+}
+
 enum SetsScope: String, CaseIterable, Identifiable {
     case all
     case mySets
@@ -46,42 +84,81 @@ enum SetsScope: String, CaseIterable, Identifiable {
     }
 }
 
+enum SetsBrowsingStyle: String, CaseIterable, Identifiable {
+    case seriesFirst
+    case grouped
+
+    static let storageKey = "sets.browsingStyle"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .grouped: "Grouped List"
+        case .seriesFirst: "Series First"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .grouped: "Show every set in one list, grouped under its series."
+        case .seriesFirst: "Choose a series first, then choose one of its sets."
+        }
+    }
+
+    static func resolve(_ storedValue: String) -> SetsBrowsingStyle {
+        SetsBrowsingStyle(rawValue: storedValue) ?? .seriesFirst
+    }
+}
+
 struct SetsView: View {
+    @Environment(CatalogStore.self) private var catalogStore
     @AppStorage(SetsScope.storageKey) private var defaultScope = SetsScope.all.rawValue
+    @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @State private var selectedScope = SetsScope.all
     @State private var didApplyDefault = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Sets view", selection: $selectedScope) {
-                    ForEach(SetsScope.allCases) { scope in
-                        Text(scope.pickerTitle)
-                            .tag(scope)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 8)
+            ZStack {
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
 
-                ContentUnavailableView(
-                    selectedScope.title,
-                    systemImage: selectedScope.systemImage,
-                    description: Text(selectedScope.emptyDescription)
-                )
-            }
-            .navigationTitle("Sets")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Image("TallyDexLogo")
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: 124, height: 40)
-                        .clipShape(.rect(cornerRadius: 8))
-                        .accessibilityLabel("TallyDex")
+                VStack(spacing: 0) {
+                    HStack {
+                        Image("TallyDexLogo")
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                            .frame(width: 132, height: 44)
+                            .accessibilityLabel("TallyDex")
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    HStack {
+                        Text("Sets")
+                            .font(.largeTitle.bold())
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    .padding(.bottom, 14)
+
+                    Picker("Sets view", selection: $selectedScope) {
+                        ForEach(SetsScope.allCases) { scope in
+                            Text(scope.pickerTitle)
+                                .tag(scope)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+
+                    setsContent
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 guard !didApplyDefault else { return }
                 selectedScope = SetsScope.resolve(defaultScope)
@@ -89,6 +166,383 @@ struct SetsView: View {
             }
             .onChange(of: defaultScope) { _, newValue in
                 selectedScope = SetsScope.resolve(newValue)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var setsContent: some View {
+        switch selectedScope {
+        case .all:
+            if catalogStore.isInitialLoading && catalogStore.groups.isEmpty {
+                ProgressView("Loading saved catalog…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if catalogStore.groups.isEmpty {
+                ContentUnavailableView(
+                    "Catalog Unavailable",
+                    systemImage: "wifi.exclamationmark",
+                    description: Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
+                )
+            } else {
+                catalogList
+            }
+        case .mySets, .hidden:
+            ContentUnavailableView(
+                selectedScope.title,
+                systemImage: selectedScope.systemImage,
+                description: Text(selectedScope.emptyDescription)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var catalogList: some View {
+        switch SetsBrowsingStyle.resolve(browsingStyle) {
+        case .grouped:
+            List {
+                catalogRefreshMessage
+
+                ForEach(catalogStore.groups) { group in
+                    Section {
+                        ForEach(group.sets) { set in
+                            NavigationLink {
+                                CatalogSetDetailView(set: set)
+                            } label: {
+                                CatalogSetRow(set: set)
+                            }
+                            .listRowBackground(Color.clear)
+                        }
+                    } header: {
+                        CatalogSeriesHeader(group: group)
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .refreshable {
+                await catalogStore.refresh()
+            }
+        case .seriesFirst:
+            List {
+                catalogRefreshMessage
+
+                ForEach(catalogStore.groups) { group in
+                    NavigationLink {
+                        CatalogSeriesSetsView(group: group)
+                    } label: {
+                        CatalogSeriesRow(group: group)
+                    }
+                    .listRowBackground(Color.clear)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .refreshable {
+                await catalogStore.refresh()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var catalogRefreshMessage: some View {
+        if let message = catalogStore.refreshMessage {
+            Label(message, systemImage: "icloud.slash")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct CatalogSeriesHeader: View {
+    let group: CatalogSeriesGroup
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(group.series.name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .textCase(nil)
+            Spacer()
+            Text("\(group.sets.count) \(group.sets.count == 1 ? "set" : "sets")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(nil)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct CatalogSetRow: View {
+    let set: CatalogSet
+
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: set.logoURL?.appendingPathExtension("png")) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                default:
+                    Image(systemName: "rectangle.stack")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 116, height: 76)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(set.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                if let abbreviation = set.abbreviation {
+                    Text(abbreviation)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct CatalogSeriesRow: View {
+    let group: CatalogSeriesGroup
+
+    var body: some View {
+        HStack(spacing: 14) {
+            AsyncImage(url: group.series.logoURL?.appendingPathExtension("png")) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                default:
+                    Image(systemName: "rectangle.stack")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 74, height: 48)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.series.name)
+                    .font(.body.weight(.semibold))
+                Text("\(group.sets.count) \(group.sets.count == 1 ? "set" : "sets")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct CatalogSeriesSetsView: View {
+    let group: CatalogSeriesGroup
+
+    var body: some View {
+        List {
+            ForEach(group.sets) { set in
+                NavigationLink {
+                    CatalogSetDetailView(set: set)
+                } label: {
+                    CatalogSetRow(set: set)
+                }
+                .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(group.series.name)
+        .navigationBarTitleDisplayMode(.large)
+    }
+}
+
+private struct CatalogSetDetailView: View {
+    let set: CatalogSet
+    @State private var isShowingInformation = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                AsyncImage(url: set.logoURL?.appendingPathExtension("png")) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                    default:
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 52))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: 300, minHeight: 120, maxHeight: 170)
+                .padding(.top)
+
+                VStack(spacing: 6) {
+                    if let abbreviation = set.abbreviation {
+                        Text(abbreviation)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+
+                ContentUnavailableView(
+                    "Card List Coming Next",
+                    systemImage: "rectangle.grid.3x2",
+                    description: Text("This set is connected to the local catalog. The card grid and collection controls are the next slice.")
+                )
+            }
+            .padding()
+        }
+        .navigationTitle(set.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Set information", systemImage: "info.circle") {
+                    isShowingInformation = true
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingInformation) {
+            CatalogSetInformationView(set: set)
+        }
+    }
+}
+
+private struct CatalogSetInformationView: View {
+    let set: CatalogSet
+    @Environment(\.dismiss) private var dismiss
+
+    private var additionalCardCount: Int {
+        max(0, set.totalCardCount - set.officialCardCount)
+    }
+
+    private var releaseDateText: String {
+        guard let releaseDate = set.releaseDate else { return "Unknown" }
+        let parts = releaseDate.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = Calendar(identifier: .gregorian).date(
+                  from: DateComponents(year: parts[0], month: parts[1], day: parts[2])
+              ) else {
+            return releaseDate
+        }
+        return date.formatted(date: .long, time: .omitted)
+    }
+
+    private var sortedRarityCounts: [CatalogRarityCount] {
+        let priority = [
+            "illustration rare": 0,
+            "ultra rare": 1,
+            "special illustration rare": 2,
+            "hyper rare": 3,
+            "mega hyper rare": 4,
+        ]
+        return (set.rarityCounts ?? []).sorted {
+            let left = priority[$0.rarity.lowercased(), default: .max]
+            let right = priority[$1.rarity.lowercased(), default: .max]
+            if left == right { return $0.rarity < $1.rarity }
+            return left < right
+        }
+    }
+
+    private var additionalRarityCounts: [CatalogRarityCount] {
+        let candidates = sortedRarityCounts.filter { rarityCount in
+            let rarity = rarityCount.rarity.lowercased()
+            return rarity.contains("illustration")
+                || rarity.contains("ultra")
+                || rarity.contains("hyper")
+                || rarity.contains("secret")
+                || rarity.contains("rainbow")
+                || rarity.contains("shiny")
+                || rarity.contains("gold")
+                || rarity.contains("trainer gallery")
+                || rarity.contains("classic collection")
+        }
+        guard candidates.reduce(0, { $0 + $1.count }) == additionalCardCount else {
+            return []
+        }
+        return candidates
+    }
+
+    private func displayName(for rarity: String) -> String {
+        switch rarity.lowercased() {
+        case "illustration rare": "Illustration Rare (IR)"
+        case "special illustration rare": "Special Illustration Rare (SIR)"
+        case "ultra rare": "Ultra Rare (UR)"
+        case "mega hyper rare": "Mega Hyper Rare (MHR)"
+        default: rarity.capitalized
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Release") {
+                    LabeledContent("Date", value: releaseDateText)
+                    if let abbreviation = set.abbreviation {
+                        LabeledContent("Set code", value: abbreviation)
+                    }
+                }
+
+                Section("Cards") {
+                    LabeledContent("Main numbered cards", value: "\(set.officialCardCount)")
+                    LabeledContent("Total cataloged cards", value: "\(set.totalCardCount)")
+                }
+
+                if !additionalRarityCounts.isEmpty {
+                    Section {
+                        ForEach(additionalRarityCounts) { rarityCount in
+                            LabeledContent(
+                                displayName(for: rarityCount.rarity),
+                                value: "\(rarityCount.count)"
+                            )
+                        }
+                    } header: {
+                        Text("Additional cards")
+                    } footer: {
+                        Text("\(additionalCardCount) cards beyond the main numbered set.")
+                    }
+                } else if additionalCardCount > 0 {
+                    Section("Additional cards") {
+                        LabeledContent("Additional cards", value: "\(additionalCardCount)")
+                    }
+                }
+
+                if additionalRarityCounts.isEmpty && !sortedRarityCounts.isEmpty {
+                    Section("Rarity breakdown") {
+                        ForEach(sortedRarityCounts) { rarityCount in
+                            LabeledContent(
+                                displayName(for: rarityCount.rarity),
+                                value: "\(rarityCount.count)"
+                            )
+                        }
+                    }
+                }
+
+                Section {
+                    Text("Additional cards are entries beyond the main numbered set. A master collection may also include parallel variants such as reverse holos.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle(set.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
     }
@@ -125,6 +579,8 @@ struct CollectionView: View {
 
 struct SettingsView: View {
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
+    @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
+    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
 
     var body: some View {
         NavigationStack {
@@ -137,10 +593,28 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
+
+                    Picker("Layout", selection: $browsingStyle) {
+                        ForEach(SetsBrowsingStyle.allCases) { style in
+                            Text(style.title)
+                                .tag(style.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
                 } header: {
                     Text("Sets")
                 } footer: {
-                    Text("The Sets tab opens with this view.")
+                    Text(SetsBrowsingStyle.resolve(browsingStyle).description)
+                }
+
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(AppAppearance.allCases) { option in
+                            Label(option.title, systemImage: option.systemImage)
+                                .tag(option.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
 
                 Section("Privacy") {
