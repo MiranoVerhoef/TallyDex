@@ -99,6 +99,19 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v4-card-search-index") { database in
+            try database.create(table: "catalogSearchCard") { table in
+                table.column("id", .text).primaryKey()
+                table.column("setID", .text)
+                    .notNull()
+                    .indexed()
+                    .references("catalogSet", onDelete: .cascade)
+                table.column("localID", .text).notNull()
+                table.column("name", .text).notNull().indexed()
+                table.column("imageURL", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -163,21 +176,43 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
-    func searchCards(query: String) async throws -> [CatalogCard] {
+    func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         return try await database.queue.read { database in
-            let pattern = "%\(trimmed)%"
+            let tokens = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+            let tokenClause = "(search.name LIKE ? COLLATE NOCASE OR search.localID LIKE ? COLLATE NOCASE OR catalogSet.name LIKE ? COLLATE NOCASE)"
+            let whereClause = Array(repeating: tokenClause, count: tokens.count).joined(separator: " AND ")
+            let arguments = tokens.flatMap { token in
+                let pattern = "%\(token)%"
+                return [pattern, pattern, pattern]
+            }
             return try Row.fetchAll(
                 database,
                 sql: """
-                SELECT * FROM catalogCard
-                WHERE name LIKE ? COLLATE NOCASE OR localID LIKE ? COLLATE NOCASE
-                ORDER BY name COLLATE NOCASE, localID
+                SELECT search.*, catalogSet.name AS setName
+                FROM catalogSearchCard AS search
+                JOIN catalogSet ON catalogSet.id = search.setID
+                WHERE \(whereClause)
+                ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
                 LIMIT 100
                 """,
-                arguments: [pattern, pattern]
-            ).map(Self.catalogCard)
+                arguments: StatementArguments(arguments)
+            ).map { row in
+                CatalogCardSearchResult(
+                    card: CatalogCard(
+                        id: row["id"],
+                        setID: row["setID"],
+                        localID: row["localID"],
+                        name: row["name"],
+                        imageURL: Self.url(row["imageURL"]),
+                        category: nil,
+                        illustrator: nil,
+                        rarity: nil
+                    ),
+                    setName: row["setName"]
+                )
+            }
         }
     }
 
@@ -361,6 +396,32 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 try database.execute(
                     sql: "INSERT INTO catalogVariant (cardID, kind) VALUES (?, ?)",
                     arguments: [card.id, variant.rawValue]
+                )
+            }
+        }
+    }
+
+    func replaceSearchIndex(_ cards: [CatalogCard]) async throws {
+        let cardIDs = cards.map(\.id)
+        guard Set(cardIDs).count == cardIDs.count else {
+            throw CatalogRepositoryError.invalidSnapshot
+        }
+
+        try await database.queue.write { database in
+            try database.execute(sql: "DELETE FROM catalogSearchCard")
+            for card in cards {
+                try database.execute(
+                    sql: """
+                    INSERT INTO catalogSearchCard (id, setID, localID, name, imageURL)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        card.id,
+                        card.setID,
+                        card.localID,
+                        card.name,
+                        card.imageURL?.absoluteString,
+                    ]
                 )
             }
         }

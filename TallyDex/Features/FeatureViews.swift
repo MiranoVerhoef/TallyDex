@@ -769,34 +769,41 @@ private struct CatalogSetInformationView: View {
 struct SearchView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @State private var query = ""
-    @State private var results: [CatalogCard] = []
+    @State private var results: [CatalogCardSearchResult] = []
     @State private var isSearching = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    ContentUnavailableView(
-                        "Search the Catalog",
-                        systemImage: "magnifyingglass",
-                        description: Text("Find cards from sets you’ve opened by name or collector number.")
-                    )
+                    if catalogStore.isPreparingSearchIndex {
+                        ProgressView("Preparing complete card search…")
+                    } else {
+                        ContentUnavailableView(
+                            "Search the Catalog",
+                            systemImage: "magnifyingglass",
+                            description: Text(
+                                catalogStore.searchIndexMessage
+                                    ?? "Find every cataloged card by card name, set, or collector number."
+                            )
+                        )
+                    }
                 } else if isSearching && results.isEmpty {
                     ProgressView("Searching…")
                 } else if results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else {
-                    List(results) { card in
+                    List(results) { result in
                         NavigationLink {
-                            CatalogCardDetailView(card: card)
+                            CatalogCardDetailView(card: result.card)
                         } label: {
                             HStack(spacing: 12) {
-                                CachedCardImage(reference: card.thumbnailArtworkReference)
+                                CachedCardImage(reference: result.card.thumbnailArtworkReference)
                                     .frame(width: 52, height: 72)
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(card.name)
+                                    Text(result.card.name)
                                         .font(.body.weight(.semibold))
-                                    Text("#\(card.localID)")
+                                    Text("\(result.setName) · #\(result.card.localID)")
                                         .font(.caption.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                 }
@@ -808,7 +815,7 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
             .searchable(text: $query, prompt: "Card, set, or number")
-            .task(id: query) {
+            .task(id: "\(query)|\(catalogStore.isPreparingSearchIndex)") {
                 guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     results = []
                     return

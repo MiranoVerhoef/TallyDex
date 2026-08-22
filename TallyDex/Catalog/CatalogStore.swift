@@ -40,6 +40,9 @@ final class CatalogStore {
     private(set) var isRefreshing = false
     private(set) var refreshMessage: String?
     private(set) var lastUpdated: Date?
+    private(set) var isPreparingSearchIndex = false
+    private(set) var searchIndexMessage: String?
+    private(set) var searchIndexUpdated: Date?
 
     @ObservationIgnored private let provider: any CatalogProvider
     @ObservationIgnored private let bundle: Bundle
@@ -49,6 +52,7 @@ final class CatalogStore {
     @ObservationIgnored private var hasStarted = false
 
     private static let lastCatalogRefreshKey = "catalog.lastRefresh"
+    private static let lastSearchIndexRefreshKey = "catalog.searchIndex.lastRefresh"
     private static let staleInterval: TimeInterval = 6 * 60 * 60
 
     init(
@@ -89,8 +93,13 @@ final class CatalogStore {
             isInitialLoading = false
 
             lastUpdated = try await repository.metadataDate(forKey: Self.lastCatalogRefreshKey)
+            searchIndexUpdated = try await repository.metadataDate(
+                forKey: Self.lastSearchIndexRefreshKey
+            )
             if needsRefresh(lastUpdated) {
                 await refresh()
+            } else if needsRefresh(searchIndexUpdated) {
+                await refreshSearchIndex(in: repository)
             }
         } catch {
             isInitialLoading = false
@@ -110,6 +119,7 @@ final class CatalogStore {
             let snapshots = try await fetchRemoteCatalog()
             try await repository.replaceCatalog(snapshots)
             await refreshDownloadedSets(downloadedSetIDs, in: repository)
+            await refreshSearchIndex(in: repository)
             let refreshDate = now()
             try await repository.setMetadataDate(refreshDate, forKey: Self.lastCatalogRefreshKey)
             try await loadCachedCatalog(from: repository)
@@ -125,8 +135,12 @@ final class CatalogStore {
     /// Called whenever the app becomes active so newly announced sets and artwork
     /// appear even when TallyDex has remained installed and suspended for days.
     func refreshIfNeeded() async {
-        guard hasStarted, needsRefresh(lastUpdated) else { return }
-        await refresh()
+        guard hasStarted else { return }
+        if needsRefresh(lastUpdated) {
+            await refresh()
+        } else if needsRefresh(searchIndexUpdated), let repository = try? resolveRepository() {
+            await refreshSearchIndex(in: repository)
+        }
     }
 
     func cards(for set: CatalogSet, forceRefresh: Bool = false) async throws -> [CatalogCard] {
@@ -151,7 +165,7 @@ final class CatalogStore {
         }
     }
 
-    func searchCards(query: String) async throws -> [CatalogCard] {
+    func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
         try await resolveRepository().searchCards(query: query)
     }
 
@@ -251,6 +265,28 @@ final class CatalogStore {
         for snapshot in snapshots {
             try? await repository.replaceSet(snapshot)
             try? await repository.setMetadataDate(now(), forKey: setRefreshKey(snapshot.set.id))
+        }
+    }
+
+    private func refreshSearchIndex(in repository: any CatalogRepository) async {
+        guard !isPreparingSearchIndex else { return }
+        isPreparingSearchIndex = true
+        searchIndexMessage = nil
+        defer { isPreparingSearchIndex = false }
+
+        do {
+            let remoteCards = try await provider.fetchCardIndex()
+            let validSetIDs = Set(try await repository.fetchSets(seriesID: nil).map(\.id))
+            let searchableCards = remoteCards.filter { validSetIDs.contains($0.setID) }
+            try await repository.replaceSearchIndex(searchableCards)
+            let refreshDate = now()
+            try await repository.setMetadataDate(
+                refreshDate,
+                forKey: Self.lastSearchIndexRefreshKey
+            )
+            searchIndexUpdated = refreshDate
+        } catch {
+            searchIndexMessage = "The complete search catalog couldn’t be updated. It will retry automatically."
         }
     }
 
