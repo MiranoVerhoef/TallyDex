@@ -1083,6 +1083,59 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.totalByteCount, 10)
     }
 
+    func testOfflineSetArtworkSurvivesAutomaticCacheRemoval() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cacheRoot = base.appendingPathComponent("cache", isDirectory: true)
+        let offlineRoot = base.appendingPathComponent("offline", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let cache = CatalogArtworkCache(
+            rootDirectory: cacheRoot,
+            offlineRootDirectory: offlineRoot,
+            maximumByteCount: 1
+        )
+        let reference = CatalogArtworkReference(
+            url: URL(string: "https://assets.example/cards/1")!,
+            category: .cardArtwork,
+            offlineSetID: "set-one"
+        )
+        let expected = Data(repeating: 7, count: 24)
+
+        try await cache.storeOffline(expected, for: reference, setID: "set-one")
+        try await cache.removeAll()
+        try await cache.enforceLimit()
+
+        let restored = try await cache.data(for: reference)
+        let statistics = await cache.offlineStatistics(setID: "set-one")
+        XCTAssertEqual(restored, expected)
+        XCTAssertEqual(statistics.fileCount, 1)
+        XCTAssertEqual(statistics.byteCount, 24)
+
+        try await cache.removeOfflineSet(setID: "set-one")
+        let removedStatistics = await cache.offlineStatistics(setID: "set-one")
+        XCTAssertEqual(removedStatistics, .empty)
+    }
+
+    @MainActor
+    func testOfflineSetPinsReloadAndSizeEstimateIsStable() {
+        let suiteName = "TallyDexTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(["set-one", "set-two"], forKey: ArtworkCacheStore.offlineSetIDsKey)
+
+        let store = ArtworkCacheStore(
+            cache: CatalogArtworkCache(
+                rootDirectory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            ),
+            userDefaults: defaults
+        )
+
+        XCTAssertEqual(store.pinnedSetIDs, ["set-one", "set-two"])
+        XCTAssertEqual(CatalogOfflineSetEstimator.estimatedByteCount(cardCount: 100), 35_250_000)
+    }
+
     private func set(
         id: String,
         seriesID: String,

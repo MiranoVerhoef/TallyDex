@@ -60,4 +60,5 @@ struct RootTabView: View {
     RootTabView()
         .environment(CatalogStore())
         .environment(CollectionStore())
+        .environment(ArtworkCacheStore())
 }
