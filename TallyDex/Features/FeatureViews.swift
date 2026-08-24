@@ -1391,6 +1391,7 @@ private struct CatalogCardDetailView: View {
     @State private var notes = ""
     @State private var savedNotes = ""
     @State private var isSavingMetadata = false
+    @State private var isConfirmingRefresh = false
 
     private var displayedCard: CatalogCard { snapshot?.card ?? card }
     private var availableVariants: [CatalogVariantKind] {
@@ -1471,7 +1472,19 @@ private struct CatalogCardDetailView: View {
             .safeAreaPadding(.bottom, 86)
         }
         .refreshable {
-            await loadDetails(forceRefresh: true)
+            isConfirmingRefresh = true
+        }
+        .confirmationDialog(
+            "Refresh \(card.name)?",
+            isPresented: $isConfirmingRefresh,
+            titleVisibility: .visible
+        ) {
+            Button("Refresh Card") {
+                Task { await loadDetails(forceRefresh: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("TallyDex will download the latest TCGdex details, variants, prices, and market averages for this card. Your ownership, wishlist, and personal notes will not change.")
         }
         .navigationTitle(card.name)
         .navigationBarTitleDisplayMode(.inline)
