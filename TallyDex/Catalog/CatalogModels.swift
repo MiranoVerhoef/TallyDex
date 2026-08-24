@@ -125,13 +125,53 @@ enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
 enum PricingSettings {
     static let sourceKey = "pricing.preferredSource"
     static let cardmarketCountryKey = "pricing.cardmarket.country"
+    static let historyRetentionKey = "pricing.history.retention"
     static let defaultSource = CatalogPriceSource.cardmarket
+    static let defaultHistoryRetention = CatalogPriceHistoryRetention.oneYear
+    static let maximumHistoryPointCount = 250_000
 
     static var preferredSource: CatalogPriceSource {
         guard let rawValue = UserDefaults.standard.string(forKey: sourceKey) else {
             return defaultSource
         }
         return CatalogPriceSource(rawValue: rawValue) ?? defaultSource
+    }
+
+    static var historyRetention: CatalogPriceHistoryRetention {
+        guard let rawValue = UserDefaults.standard.string(forKey: historyRetentionKey) else {
+            return defaultHistoryRetention
+        }
+        return CatalogPriceHistoryRetention(rawValue: rawValue) ?? defaultHistoryRetention
+    }
+}
+
+enum CatalogPriceHistoryRetention: String, CaseIterable, Identifiable, Sendable {
+    case ninetyDays
+    case oneYear
+    case forever
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ninetyDays: "90 days"
+        case .oneYear: "1 year"
+        case .forever: "Forever"
+        }
+    }
+
+    func cutoff(relativeTo date: Date, calendar: Calendar = .current) -> Date? {
+        let days: Int? = switch self {
+        case .ninetyDays: 90
+        case .oneYear: 365
+        case .forever: nil
+        }
+        guard let days else { return nil }
+        return calendar.date(
+            byAdding: .day,
+            value: -(days - 1),
+            to: calendar.startOfDay(for: date)
+        )
     }
 }
 
@@ -291,6 +331,16 @@ struct CatalogPriceHistorySummary: Equatable, Sendable {
     }
 }
 
+struct CatalogPriceStorageStatistics: Equatable, Sendable {
+    let currentPriceCount: Int
+    let historyPointCount: Int
+    let databaseByteCount: Int64
+
+    var estimatedHistoryByteCount: Int64 {
+        Int64(historyPointCount) * 160
+    }
+}
+
 struct CatalogValueSummary: Equatable, Sendable {
     let amount: Double
     let pricedVariants: Int
@@ -418,6 +468,12 @@ protocol CatalogRepository: Sendable {
         cardID: String,
         source: CatalogPriceSource
     ) async throws -> [CatalogPriceHistoryPoint]
+    func fetchCard(id: String) async throws -> CatalogCard?
+    func priceStorageStatistics() async throws -> CatalogPriceStorageStatistics
+    @discardableResult
+    func prunePriceHistory(olderThan cutoff: Date?, maximumPoints: Int) async throws -> Int
+    func clearPriceHistory() async throws
+    func clearAllPrices() async throws
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
     func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws

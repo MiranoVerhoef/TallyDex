@@ -91,6 +91,7 @@ final class CatalogStore {
             }
 
             try await loadCachedCatalog(from: repository)
+            _ = try? await enforcePriceHistoryLimits(in: repository)
             isInitialLoading = false
 
             lastUpdated = try await repository.metadataDate(forKey: Self.lastCatalogRefreshKey)
@@ -193,6 +194,23 @@ final class CatalogStore {
         try await resolveRepository().fetchPriceHistory(cardID: cardID, source: source)
     }
 
+    func priceStorageStatistics() async throws -> CatalogPriceStorageStatistics {
+        try await resolveRepository().priceStorageStatistics()
+    }
+
+    @discardableResult
+    func applyPriceHistoryRetention() async throws -> Int {
+        try await enforcePriceHistoryLimits(in: resolveRepository())
+    }
+
+    func clearPriceHistory() async throws {
+        try await resolveRepository().clearPriceHistory()
+    }
+
+    func clearAllMarketData() async throws {
+        try await resolveRepository().clearAllPrices()
+    }
+
     /// TCGdex's set response contains card summaries but not printing variants.
     /// Hydrate missing detail records with a small concurrency window so
     /// variant-aware goals can calculate an exact denominator without flooding
@@ -242,29 +260,59 @@ final class CatalogStore {
             }
         }
 
+        _ = try? await enforcePriceHistoryLimits(in: repository)
+
         cached = (try? await repository.fetchVariants(cardIDs: cardIDs)) ?? cached
         return cached
     }
 
     func details(for card: CatalogCard) async throws -> CatalogCardSnapshot {
         let repository = try resolveRepository()
+        let lastPriceRefresh = try await repository.metadataDate(forKey: priceRefreshKey(card.id))
+        if !needsPricingRefresh(lastPriceRefresh) {
+            return try await cachedSnapshot(for: card, in: repository)
+        }
         do {
             let snapshot = try await provider.fetchCard(id: card.id)
             try await repository.replaceCard(snapshot)
             try await repository.setMetadataDate(now(), forKey: priceRefreshKey(card.id))
-            let cachedVariants = try await repository.fetchVariants(cardID: card.id)
-            let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
-            let cachedPrices = pricesByCardID[card.id] ?? []
-            return CatalogCardSnapshot(card: snapshot.card, variants: cachedVariants, prices: cachedPrices)
+            _ = try? await enforcePriceHistoryLimits(in: repository)
+            return try await cachedSnapshot(for: snapshot.card, in: repository)
         } catch {
-            let variants = try await repository.fetchVariants(cardID: card.id)
-            let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
-            let prices = pricesByCardID[card.id] ?? []
-            if card.category != nil || card.illustrator != nil || card.rarity != nil || !variants.isEmpty {
-                return CatalogCardSnapshot(card: card, variants: variants, prices: prices)
+            let cached = try await cachedSnapshot(for: card, in: repository)
+            let variants = cached.variants
+            if cached.card.category != nil
+                || cached.card.illustrator != nil
+                || cached.card.rarity != nil
+                || !variants.isEmpty {
+                return cached
             }
             throw error
         }
+    }
+
+    private func cachedSnapshot(
+        for card: CatalogCard,
+        in repository: any CatalogRepository
+    ) async throws -> CatalogCardSnapshot {
+        let cachedCard = try await repository.fetchCard(id: card.id) ?? card
+        let variants = try await repository.fetchVariants(cardID: card.id)
+        let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
+        return CatalogCardSnapshot(
+            card: cachedCard,
+            variants: variants,
+            prices: pricesByCardID[card.id] ?? []
+        )
+    }
+
+    @discardableResult
+    private func enforcePriceHistoryLimits(
+        in repository: any CatalogRepository
+    ) async throws -> Int {
+        try await repository.prunePriceHistory(
+            olderThan: PricingSettings.historyRetention.cutoff(relativeTo: now()),
+            maximumPoints: PricingSettings.maximumHistoryPointCount
+        )
     }
 
     private func resolveRepository() throws -> any CatalogRepository {
@@ -373,6 +421,13 @@ final class CatalogStore {
             try await repository.replaceSearchIndex(searchableCards)
             let refreshDate = now()
             try await repository.setMetadataDate(
+                refreshDate,
+                forKey: Self.lastSearchIndexRefreshKey
+            )
+            searchIndexUpdated = refreshDate
+        } catch TCGdexError.notModified {
+            let refreshDate = now()
+            try? await repository.setMetadataDate(
                 refreshDate,
                 forKey: Self.lastSearchIndexRefreshKey
             )

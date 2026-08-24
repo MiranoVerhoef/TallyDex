@@ -1002,7 +1002,9 @@ private struct CatalogSetDetailView: View {
         defer { isLoadingCards = false }
         do {
             cards = try await catalogStore.cards(for: set, forceRefresh: forceRefresh)
-            await loadGoalVariants(forcePriceRefresh: forceRefresh)
+            // Pull-to-refresh updates the set list immediately, while exact card
+            // details and prices continue to honor their 18-hour cache window.
+            await loadGoalVariants()
         } catch {
             cardMessage = set.isUpcoming()
                 ? "The card list will appear automatically after it is published."
@@ -1010,12 +1012,11 @@ private struct CatalogSetDetailView: View {
         }
     }
 
-    private func loadGoalVariants(forcePriceRefresh: Bool = false) async {
+    private func loadGoalVariants() async {
         isPreparingGoalMetadata = true
         defer { isPreparingGoalMetadata = false }
         availableVariantsByCardID = await catalogStore.prepareVariants(
-            for: cards,
-            forcePriceRefresh: forcePriceRefresh
+            for: cards
         )
         pricesByCardID = (try? await catalogStore.prices(cardIDs: cards.map(\.id))) ?? [:]
     }
@@ -1625,6 +1626,16 @@ private struct CatalogCardPriceHistoryView: View {
         CatalogPriceHistorySummary(points: displayedPoints)
     }
 
+    private var rangeCoverageText: String? {
+        guard let first = displayedPoints.first, let last = displayedPoints.last else { return nil }
+        let count = displayedPoints.count
+        let savedDays = "\(count) saved \(count == 1 ? "day" : "days")"
+        if Calendar.current.isDate(first.day, inSameDayAs: last.day) {
+            return "\(savedDays) · \(last.day.formatted(date: .abbreviated, time: .omitted))"
+        }
+        return "\(savedDays) · \(first.day.formatted(date: .abbreviated, time: .omitted))–\(last.day.formatted(date: .abbreviated, time: .omitted))"
+    }
+
     private var currencyCode: String {
         displayedPoints.last?.currencyCode
             ?? snapshot.prices.first {
@@ -1685,6 +1696,13 @@ private struct CatalogCardPriceHistoryView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+
+                if let rangeCoverageText {
+                    Text(rangeCoverageText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
 
                 if isLoading {
                     HStack {
@@ -3166,6 +3184,12 @@ struct SettingsView: View {
 
                 Section("Storage") {
                     NavigationLink {
+                        PriceDataSettingsView()
+                    } label: {
+                        Label("Price Data", systemImage: "chart.xyaxis.line")
+                    }
+
+                    NavigationLink {
                         ArtworkCacheSettingsView()
                     } label: {
                         Label("Artwork Cache", systemImage: "externaldrive")
@@ -3704,6 +3728,173 @@ private struct CollectionBackupsView: View {
     }
 }
 
+private struct PriceDataSettingsView: View {
+    private enum RemovalAction {
+        case history
+        case allMarketData
+    }
+
+    @Environment(CatalogStore.self) private var catalogStore
+    @AppStorage(PricingSettings.historyRetentionKey)
+    private var retention = PricingSettings.defaultHistoryRetention.rawValue
+    @State private var statistics: CatalogPriceStorageStatistics?
+    @State private var pendingRemoval: RemovalAction?
+    @State private var isWorking = false
+    @State private var statusMessage: String?
+
+    private func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent(
+                    "Current exact prices",
+                    value: statistics?.currentPriceCount.formatted() ?? "—"
+                )
+                LabeledContent(
+                    "Saved history points",
+                    value: statistics?.historyPointCount.formatted() ?? "—"
+                )
+                LabeledContent(
+                    "Estimated history storage",
+                    value: statistics.map { size($0.estimatedHistoryByteCount) } ?? "—"
+                )
+                LabeledContent(
+                    "Entire catalog database",
+                    value: statistics.map { size($0.databaseByteCount) } ?? "—"
+                )
+            } header: {
+                Text("Usage")
+            } footer: {
+                Text("The catalog database also contains series, sets, cards, variants, and the complete search index. Artwork storage is reported separately in Artwork Cache.")
+            }
+
+            Section {
+                Picker("Keep history", selection: $retention) {
+                    ForEach(CatalogPriceHistoryRetention.allCases) { option in
+                        Text(option.title).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+                .disabled(isWorking)
+            } header: {
+                Text("Automatic Retention")
+            } footer: {
+                Text("The default is one year. Even with Forever selected, TallyDex keeps at most \(PricingSettings.maximumHistoryPointCount.formatted()) of the newest points—roughly 40 MB—to prevent unbounded growth.")
+            }
+
+            Section {
+                Button("Clear Price History", role: .destructive) {
+                    pendingRemoval = .history
+                }
+                .disabled(isWorking || statistics?.historyPointCount == 0)
+
+                Button("Clear All Market Data", role: .destructive) {
+                    pendingRemoval = .allMarketData
+                }
+                .disabled(isWorking || ((statistics?.historyPointCount ?? 0) == 0 && (statistics?.currentPriceCount ?? 0) == 0))
+            } header: {
+                Text("Remove")
+            } footer: {
+                Text("Clear Price History keeps the latest prices. Clear All Market Data removes latest and historical prices; exact prices download again when their cards need refreshing. Neither action changes ownership, goals, folders, wishlist, or notes.")
+            }
+
+            if isWorking {
+                Section {
+                    HStack {
+                        ProgressView()
+                        Text("Updating price storage…")
+                    }
+                }
+            } else if let statusMessage {
+                Section {
+                    Label(statusMessage, systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Price Data")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadStatistics() }
+        .onChange(of: retention) { _, _ in
+            Task { await applyRetention() }
+        }
+        .confirmationDialog(
+            pendingRemoval == .history ? "Clear saved price history?" : "Clear all market data?",
+            isPresented: Binding(
+                get: { pendingRemoval != nil },
+                set: { if !$0 { pendingRemoval = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pendingRemoval {
+                Button(
+                    pendingRemoval == .history ? "Clear Price History" : "Clear All Market Data",
+                    role: .destructive
+                ) {
+                    let action = pendingRemoval
+                    self.pendingRemoval = nil
+                    Task { await remove(action) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingRemoval = nil }
+        } message: {
+            Text(pendingRemoval == .history
+                 ? "The latest exact price for each printing remains available, but its chart history starts over."
+                 : "All current and historical market prices are removed. Your collection data is not affected.")
+        }
+    }
+
+    @MainActor
+    private func loadStatistics() async {
+        do {
+            statistics = try await catalogStore.priceStorageStatistics()
+        } catch {
+            statusMessage = "Price storage usage couldn’t be calculated."
+        }
+    }
+
+    @MainActor
+    private func applyRetention() async {
+        guard !isWorking else { return }
+        isWorking = true
+        statusMessage = nil
+        defer { isWorking = false }
+        do {
+            let removed = try await catalogStore.applyPriceHistoryRetention()
+            await loadStatistics()
+            statusMessage = removed == 0
+                ? "The saved history already matches this limit."
+                : "Removed \(removed.formatted()) older history points."
+        } catch {
+            statusMessage = "The retention limit couldn’t be applied."
+        }
+    }
+
+    @MainActor
+    private func remove(_ action: RemovalAction) async {
+        guard !isWorking else { return }
+        isWorking = true
+        statusMessage = nil
+        defer { isWorking = false }
+        do {
+            switch action {
+            case .history:
+                try await catalogStore.clearPriceHistory()
+                statusMessage = "Price history cleared. Latest exact prices were kept."
+            case .allMarketData:
+                try await catalogStore.clearAllMarketData()
+                statusMessage = "All market data cleared. Collection data was kept."
+            }
+            await loadStatistics()
+        } catch {
+            statusMessage = "That price data couldn’t be cleared. Nothing else was changed."
+        }
+    }
+}
+
 private struct ArtworkCacheSettingsView: View {
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(CatalogStore.self) private var catalogStore
@@ -3743,8 +3934,15 @@ private struct ArtworkCacheSettingsView: View {
                         )
                     )
                 )
+                LabeledContent(
+                    "Automatic limit",
+                    value: ByteCountFormatter.string(
+                        fromByteCount: CatalogArtworkCache.maximumByteCount,
+                        countStyle: .file
+                    )
+                )
             } footer: {
-                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch.")
+                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch. When the limit is reached, the least recently used card images are removed first; they download again when needed.")
             }
 
             Section("Choose What to Remove") {
