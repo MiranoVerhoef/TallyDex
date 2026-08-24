@@ -2874,7 +2874,7 @@ struct SettingsView: View {
 }
 
 private struct CollectionTransferFileDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json, .commaSeparatedText, .data] }
+    static var readableContentTypes: [UTType] { [.tallyDexCollection, .json, .commaSeparatedText] }
 
     var data = Data()
 
@@ -2897,7 +2897,7 @@ private struct CollectionTransferFileDocument: FileDocument {
 private struct CollectionDataTransferView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @State private var exportFile = CollectionTransferFileDocument()
-    @State private var exportType = UTType.json
+    @State private var exportType = UTType.tallyDexCollection
     @State private var exportFilename = "TallyDex-Collection.pokecollection"
     @State private var isExporting = false
     @State private var isImporting = false
@@ -2970,7 +2970,7 @@ private struct CollectionDataTransferView: View {
         }
         .fileImporter(
             isPresented: $isImporting,
-            allowedContentTypes: [.json, .data],
+            allowedContentTypes: [.tallyDexCollection, .json, .data],
             allowsMultipleSelection: false
         ) { result in
             handleImportSelection(result)
@@ -2995,7 +2995,7 @@ private struct CollectionDataTransferView: View {
                     data: csv ? CollectionTransferCodec.csv(document) : try CollectionTransferCodec.encode(document)
                 )
                 let date = document.exportedAt.formatted(.iso8601.year().month().day())
-                exportType = csv ? .commaSeparatedText : .json
+                exportType = csv ? .commaSeparatedText : .tallyDexCollection
                 exportFilename = csv ? "TallyDex-Collection-\(date).csv" : "TallyDex-Collection-\(date).pokecollection"
                 isExporting = true
             } catch {
@@ -3030,7 +3030,7 @@ private struct CollectionDataTransferView: View {
     }
 }
 
-private struct CollectionImportPreviewView: View {
+struct CollectionImportPreviewView: View {
     @Environment(CollectionStore.self) private var collectionStore
     let prepared: PreparedCollectionImport
     let onFinish: (String) -> Void

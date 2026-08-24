@@ -13,6 +13,8 @@ final class CollectionStore {
     private(set) var backups: [CollectionBackup] = []
     private(set) var isInitialLoading = true
     private(set) var loadMessage: String?
+    private(set) var pendingExternalImport: PreparedCollectionImport?
+    private(set) var externalImportError: String?
 
     @ObservationIgnored private var repository: (any CollectionRepository)?
     @ObservationIgnored private let now: @Sendable () -> Date
@@ -127,6 +129,29 @@ final class CollectionStore {
     func importCollection(_ prepared: PreparedCollectionImport, mode: CollectionImportMode) async throws {
         try await resolveRepository().importCollection(prepared.document, mode: mode, importedAt: now())
         try await reloadCollectionState()
+    }
+
+    func openExternalBackup(at url: URL) async {
+        externalImportError = nil
+        pendingExternalImport = nil
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            pendingExternalImport = try await prepareImport(
+                data: data,
+                filename: url.lastPathComponent
+            )
+        } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
+            externalImportError = "This backup uses schema version \(version), which this version of TallyDex can’t import."
+        } catch {
+            externalImportError = "That file is not a valid TallyDex .pokecollection backup. No data was changed."
+        }
+    }
+
+    func clearExternalImport() {
+        pendingExternalImport = nil
+        externalImportError = nil
     }
 
     func cardMetadata(for cardID: String, forceReload: Bool = false) async throws -> CardCollectionMetadata {

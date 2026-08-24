@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.1/TallyDex-v0.4.1-import-preview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.0/TallyDex-v0.4.0-export-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.3/TallyDex-v0.3.3-card-data-help.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-cardmarket-link.png",
@@ -37,6 +38,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.4.1",
+          "buildVersion": "16",
+          "date": "2026-08-24",
+          "localizedDescription": "Fixes .pokecollection backup imports by registering the TallyDex backup document type with iOS. Exported backups are now selectable in the file importer and can be tapped directly in Files to open the same safe Import Preview.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.1/TallyDex-v0.4.1.ipa",
+          "size": 5200553,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.4.0",
           "buildVersion": "15",

@@ -8,6 +8,7 @@ enum AppTab: Hashable, CaseIterable {
 }
 
 struct RootTabView: View {
+    @Environment(CollectionStore.self) private var collectionStore
     @State private var selection: AppTab = .sets
 
     var body: some View {
@@ -27,6 +28,30 @@ struct RootTabView: View {
             Tab("Settings", systemImage: "gearshape", value: .settings) {
                 SettingsView()
             }
+        }
+        .onChange(of: collectionStore.pendingExternalImport?.id) { _, id in
+            if id != nil { selection = .settings }
+        }
+        .sheet(
+            item: Binding(
+                get: { collectionStore.pendingExternalImport },
+                set: { if $0 == nil { collectionStore.clearExternalImport() } }
+            )
+        ) { prepared in
+            CollectionImportPreviewView(prepared: prepared) { _ in
+                collectionStore.clearExternalImport()
+            }
+        }
+        .alert(
+            "Couldn’t Open Backup",
+            isPresented: Binding(
+                get: { collectionStore.externalImportError != nil },
+                set: { if !$0 { collectionStore.clearExternalImport() } }
+            )
+        ) {
+            Button("OK") { collectionStore.clearExternalImport() }
+        } message: {
+            Text(collectionStore.externalImportError ?? "The backup couldn’t be opened.")
         }
     }
 }
