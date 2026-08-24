@@ -1575,7 +1575,10 @@ private struct CatalogCardDetailView: View {
 
     @ViewBuilder
     private func rollingAveragesSection(snapshot: CatalogCardSnapshot) -> some View {
-        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        // TCGdex currently supplies rolling averages for Cardmarket. Keep this
+        // section visible even when TCGplayer is the user's preferred current
+        // price source; the source label makes the distinction explicit.
+        let source = CatalogPriceSource.cardmarket
         let quotes = snapshot.prices
             .filter { $0.source == source && $0.hasRollingAverages }
             .sorted { $0.variant.rawValue < $1.variant.rawValue }

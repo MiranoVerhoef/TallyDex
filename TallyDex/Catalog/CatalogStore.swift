@@ -262,6 +262,10 @@ final class CatalogStore {
                         refreshDate,
                         forKey: priceRefreshKey(snapshot.card.id)
                     )
+                    try? await repository.setMetadataDate(
+                        refreshDate,
+                        forKey: rollingAverageRefreshKey(snapshot.card.id)
+                    )
                 }
                 if let card = remaining.next() {
                     group.addTask { try? await provider.fetchCard(id: card.id) }
@@ -278,13 +282,21 @@ final class CatalogStore {
     func details(for card: CatalogCard) async throws -> CatalogCardSnapshot {
         let repository = try resolveRepository()
         let lastPriceRefresh = try await repository.metadataDate(forKey: priceRefreshKey(card.id))
-        if !needsPricingRefresh(lastPriceRefresh) {
+        let lastRollingAverageRefresh = try await repository.metadataDate(
+            forKey: rollingAverageRefreshKey(card.id)
+        )
+        if !needsPricingRefresh(lastPriceRefresh), lastRollingAverageRefresh != nil {
             return try await cachedSnapshot(for: card, in: repository)
         }
         do {
             let snapshot = try await provider.fetchCard(id: card.id)
             try await repository.replaceCard(snapshot)
-            try await repository.setMetadataDate(now(), forKey: priceRefreshKey(card.id))
+            let refreshDate = now()
+            try await repository.setMetadataDate(refreshDate, forKey: priceRefreshKey(card.id))
+            try await repository.setMetadataDate(
+                refreshDate,
+                forKey: rollingAverageRefreshKey(card.id)
+            )
             _ = try? await enforcePriceHistoryLimits(in: repository)
             return try await cachedSnapshot(for: snapshot.card, in: repository)
         } catch {
@@ -335,6 +347,10 @@ final class CatalogStore {
 
     private func priceRefreshKey(_ cardID: String) -> String {
         "catalog.price.\(cardID).lastRefresh"
+    }
+
+    private func rollingAverageRefreshKey(_ cardID: String) -> String {
+        "catalog.price.\(cardID).rollingAveragesChecked"
     }
 
     private func needsPricingRefresh(_ date: Date?) -> Bool {

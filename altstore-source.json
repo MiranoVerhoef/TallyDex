@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.6/TallyDex-v0.5.6-cache-fix.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.5/TallyDex-v0.5.5-market-averages.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.4/TallyDex-v0.5.4-offline-sets.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.3/TallyDex-v0.5.3-history-limits.png",
@@ -47,6 +48,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.5.6",
+          "buildVersion": "25",
+          "date": "2026-08-24",
+          "localizedDescription": "Fixes rolling Cardmarket averages being hidden by price data cached in earlier builds. Each older card now refreshes exactly once when opened, without reloading the entire set or repeatedly refreshing cards with no supplied averages. Cardmarket averages also remain visible when TCGplayer is selected as the preferred current-price source.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.6/TallyDex-v0.5.6.ipa",
+          "size": 5344003,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.5.5",
           "buildVersion": "24",

@@ -949,6 +949,10 @@ final class CatalogFoundationTests: XCTestCase {
             refreshDate,
             forKey: "catalog.price.\(card.id).lastRefresh"
         )
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.price.\(card.id).rollingAveragesChecked"
+        )
         let provider = CatalogProviderSpy(cardSnapshot: snapshot)
         let store = CatalogStore(
             provider: provider,
@@ -961,6 +965,72 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(loaded.prices.first?.amount, 1.25)
         let cardRequestCount = await provider.cardRequestCount
         XCTAssertEqual(cardRequestCount, 0)
+    }
+
+    @MainActor
+    func testCardDetailsRefreshLegacyCacheOnceForRollingAverages() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let card = CatalogCard(
+            id: "sv01-001", setID: "sv01", localID: "001", name: "Sprigatito",
+            imageURL: nil, category: "Pokemon", illustrator: nil, rarity: "Common"
+        )
+        let refreshDate = Date(timeIntervalSince1970: 10_000)
+        let legacySnapshot = CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(
+                cardID: card.id,
+                variant: .normal,
+                source: .cardmarket,
+                currencyCode: "EUR",
+                amount: 1.25,
+                updatedAt: refreshDate
+            )]
+        )
+        let refreshedSnapshot = CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(
+                cardID: card.id,
+                variant: .normal,
+                source: .cardmarket,
+                currencyCode: "EUR",
+                amount: 1.25,
+                updatedAt: refreshDate,
+                average1Day: 1.20,
+                average7Days: 1.15,
+                average30Days: 1.10
+            )]
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceCard(legacySnapshot)
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.price.\(card.id).lastRefresh"
+        )
+        let provider = CatalogProviderSpy(cardSnapshot: refreshedSnapshot)
+        let store = CatalogStore(
+            provider: provider,
+            repository: repository,
+            now: { refreshDate.addingTimeInterval(60 * 60) }
+        )
+
+        let firstLoad = try await store.details(for: card)
+        let secondLoad = try await store.details(for: card)
+
+        XCTAssertEqual(firstLoad.prices.first?.average30Days, 1.10)
+        XCTAssertEqual(secondLoad.prices.first?.average30Days, 1.10)
+        let cardRequestCount = await provider.cardRequestCount
+        XCTAssertEqual(cardRequestCount, 1)
+        let rollingAverageRefresh = try await repository.metadataDate(
+            forKey: "catalog.price.\(card.id).rollingAveragesChecked"
+        )
+        XCTAssertNotNil(rollingAverageRefresh)
     }
 
     func testPriceHistoryRangesAndSummaryUseExactOrderedPoints() throws {
