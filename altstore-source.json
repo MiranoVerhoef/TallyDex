@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.2/TallyDex-v0.4.2-legacy-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.1/TallyDex-v0.4.1-import-preview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.0/TallyDex-v0.4.0-export-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.3/TallyDex-v0.3.3-card-data-help.png",
@@ -38,6 +39,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.4.2",
+          "buildVersion": "17",
+          "date": "2026-08-24",
+          "localizedDescription": "Fixes older backups that Files classifies with a legacy, dynamic, or provider-specific document type. Import Backup now permits selection first, validates the JSON inside TallyDex, opens valid backups in Import Preview, and displays an immediate error for invalid files.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.2/TallyDex-v0.4.2.ipa",
+          "size": 5201860,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.4.1",
           "buildVersion": "16",
