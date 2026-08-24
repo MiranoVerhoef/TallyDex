@@ -97,6 +97,38 @@ final class CollectionStore {
         try await reloadCollectionState()
     }
 
+    func exportDocument() async throws -> PortableCollectionDocument {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
+        return try await resolveRepository().exportCollection(
+            exportedAt: now(),
+            appVersion: "\(version) (\(build))"
+        )
+    }
+
+    func prepareImport(data: Data, filename: String) async throws -> PreparedCollectionImport {
+        let document: PortableCollectionDocument
+        do {
+            document = try CollectionTransferCodec.decode(data)
+        } catch {
+            throw CollectionRepositoryError.invalidImport
+        }
+        let repository = try resolveRepository()
+        async let mergePreview = repository.previewImport(document, mode: .merge)
+        async let replacePreview = repository.previewImport(document, mode: .replace)
+        return try await PreparedCollectionImport(
+            filename: filename,
+            document: document,
+            mergePreview: mergePreview,
+            replacePreview: replacePreview
+        )
+    }
+
+    func importCollection(_ prepared: PreparedCollectionImport, mode: CollectionImportMode) async throws {
+        try await resolveRepository().importCollection(prepared.document, mode: mode, importedAt: now())
+        try await reloadCollectionState()
+    }
+
     func cardMetadata(for cardID: String, forceReload: Bool = false) async throws -> CardCollectionMetadata {
         if !forceReload, let metadata = cardMetadataByID[cardID] { return metadata }
         let metadata = try await resolveRepository().fetchCardMetadata(cardID: cardID)

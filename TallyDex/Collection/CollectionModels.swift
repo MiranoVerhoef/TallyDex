@@ -296,6 +296,16 @@ protocol CollectionRepository: Sendable {
     func fetchCustomFolders() async throws -> [CustomCollectionFolder]
     func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata
     func fetchBackups() async throws -> [CollectionBackup]
+    func exportCollection(exportedAt: Date, appVersion: String) async throws -> PortableCollectionDocument
+    func previewImport(
+        _ document: PortableCollectionDocument,
+        mode: CollectionImportMode
+    ) async throws -> CollectionImportPreview
+    func importCollection(
+        _ document: PortableCollectionDocument,
+        mode: CollectionImportMode,
+        importedAt: Date
+    ) async throws
     func createBackup(reason: String, createdAt: Date) async throws -> CollectionBackup
     func restoreBackup(
         id: UUID,
@@ -320,4 +330,6 @@ enum CollectionRepositoryError: Error, Equatable {
     case invalidQuantity
     case invalidCustomFolder
     case invalidBackup
+    case invalidImport
+    case unsupportedImportVersion(Int)
 }

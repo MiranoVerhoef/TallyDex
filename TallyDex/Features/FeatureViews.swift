@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> String {
     amount.formatted(
@@ -2815,6 +2816,12 @@ struct SettingsView: View {
 
                 Section("Data") {
                     NavigationLink {
+                        CollectionDataTransferView()
+                    } label: {
+                        Label("Export & Import", systemImage: "arrow.up.arrow.down.square")
+                    }
+
+                    NavigationLink {
                         CollectionBackupsView()
                     } label: {
                         LabeledContent {
@@ -2863,6 +2870,272 @@ struct SettingsView: View {
                 )
             }
         )
+    }
+}
+
+private struct CollectionTransferFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json, .commaSeparatedText, .data] }
+
+    var data = Data()
+
+    init(data: Data = Data()) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let contents = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        data = contents
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
+private struct CollectionDataTransferView: View {
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var exportFile = CollectionTransferFileDocument()
+    @State private var exportType = UTType.json
+    @State private var exportFilename = "TallyDex-Collection.pokecollection"
+    @State private var isExporting = false
+    @State private var isImporting = false
+    @State private var isPreparing = false
+    @State private var pendingImport: PreparedCollectionImport?
+    @State private var message: String?
+
+    var body: some View {
+        Form {
+            Section {
+                Button {
+                    prepareExport(csv: false)
+                } label: {
+                    Label("Export Full Backup", systemImage: "square.and.arrow.up")
+                }
+                .disabled(isPreparing)
+
+                Button {
+                    prepareExport(csv: true)
+                } label: {
+                    Label("Export Readable CSV", systemImage: "tablecells")
+                }
+                .disabled(isPreparing)
+            } header: {
+                Text("Export")
+            } footer: {
+                Text("The .pokecollection backup preserves ownership quantities and printings, set goals and visibility, custom folders, wishlist, and notes. CSV is intended for reading or spreadsheets; restore uses the full backup file.")
+            }
+
+            Section {
+                Button {
+                    isImporting = true
+                } label: {
+                    Label("Import Backup", systemImage: "square.and.arrow.down")
+                }
+                .disabled(isPreparing)
+            } header: {
+                Text("Import")
+            } footer: {
+                Text("TallyDex previews additions, changes, conflicts, skipped records, and removals first. Merge is safe and does not duplicate quantities. Replace requires confirmation. Both create a local rollback backup before changing anything.")
+            }
+
+            if isPreparing {
+                Section {
+                    HStack {
+                        ProgressView()
+                        Text("Preparing collection data…")
+                    }
+                }
+            }
+
+            if let message {
+                Section {
+                    Text(message)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Export & Import")
+        .navigationBarTitleDisplayMode(.inline)
+        .fileExporter(
+            isPresented: $isExporting,
+            document: exportFile,
+            contentType: exportType,
+            defaultFilename: exportFilename
+        ) { result in
+            if case .failure = result {
+                message = "The export wasn’t saved. Your collection was not changed."
+            }
+        }
+        .fileImporter(
+            isPresented: $isImporting,
+            allowedContentTypes: [.json, .data],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImportSelection(result)
+        }
+        .sheet(item: $pendingImport) { prepared in
+            CollectionImportPreviewView(prepared: prepared) { resultMessage in
+                pendingImport = nil
+                message = resultMessage
+            }
+        }
+    }
+
+    private func prepareExport(csv: Bool) {
+        guard !isPreparing else { return }
+        isPreparing = true
+        message = nil
+        Task {
+            defer { isPreparing = false }
+            do {
+                let document = try await collectionStore.exportDocument()
+                exportFile = CollectionTransferFileDocument(
+                    data: csv ? CollectionTransferCodec.csv(document) : try CollectionTransferCodec.encode(document)
+                )
+                let date = document.exportedAt.formatted(.iso8601.year().month().day())
+                exportType = csv ? .commaSeparatedText : .json
+                exportFilename = csv ? "TallyDex-Collection-\(date).csv" : "TallyDex-Collection-\(date).pokecollection"
+                isExporting = true
+            } catch {
+                message = "TallyDex couldn’t prepare the export. Your collection was not changed."
+            }
+        }
+    }
+
+    private func handleImportSelection(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let url = urls.first else {
+            if case .failure = result { message = "That backup couldn’t be opened." }
+            return
+        }
+        isPreparing = true
+        message = nil
+        Task {
+            defer { isPreparing = false }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let data = try Data(contentsOf: url)
+                pendingImport = try await collectionStore.prepareImport(
+                    data: data,
+                    filename: url.lastPathComponent
+                )
+            } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
+                message = "This backup uses schema version \(version), which this version of TallyDex can’t import."
+            } catch {
+                message = "That file is not a valid TallyDex .pokecollection backup. No data was changed."
+            }
+        }
+    }
+}
+
+private struct CollectionImportPreviewView: View {
+    @Environment(CollectionStore.self) private var collectionStore
+    let prepared: PreparedCollectionImport
+    let onFinish: (String) -> Void
+    @State private var mode = CollectionImportMode.merge
+    @State private var isApplying = false
+    @State private var isConfirmingReplace = false
+    @State private var errorMessage: String?
+
+    private var preview: CollectionImportPreview {
+        mode == .merge ? prepared.mergePreview : prepared.replacePreview
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("File", value: prepared.filename)
+                    LabeledContent("Created", value: prepared.document.exportedAt.formatted(date: .abbreviated, time: .shortened))
+                    LabeledContent("TallyDex", value: prepared.document.appVersion)
+                }
+
+                Section {
+                    Picker("Import mode", selection: $mode) {
+                        ForEach(CollectionImportMode.allCases) { option in
+                            Text(option.displayName).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } footer: {
+                    Text(mode == .merge
+                         ? "Merge adds missing records and accepts newer changes. Your newer conflicting records stay untouched."
+                         : "Replace makes this iPhone match the backup exactly, including removing records not in the file.")
+                }
+
+                Section("Preview") {
+                    previewRow("Additions", count: preview.additions, color: .green)
+                    previewRow("Changes", count: preview.changes, color: .blue)
+                    previewRow("Conflicts kept on this iPhone", count: preview.conflicts, color: .orange)
+                    previewRow("Skipped or unchanged", count: preview.skipped, color: .secondary)
+                    if mode == .replace {
+                        previewRow("Removals", count: preview.removals, color: .red)
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage).foregroundStyle(.red)
+                    }
+                }
+
+                Section {
+                    Button(mode == .merge ? "Merge Collection" : "Replace Collection", role: mode == .replace ? .destructive : nil) {
+                        if mode == .replace {
+                            isConfirmingReplace = true
+                        } else {
+                            applyImport()
+                        }
+                    }
+                    .disabled(isApplying || !preview.hasChanges)
+                } footer: {
+                    Text("Before importing, TallyDex saves the current collection in Settings → Collection Backups so you can roll back.")
+                }
+            }
+            .navigationTitle("Import Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onFinish("Import cancelled. No data was changed.") }
+                        .disabled(isApplying)
+                }
+            }
+            .confirmationDialog(
+                "Replace your current collection?",
+                isPresented: $isConfirmingReplace,
+                titleVisibility: .visible
+            ) {
+                Button("Replace Collection", role: .destructive) { applyImport() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove \(preview.removals) record(s) that are not in the backup. A rollback backup is created first.")
+            }
+        }
+        .interactiveDismissDisabled(isApplying)
+    }
+
+    @ViewBuilder
+    private func previewRow(_ title: String, count: Int, color: Color) -> some View {
+        LabeledContent(title) {
+            Text(count.formatted()).monospacedDigit().foregroundStyle(color)
+        }
+    }
+
+    private func applyImport() {
+        guard !isApplying else { return }
+        isApplying = true
+        errorMessage = nil
+        Task {
+            do {
+                try await collectionStore.importCollection(prepared, mode: mode)
+                onFinish("Collection \(mode == .merge ? "merged" : "replaced") successfully. A rollback backup is available.")
+            } catch {
+                isApplying = false
+                errorMessage = "The import failed. Your collection was not changed."
+            }
+        }
     }
 }
 
