@@ -175,8 +175,37 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
     let currencyCode: String
     let amount: Double
     let updatedAt: Date
+    let productID: Int?
+
+    init(
+        cardID: String,
+        variant: CatalogVariantKind,
+        source: CatalogPriceSource,
+        currencyCode: String,
+        amount: Double,
+        updatedAt: Date,
+        productID: Int? = nil
+    ) {
+        self.cardID = cardID
+        self.variant = variant
+        self.source = source
+        self.currencyCode = currencyCode
+        self.amount = amount
+        self.updatedAt = updatedAt
+        self.productID = productID
+    }
 
     var id: String { "\(cardID)|\(variant.rawValue)|\(source.rawValue)" }
+
+    var marketplaceURL: URL? {
+        guard let productID, productID > 0 else { return nil }
+        switch source {
+        case .cardmarket:
+            return URL(string: "https://www.cardmarket.com/en/Pokemon/Products?idProduct=\(productID)")
+        case .tcgplayer:
+            return URL(string: "https://www.tcgplayer.com/product/\(productID)")
+        }
+    }
 }
 
 struct CatalogValueSummary: Equatable, Sendable {
@@ -226,9 +255,6 @@ enum CatalogVariantOverrides {
     }
 
     private static let byCardID: [String: Override] = [
-        // TCGdex's source record lists both printings. Keep Reverse visible
-        // while the compiled API response temporarily reports Normal only.
-        "me04-001": Override(additions: [.normal, .reverseHolo], removals: []),
         // Platinum 53/127 also had Prerelease and gold Staff-stamped prints.
         "pl1-53": Override(
             additions: [.normal, .reverseHolo, .prerelease, .prereleaseStaff],
