@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.3/TallyDex-v0.4.3-first-tap-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.2/TallyDex-v0.4.2-legacy-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.1/TallyDex-v0.4.1-import-preview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.0/TallyDex-v0.4.0-export-import.png",
@@ -39,6 +40,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.4.3",
+          "buildVersion": "18",
+          "date": "2026-08-24",
+          "localizedDescription": "Fixes the physical-device import handoff where tapping a visible backup closed or stalled the picker without opening Import Preview. TallyDex now imports a local copy and coordinates both possible picker-dismiss and selection-callback orders before presenting the validated backup.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.3/TallyDex-v0.4.3.ipa",
+          "size": 5209323,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.4.2",
           "buildVersion": "17",
