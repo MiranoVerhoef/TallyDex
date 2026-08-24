@@ -124,6 +124,7 @@ enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
 
 enum PricingSettings {
     static let sourceKey = "pricing.preferredSource"
+    static let cardmarketCountryKey = "pricing.cardmarket.country"
     static let defaultSource = CatalogPriceSource.cardmarket
 
     static var preferredSource: CatalogPriceSource {
@@ -131,6 +132,39 @@ enum PricingSettings {
             return defaultSource
         }
         return CatalogPriceSource(rawValue: rawValue) ?? defaultSource
+    }
+}
+
+enum CardmarketCountryPreference: String, CaseIterable, Identifiable, Sendable {
+    case all
+    case austria = "AT"
+    case belgium = "BE"
+    case czechia = "CZ"
+    case denmark = "DK"
+    case finland = "FI"
+    case france = "FR"
+    case germany = "DE"
+    case greece = "GR"
+    case hungary = "HU"
+    case ireland = "IE"
+    case italy = "IT"
+    case luxembourg = "LU"
+    case netherlands = "NL"
+    case norway = "NO"
+    case poland = "PL"
+    case portugal = "PT"
+    case slovakia = "SK"
+    case slovenia = "SI"
+    case spain = "ES"
+    case sweden = "SE"
+    case switzerland = "CH"
+    case unitedKingdom = "GB"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        guard self != .all else { return "All countries" }
+        return Locale.current.localizedString(forRegionCode: rawValue) ?? rawValue
     }
 }
 
