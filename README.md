@@ -53,6 +53,9 @@ instead of being estimated from another printing. Current prices refresh every
 18 hours and one snapshot per source day is retained locally for future price
 history views.
 
+When TCGdex supplies Cardmarket's product identifier, card details include an
+**Open on Cardmarket** button that opens the matching marketplace product page.
+
 Country-specific listings and optional currency conversion remain planned for
 a later direct marketplace integration. Settings already lets you save an All
 Countries or country-specific Cardmarket listing preference so that choice is

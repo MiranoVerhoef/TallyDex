@@ -1259,6 +1259,20 @@ private struct CatalogCardDetailView: View {
         return CatalogVariantKind.allCases.filter(visibleVariants.contains)
     }
 
+    private var cardmarketURL: URL? {
+        let visibleOrder = Dictionary(
+            uniqueKeysWithValues: availableVariants.enumerated().map { ($0.element, $0.offset) }
+        )
+        return snapshot?.prices
+            .filter { $0.source == .cardmarket && $0.marketplaceURL != nil }
+            .sorted {
+                visibleOrder[$0.variant, default: Int.max]
+                    < visibleOrder[$1.variant, default: Int.max]
+            }
+            .compactMap(\.marketplaceURL)
+            .first
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -1291,6 +1305,16 @@ private struct CatalogCardDetailView: View {
 
                 personalSection
                 collectionSection
+
+                if let cardmarketURL {
+                    Link(destination: cardmarketURL) {
+                        Label("Open on Cardmarket", systemImage: "arrow.up.right.square")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
 
                 if let message {
                     Label(message, systemImage: "icloud.slash")

@@ -135,6 +135,12 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v6-marketplace-product-links") { database in
+            try database.alter(table: "catalogPrice") { table in
+                table.add(column: "productID", .integer)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -313,8 +319,13 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         try await database.queue.read { database in
             let rawValues = try String.fetchAll(
                 database,
-                sql: "SELECT kind FROM catalogVariant WHERE cardID = ? ORDER BY kind",
-                arguments: [cardID]
+                sql: """
+                SELECT kind FROM catalogVariant WHERE cardID = ?
+                UNION
+                SELECT variant FROM catalogPrice WHERE cardID = ?
+                ORDER BY 1
+                """,
+                arguments: [cardID, cardID]
             )
             return CatalogVariantOverrides.apply(
                 to: Set(rawValues.compactMap(CatalogVariantKind.init(rawValue:))),
@@ -329,8 +340,12 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             let placeholders = Array(repeating: "?", count: cardIDs.count).joined(separator: ",")
             let rows = try Row.fetchAll(
                 database,
-                sql: "SELECT cardID, kind FROM catalogVariant WHERE cardID IN (\(placeholders))",
-                arguments: StatementArguments(cardIDs)
+                sql: """
+                SELECT cardID, kind FROM catalogVariant WHERE cardID IN (\(placeholders))
+                UNION
+                SELECT cardID, variant AS kind FROM catalogPrice WHERE cardID IN (\(placeholders))
+                """,
+                arguments: StatementArguments(cardIDs + cardIDs)
             )
             var result = rows.reduce(into: [String: Set<CatalogVariantKind>]()) { result, row in
                 let cardID: String = row["cardID"]
@@ -538,7 +553,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     card.rarity,
                 ]
             )
-            for variant in snapshot.variants.sorted(by: { $0.rawValue < $1.rawValue }) {
+            let knownVariants = snapshot.variants.union(snapshot.prices.map(\.variant))
+            for variant in knownVariants.sorted(by: { $0.rawValue < $1.rawValue }) {
                 try database.execute(
                     sql: "INSERT OR IGNORE INTO catalogVariant (cardID, kind) VALUES (?, ?)",
                     arguments: [card.id, variant.rawValue]
@@ -551,15 +567,17 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             for quote in snapshot.prices {
                 try database.execute(
                     sql: """
-                    INSERT INTO catalogPrice (cardID, variant, source, currencyCode, amount, updatedAt)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO catalogPrice
+                        (cardID, variant, source, currencyCode, amount, updatedAt, productID)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(cardID, variant, source) DO UPDATE SET
                         currencyCode = excluded.currencyCode,
                         amount = excluded.amount,
-                        updatedAt = excluded.updatedAt
+                        updatedAt = excluded.updatedAt,
+                        productID = COALESCE(excluded.productID, catalogPrice.productID)
                     """,
                     arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
-                                quote.currencyCode, quote.amount, quote.updatedAt]
+                                quote.currencyCode, quote.amount, quote.updatedAt, quote.productID]
                 )
                 try database.execute(
                     sql: """
@@ -659,7 +677,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
               let source = CatalogPriceSource(rawValue: row["source"]) else { return nil }
         return CatalogPriceQuote(
             cardID: row["cardID"], variant: variant, source: source,
-            currencyCode: row["currencyCode"], amount: row["amount"], updatedAt: row["updatedAt"]
+            currencyCode: row["currencyCode"], amount: row["amount"], updatedAt: row["updatedAt"],
+            productID: row["productID"]
         )
     }
 

@@ -200,13 +200,14 @@ final class CatalogFoundationTests: XCTestCase {
                 "cardmarket": {
                   "updated": "2026-08-24T08:03:04.743Z",
                   "unit": "EUR",
+                  "idProduct": 885188,
                   "trend": 61.31,
                   "trend-holo": 0
                 },
                 "tcgplayer": {
                   "updated": "2026-08-24T08:03:26.603Z",
                   "unit": "USD",
-                  "holofoil": { "marketPrice": 64.16 }
+                  "holofoil": { "productId": 693184, "marketPrice": 64.16 }
                 }
               }
             }
@@ -239,6 +240,61 @@ final class CatalogFoundationTests: XCTestCase {
             snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .holo }?.amount,
             64.16
         )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket }?.marketplaceURL?.absoluteString,
+            "https://www.cardmarket.com/en/Pokemon/Products?idProduct=885188"
+        )
+    }
+
+    func testDetailedMarketplaceDataRepairsIncorrectLegacyVariantFlags() async throws {
+        let response = #"""
+        {
+          "id": "me04-002",
+          "localId": "002",
+          "name": "Kakuna",
+          "set": { "id": "me04" },
+          "variants": { "normal": true, "reverse": false, "holo": false },
+          "variants_detailed": [
+            {
+              "type": "normal",
+              "pricing": {
+                "cardmarket": {
+                  "updated": "2026-08-24T08:03:04.576Z",
+                  "unit": "EUR",
+                  "idProduct": 886394,
+                  "trend": 0.04,
+                  "trend-holo": 0.10
+                },
+                "tcgplayer": {
+                  "updated": "2026-08-24T08:03:27.460Z",
+                  "unit": "USD",
+                  "normal": { "productId": 693502, "marketPrice": 0.13 },
+                  "reverse-holofoil": { "productId": 693502, "marketPrice": 0.24 }
+                }
+              }
+            }
+          ]
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "me04-002")
+
+        XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
+        XCTAssertEqual(snapshot.prices.count, 4)
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket && $0.variant == .reverseHolo }?.amount,
+            0.10
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket }?.productID,
+            886394
+        )
     }
 
     func testTCGdexCombinesLegacyAndDetailedVariantData() async throws {
@@ -270,7 +326,7 @@ final class CatalogFoundationTests: XCTestCase {
     func testVariantOverridesFillKnownTCGdexGaps() {
         XCTAssertEqual(
             CatalogVariantOverrides.apply(to: [.normal], cardID: "me04-001"),
-            [.normal, .reverseHolo]
+            [.normal]
         )
         XCTAssertEqual(
             CatalogVariantOverrides.apply(to: [.normal, .reverseHolo], cardID: "pl1-53"),
@@ -379,6 +435,52 @@ final class CatalogFoundationTests: XCTestCase {
         let storedVariants = try await repository.fetchVariants(cardID: card.id)
         XCTAssertEqual(storedCards, [card])
         XCTAssertEqual(storedVariants, [.normal, .reverseHolo, .holo])
+    }
+
+    func testRepositoryUsesPricedPrintingToRepairCachedVariantAndPersistsProductLink() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.upsertSeries([
+            CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil),
+        ])
+        try await repository.replaceSets(
+            [set(id: "me04", seriesID: "me", name: "Chaos Rising")],
+            forSeriesID: "me"
+        )
+        let card = CatalogCard(
+            id: "me04-008",
+            setID: "me04",
+            localID: "008",
+            name: "Vulpix",
+            imageURL: nil,
+            category: "Pokemon",
+            illustrator: nil,
+            rarity: "Common"
+        )
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [
+                CatalogPriceQuote(
+                    cardID: card.id,
+                    variant: .reverseHolo,
+                    source: .cardmarket,
+                    currencyCode: "EUR",
+                    amount: 0.08,
+                    updatedAt: .now,
+                    productID: 886400
+                ),
+            ]
+        ))
+
+        let variants = try await repository.fetchVariants(cardID: card.id)
+        let prices = try await repository.fetchPrices(cardIDs: [card.id])
+
+        XCTAssertEqual(variants, [.normal, .reverseHolo])
+        XCTAssertEqual(prices[card.id]?.first?.productID, 886400)
+        XCTAssertEqual(
+            prices[card.id]?.first?.marketplaceURL?.absoluteString,
+            "https://www.cardmarket.com/en/Pokemon/Products?idProduct=886400"
+        )
     }
 
     func testRepositoryReplacesWholeCatalogInDisplayOrder() async throws {
