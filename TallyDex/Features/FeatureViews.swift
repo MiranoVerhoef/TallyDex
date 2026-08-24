@@ -381,10 +381,15 @@ private struct CatalogArtwork: View {
 
 private struct CatalogSymbol: View {
     let url: URL
+    var setID: String? = nil
 
     var body: some View {
         CachedCatalogImage(
-            reference: CatalogArtworkReference(url: url, category: .expansionSymbols)
+            reference: CatalogArtworkReference(
+                url: url,
+                category: .expansionSymbols,
+                offlineSetID: setID
+            )
         )
     }
 }
@@ -423,6 +428,7 @@ private struct CatalogPlaceholderMark: View {
 
 private struct CatalogSetRow: View {
     let set: CatalogSet
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
 
     var body: some View {
         HStack(spacing: 12) {
@@ -450,9 +456,24 @@ private struct CatalogSetRow: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 } else if let symbolURL = set.symbolURL {
-                    CatalogSymbol(url: symbolURL)
+                    CatalogSymbol(url: symbolURL, setID: set.id)
                         .frame(width: 30, height: 20)
                         .accessibilityLabel("Expansion symbol")
+                }
+
+                if artworkCacheStore.isPinned(setID: set.id) {
+                    Label("Offline", systemImage: "arrow.down.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.blue)
+                } else if artworkCacheStore.isPreparing(setID: set.id) {
+                    Label("Preparing…", systemImage: "arrow.down.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if let progress = artworkCacheStore.downloadProgress[set.id] {
+                    ProgressView(value: progress) {
+                        Text("Downloading \(Int(progress * 100))%")
+                    }
+                    .font(.caption2)
                 }
             }
         }
@@ -463,6 +484,9 @@ private struct CatalogSetRow: View {
 private struct CatalogSetLink: View {
     let set: CatalogSet
     let onEdit: (CatalogSet) -> Void
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
+    @State private var isConfirmingOfflineDownload = false
 
     var body: some View {
         NavigationLink {
@@ -474,8 +498,59 @@ private struct CatalogSetLink: View {
             Button("Edit", systemImage: "slider.horizontal.3") {
                 onEdit(set)
             }
+
+            if artworkCacheStore.isPinned(setID: set.id) {
+                Button("Remove Offline Download", systemImage: "trash", role: .destructive) {
+                    Task {
+                        await artworkCacheStore.removeOfflineSet(
+                            setID: set.id,
+                            setName: set.name
+                        )
+                    }
+                }
+            } else {
+                Button("Keep Offline", systemImage: "arrow.down.circle") {
+                    isConfirmingOfflineDownload = true
+                }
+                .disabled(
+                    artworkCacheStore.isPreparing(setID: set.id)
+                        || artworkCacheStore.downloadProgress[set.id] != nil
+                        || set.isUpcoming()
+                )
+            }
+        }
+        .confirmationDialog(
+            "Keep \(set.name) offline?",
+            isPresented: $isConfirmingOfflineDownload,
+            titleVisibility: .visible
+        ) {
+            Button("Download Set") { downloadForOfflineUse() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("TallyDex will download card metadata plus grid and full-size artwork. Estimated storage: \(offlineEstimate(for: set)). Pinned sets are not removed by automatic cache cleanup.")
         }
     }
+
+    private func downloadForOfflineUse() {
+        artworkCacheStore.beginPreparing(setID: set.id)
+        Task {
+            do {
+                let cards = try await catalogStore.prepareOfflineSet(set)
+                await artworkCacheStore.keepOffline(set: set, cards: cards)
+            } catch {
+                artworkCacheStore.preparationFailed(setID: set.id, setName: set.name)
+            }
+        }
+    }
+}
+
+private func offlineEstimate(for set: CatalogSet) -> String {
+    ByteCountFormatter.string(
+        fromByteCount: CatalogOfflineSetEstimator.estimatedByteCount(
+            cardCount: set.totalCardCount
+        ),
+        countStyle: .file
+    )
 }
 
 private struct CatalogSetCollectionSettingsView: View {
@@ -719,6 +794,7 @@ private struct CatalogSetDetailView: View {
     let set: CatalogSet
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var isShowingInformation = false
@@ -733,6 +809,7 @@ private struct CatalogSetDetailView: View {
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isPreparingGoalMetadata = false
+    @State private var isConfirmingOfflineDownload = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
@@ -827,6 +904,22 @@ private struct CatalogSetDetailView: View {
                             .padding(.horizontal, 10)
                             .padding(.vertical, 5)
                             .background(.tint.opacity(0.12), in: Capsule())
+
+                        if artworkCacheStore.isPinned(setID: set.id) {
+                            Label("Offline", systemImage: "arrow.down.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.blue)
+                        }
+                    }
+
+                    if artworkCacheStore.isPreparing(setID: set.id) {
+                        ProgressView("Preparing card metadata…")
+                            .font(.caption)
+                    } else if let offlineProgress = artworkCacheStore.downloadProgress[set.id] {
+                        ProgressView(value: offlineProgress) {
+                            Text("Downloading offline artwork · \(Int(offlineProgress * 100))%")
+                        }
+                        .font(.caption)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -920,7 +1013,27 @@ private struct CatalogSetDetailView: View {
         .navigationTitle(set.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if artworkCacheStore.isPinned(setID: set.id) {
+                    Button("Remove offline download", systemImage: "arrow.down.circle.fill") {
+                        Task {
+                            await artworkCacheStore.removeOfflineSet(
+                                setID: set.id,
+                                setName: set.name
+                            )
+                        }
+                    }
+                } else {
+                    Button("Keep offline", systemImage: "arrow.down.circle") {
+                        isConfirmingOfflineDownload = true
+                    }
+                    .disabled(
+                        set.isUpcoming()
+                            || artworkCacheStore.isPreparing(setID: set.id)
+                            || artworkCacheStore.downloadProgress[set.id] != nil
+                    )
+                }
+
                 Button("Set information", systemImage: "info.circle") {
                     isShowingInformation = true
                 }
@@ -933,6 +1046,16 @@ private struct CatalogSetDetailView: View {
             CatalogVariantPickerView(card: card)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Keep \(set.name) offline?",
+            isPresented: $isConfirmingOfflineDownload,
+            titleVisibility: .visible
+        ) {
+            Button("Download Set") { downloadForOfflineUse() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("TallyDex will download card metadata plus grid and full-size artwork. Estimated storage: \(offlineEstimate(for: set)). Pinned sets are not removed by automatic cache cleanup.")
         }
         .task(id: set.id) {
             await loadCards()
@@ -1019,6 +1142,20 @@ private struct CatalogSetDetailView: View {
             for: cards
         )
         pricesByCardID = (try? await catalogStore.prices(cardIDs: cards.map(\.id))) ?? [:]
+    }
+
+    private func downloadForOfflineUse() {
+        artworkCacheStore.beginPreparing(setID: set.id)
+        Task {
+            do {
+                let offlineCards = try await catalogStore.prepareOfflineSet(set)
+                cards = offlineCards
+                await loadGoalVariants()
+                await artworkCacheStore.keepOffline(set: set, cards: offlineCards)
+            } catch {
+                artworkCacheStore.preparationFailed(setID: set.id, setName: set.name)
+            }
+        }
     }
 }
 
@@ -3073,6 +3210,7 @@ private struct CustomCollectionFolderDetailView: View {
 
 struct SettingsView: View {
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
@@ -3183,6 +3321,17 @@ struct SettingsView: View {
                 }
 
                 Section("Storage") {
+                    NavigationLink {
+                        OfflineSetsSettingsView()
+                    } label: {
+                        LabeledContent {
+                            Text("\(artworkCacheStore.pinnedSetIDs.count)")
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("Offline Sets", systemImage: "arrow.down.circle")
+                        }
+                    }
+
                     NavigationLink {
                         PriceDataSettingsView()
                     } label: {
@@ -3915,6 +4064,107 @@ private struct PriceDataSettingsView: View {
     }
 }
 
+private struct OfflineSetsSettingsView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
+    @State private var isConfirmingRemoveAll = false
+
+    private var pinnedSets: [CatalogSet] {
+        catalogStore.groups
+            .flatMap(\.sets)
+            .filter { artworkCacheStore.pinnedSetIDs.contains($0.id) }
+    }
+
+    private var totalStatistics: CatalogOfflineSetStatistics {
+        artworkCacheStore.offlineStatistics.values.reduce(.empty) { result, statistics in
+            CatalogOfflineSetStatistics(
+                fileCount: result.fileCount + statistics.fileCount,
+                byteCount: result.byteCount + statistics.byteCount
+            )
+        }
+    }
+
+    private func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Downloaded sets", value: artworkCacheStore.pinnedSetIDs.count.formatted())
+                LabeledContent("Stored artwork", value: size(totalStatistics.byteCount))
+                LabeledContent("Artwork files", value: totalStatistics.fileCount.formatted())
+            } header: {
+                Text("Usage")
+            } footer: {
+                Text("Offline-set artwork is stored separately from the automatic 400 MB cache and is excluded from iCloud device backups. Card metadata stays in the local catalog database.")
+            }
+
+            if pinnedSets.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No Offline Sets",
+                        systemImage: "arrow.down.circle",
+                        description: Text("Touch and hold a released set, then choose Keep Offline.")
+                    )
+                }
+            } else {
+                Section("Downloaded Sets") {
+                    ForEach(pinnedSets) { set in
+                        let statistics = artworkCacheStore.offlineStatistics[set.id] ?? .empty
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(set.name)
+                                Text("\(statistics.fileCount.formatted()) files · \(size(statistics.byteCount))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Remove", role: .destructive) {
+                                Task {
+                                    await artworkCacheStore.removeOfflineSet(
+                                        setID: set.id,
+                                        setName: set.name
+                                    )
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                }
+
+                Section {
+                    Button("Remove All Offline Sets", role: .destructive) {
+                        isConfirmingRemoveAll = true
+                    }
+                }
+            }
+
+            if let statusMessage = artworkCacheStore.statusMessage {
+                Section {
+                    Label(statusMessage, systemImage: "checkmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Offline Sets")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await artworkCacheStore.refreshSnapshot() }
+        .confirmationDialog(
+            "Remove every offline set?",
+            isPresented: $isConfirmingRemoveAll,
+            titleVisibility: .visible
+        ) {
+            Button("Remove All Offline Sets", role: .destructive) {
+                Task { await artworkCacheStore.removeAllOfflineSets() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Downloaded artwork will be removed. Collection ownership, goals, wishlist, notes, and cached catalog metadata are not changed.")
+        }
+    }
+}
+
 private struct ArtworkCacheSettingsView: View {
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(CatalogStore.self) private var catalogStore
@@ -3962,7 +4212,7 @@ private struct ArtworkCacheSettingsView: View {
                     )
                 )
             } footer: {
-                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch. When the limit is reached, the least recently used card images are removed first; they download again when needed.")
+                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch. When the limit is reached, the least recently used card images are removed first. Sets chosen in Offline Sets are stored separately and are never removed here.")
             }
 
             Section("Choose What to Remove") {
@@ -4003,7 +4253,7 @@ private struct ArtworkCacheSettingsView: View {
             await artworkCacheStore.refreshSnapshot()
         }
         .confirmationDialog(
-            "Clear every cached logo and symbol?",
+            "Clear every automatic artwork cache?",
             isPresented: $isConfirmingClearAll,
             titleVisibility: .visible
         ) {
@@ -4012,7 +4262,7 @@ private struct ArtworkCacheSettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Artwork will download again when needed.")
+            Text("Viewed artwork, logos, and symbols will download again when needed. Explicitly downloaded offline sets are kept.")
         }
     }
 }

@@ -167,6 +167,15 @@ final class CatalogStore {
         }
     }
 
+    /// Downloads the complete set card list and hydrates every card detail so
+    /// metadata and printing variants remain usable when the device is offline.
+    func prepareOfflineSet(_ set: CatalogSet) async throws -> [CatalogCard] {
+        let cards = try await cards(for: set, forceRefresh: true)
+        guard !cards.isEmpty else { return cards }
+        _ = await prepareVariants(for: cards)
+        return try await resolveRepository().fetchCards(setID: set.id)
+    }
+
     func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
         try await resolveRepository().searchCards(query: query)
     }

@@ -63,6 +63,29 @@ ETags so an unchanged refresh does not download its multi-megabyte response agai
 Artwork has a 400 MB automatic least-recently-used ceiling, with older card images
 removed before core series, set, and expansion artwork.
 
+## Offline sets
+
+Touch and hold a released set and choose **Keep Offline** to download its complete
+card metadata, printing variants, grid images, and full-size artwork. TallyDex
+shows an estimated size before downloading, progress while it works, and an
+Offline badge when the set is complete. Explicit downloads live separately from
+the automatic artwork cache, so its 400 MB cleanup never removes them. Manage
+individual downloads in Settings → Offline Sets.
+
+## Roadmap order
+
+1. Offline set pinning
+2. Performance and accessibility hardening
+3. Binder planner
+4. Browser-based mass collection editing
+5. Fully on-device card scanner
+6. Apple services last: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
+
+Apple services remain last because they require Apple Developer Program and App
+Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
+values, but not 30 individual daily price points; TallyDex therefore builds its
+truthful price-history timeline locally instead of inventing backdated samples.
+
 When TCGdex supplies Cardmarket's product identifier, card details include an
 **Open on Cardmarket** button that opens the matching marketplace product page.
 
