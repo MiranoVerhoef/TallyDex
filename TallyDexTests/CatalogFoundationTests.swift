@@ -799,6 +799,18 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(history.map(\.currencyCode), ["EUR", "EUR"])
     }
 
+    func testForeverHistorySizeLimitsMapToApproximatePointCeilings() {
+        XCTAssertEqual(
+            CatalogPriceHistorySizeLimit.allCases.map(\.title),
+            ["50 MB", "100 MB", "250 MB", "500 MB", "1 GB"]
+        )
+        XCTAssertEqual(CatalogPriceHistorySizeLimit.mb50.maximumPointCount, 312_500)
+        XCTAssertEqual(CatalogPriceHistorySizeLimit.mb100.maximumPointCount, 625_000)
+        XCTAssertEqual(CatalogPriceHistorySizeLimit.mb250.maximumPointCount, 1_562_500)
+        XCTAssertEqual(CatalogPriceHistorySizeLimit.mb500.maximumPointCount, 3_125_000)
+        XCTAssertEqual(CatalogPriceHistorySizeLimit.gb1.maximumPointCount, 6_250_000)
+    }
+
     func testPriceStorageCanPruneAndPurgeWithoutTouchingCardData() async throws {
         let database = try CatalogDatabase.inMemory()
         let repository = GRDBCatalogRepository(database: database)

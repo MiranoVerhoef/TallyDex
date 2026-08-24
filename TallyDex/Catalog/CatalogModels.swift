@@ -126,9 +126,11 @@ enum PricingSettings {
     static let sourceKey = "pricing.preferredSource"
     static let cardmarketCountryKey = "pricing.cardmarket.country"
     static let historyRetentionKey = "pricing.history.retention"
+    static let foreverHistorySizeLimitKey = "pricing.history.foreverSizeLimit"
     static let defaultSource = CatalogPriceSource.cardmarket
     static let defaultHistoryRetention = CatalogPriceHistoryRetention.oneYear
-    static let maximumHistoryPointCount = 250_000
+    static let defaultForeverHistorySizeLimit = CatalogPriceHistorySizeLimit.mb50
+    static let timeBasedMaximumHistoryPointCount = 250_000
 
     static var preferredSource: CatalogPriceSource {
         guard let rawValue = UserDefaults.standard.string(forKey: sourceKey) else {
@@ -142,6 +144,19 @@ enum PricingSettings {
             return defaultHistoryRetention
         }
         return CatalogPriceHistoryRetention(rawValue: rawValue) ?? defaultHistoryRetention
+    }
+
+    static var foreverHistorySizeLimit: CatalogPriceHistorySizeLimit {
+        guard let rawValue = UserDefaults.standard.string(forKey: foreverHistorySizeLimitKey) else {
+            return defaultForeverHistorySizeLimit
+        }
+        return CatalogPriceHistorySizeLimit(rawValue: rawValue) ?? defaultForeverHistorySizeLimit
+    }
+
+    static var maximumHistoryPointCount: Int {
+        historyRetention == .forever
+            ? foreverHistorySizeLimit.maximumPointCount
+            : timeBasedMaximumHistoryPointCount
     }
 }
 
@@ -172,6 +187,40 @@ enum CatalogPriceHistoryRetention: String, CaseIterable, Identifiable, Sendable 
             value: -(days - 1),
             to: calendar.startOfDay(for: date)
         )
+    }
+}
+
+enum CatalogPriceHistorySizeLimit: String, CaseIterable, Identifiable, Sendable {
+    case mb50
+    case mb100
+    case mb250
+    case mb500
+    case gb1
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mb50: "50 MB"
+        case .mb100: "100 MB"
+        case .mb250: "250 MB"
+        case .mb500: "500 MB"
+        case .gb1: "1 GB"
+        }
+    }
+
+    var byteCount: Int64 {
+        switch self {
+        case .mb50: 50_000_000
+        case .mb100: 100_000_000
+        case .mb250: 250_000_000
+        case .mb500: 500_000_000
+        case .gb1: 1_000_000_000
+        }
+    }
+
+    var maximumPointCount: Int {
+        Int(byteCount / CatalogPriceStorageStatistics.estimatedBytesPerHistoryPoint)
     }
 }
 
@@ -332,12 +381,14 @@ struct CatalogPriceHistorySummary: Equatable, Sendable {
 }
 
 struct CatalogPriceStorageStatistics: Equatable, Sendable {
+    static let estimatedBytesPerHistoryPoint: Int64 = 160
+
     let currentPriceCount: Int
     let historyPointCount: Int
     let databaseByteCount: Int64
 
     var estimatedHistoryByteCount: Int64 {
-        Int64(historyPointCount) * 160
+        Int64(historyPointCount) * Self.estimatedBytesPerHistoryPoint
     }
 }
 
