@@ -141,6 +141,14 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v7-cardmarket-rolling-averages") { database in
+            try database.alter(table: "catalogPrice") { table in
+                table.add(column: "average1Day", .double)
+                table.add(column: "average7Days", .double)
+                table.add(column: "average30Days", .double)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -680,16 +688,21 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 try database.execute(
                     sql: """
                     INSERT INTO catalogPrice
-                        (cardID, variant, source, currencyCode, amount, updatedAt, productID)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (cardID, variant, source, currencyCode, amount, updatedAt, productID,
+                         average1Day, average7Days, average30Days)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(cardID, variant, source) DO UPDATE SET
                         currencyCode = excluded.currencyCode,
                         amount = excluded.amount,
                         updatedAt = excluded.updatedAt,
-                        productID = COALESCE(excluded.productID, catalogPrice.productID)
+                        productID = COALESCE(excluded.productID, catalogPrice.productID),
+                        average1Day = excluded.average1Day,
+                        average7Days = excluded.average7Days,
+                        average30Days = excluded.average30Days
                     """,
                     arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
-                                quote.currencyCode, quote.amount, quote.updatedAt, quote.productID]
+                                quote.currencyCode, quote.amount, quote.updatedAt, quote.productID,
+                                quote.average1Day, quote.average7Days, quote.average30Days]
                 )
                 try database.execute(
                     sql: """
@@ -790,7 +803,10 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         return CatalogPriceQuote(
             cardID: row["cardID"], variant: variant, source: source,
             currencyCode: row["currencyCode"], amount: row["amount"], updatedAt: row["updatedAt"],
-            productID: row["productID"]
+            productID: row["productID"],
+            average1Day: row["average1Day"],
+            average7Days: row["average7Days"],
+            average30Days: row["average30Days"]
         )
     }
 

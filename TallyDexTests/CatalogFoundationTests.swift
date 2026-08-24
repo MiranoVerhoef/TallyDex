@@ -145,8 +145,14 @@ final class CatalogFoundationTests: XCTestCase {
               "unit": "EUR",
               "avg": 0.10,
               "trend": 0.07,
+              "avg1": 0.06,
+              "avg7": 0.08,
+              "avg30": 0.11,
               "avg-holo": 0.28,
-              "trend-holo": 0.26
+              "trend-holo": 0.26,
+              "avg1-holo": 0.24,
+              "avg7-holo": 0.25,
+              "avg30-holo": 0.29
             },
             "tcgplayer": {
               "updated": "2026-08-22T08:03:19.776Z",
@@ -175,6 +181,18 @@ final class CatalogFoundationTests: XCTestCase {
             snapshot.prices.first { $0.source == .cardmarket && $0.variant == .reverseHolo }?.amount,
             0.26
         )
+        let normalCardmarket = snapshot.prices.first {
+            $0.source == .cardmarket && $0.variant == .normal
+        }
+        XCTAssertEqual(normalCardmarket?.average1Day, 0.06)
+        XCTAssertEqual(normalCardmarket?.average7Days, 0.08)
+        XCTAssertEqual(normalCardmarket?.average30Days, 0.11)
+        let reverseCardmarket = snapshot.prices.first {
+            $0.source == .cardmarket && $0.variant == .reverseHolo
+        }
+        XCTAssertEqual(reverseCardmarket?.average1Day, 0.24)
+        XCTAssertEqual(reverseCardmarket?.average7Days, 0.25)
+        XCTAssertEqual(reverseCardmarket?.average30Days, 0.29)
         XCTAssertEqual(
             snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .normal }?.amount,
             0.21
@@ -232,7 +250,10 @@ final class CatalogFoundationTests: XCTestCase {
                   "unit": "EUR",
                   "idProduct": 885188,
                   "trend": 61.31,
-                  "trend-holo": 0
+                  "trend-holo": 0,
+                  "avg1": 60.00,
+                  "avg7": 56.61,
+                  "avg30": 54.25
                 },
                 "tcgplayer": {
                   "updated": "2026-08-24T08:03:26.603Z",
@@ -273,6 +294,18 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(
             snapshot.prices.first { $0.source == .cardmarket }?.marketplaceURL?.absoluteString,
             "https://www.cardmarket.com/en/Pokemon/Products?idProduct=885188"
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket }?.average1Day,
+            60.00
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket }?.average7Days,
+            56.61
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket }?.average30Days,
+            54.25
         )
     }
 
@@ -497,7 +530,10 @@ final class CatalogFoundationTests: XCTestCase {
                     currencyCode: "EUR",
                     amount: 0.08,
                     updatedAt: .now,
-                    productID: 886400
+                    productID: 886400,
+                    average1Day: 0.07,
+                    average7Days: 0.08,
+                    average30Days: 0.09
                 ),
             ]
         ))
@@ -507,6 +543,9 @@ final class CatalogFoundationTests: XCTestCase {
 
         XCTAssertEqual(variants, [.normal, .reverseHolo])
         XCTAssertEqual(prices[card.id]?.first?.productID, 886400)
+        XCTAssertEqual(prices[card.id]?.first?.average1Day, 0.07)
+        XCTAssertEqual(prices[card.id]?.first?.average7Days, 0.08)
+        XCTAssertEqual(prices[card.id]?.first?.average30Days, 0.09)
         XCTAssertEqual(
             prices[card.id]?.first?.marketplaceURL?.absoluteString,
             "https://www.cardmarket.com/en/Pokemon/Products?idProduct=886400"

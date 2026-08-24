@@ -265,6 +265,9 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
     let amount: Double
     let updatedAt: Date
     let productID: Int?
+    let average1Day: Double?
+    let average7Days: Double?
+    let average30Days: Double?
 
     init(
         cardID: String,
@@ -273,7 +276,10 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
         currencyCode: String,
         amount: Double,
         updatedAt: Date,
-        productID: Int? = nil
+        productID: Int? = nil,
+        average1Day: Double? = nil,
+        average7Days: Double? = nil,
+        average30Days: Double? = nil
     ) {
         self.cardID = cardID
         self.variant = variant
@@ -282,6 +288,9 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.amount = amount
         self.updatedAt = updatedAt
         self.productID = productID
+        self.average1Day = average1Day
+        self.average7Days = average7Days
+        self.average30Days = average30Days
     }
 
     var id: String { "\(cardID)|\(variant.rawValue)|\(source.rawValue)" }
@@ -294,6 +303,10 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
         case .tcgplayer:
             return URL(string: "https://www.tcgplayer.com/product/\(productID)")
         }
+    }
+
+    var hasRollingAverages: Bool {
+        average1Day != nil || average7Days != nil || average30Days != nil
     }
 }
 
