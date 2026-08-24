@@ -1,4 +1,5 @@
 import XCTest
+import UniformTypeIdentifiers
 @testable import TallyDex
 
 final class TallyDexSmokeTests: XCTestCase {
@@ -22,5 +23,11 @@ final class TallyDexSmokeTests: XCTestCase {
     func testSetsBrowsingStyleOffersBothLayouts() {
         XCTAssertEqual(SetsBrowsingStyle.allCases.map(\.title), ["Series First", "Grouped List"])
         XCTAssertEqual(SetsBrowsingStyle.resolve("unsupported"), .seriesFirst)
+    }
+
+    func testCollectionBackupTypeIsRegisteredAsJSON() {
+        XCTAssertEqual(UTType.tallyDexCollection.identifier, PortableCollectionDocument.formatIdentifier)
+        XCTAssertTrue(UTType.tallyDexCollection.conforms(to: .json))
+        XCTAssertEqual(UTType.tallyDexCollection.preferredFilenameExtension, "pokecollection")
     }
 }

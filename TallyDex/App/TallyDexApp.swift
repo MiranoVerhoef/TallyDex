@@ -27,6 +27,9 @@ struct TallyDexApp: App {
                     await catalogStore.refreshIfNeeded()
                     await artworkCacheStore.prefetch(groups: catalogStore.groups)
                 }
+                .onOpenURL { url in
+                    Task { await collectionStore.openExternalBackup(at: url) }
+                }
         }
     }
 }

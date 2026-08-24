@@ -1,4 +1,12 @@
 import Foundation
+import UniformTypeIdentifiers
+
+extension UTType {
+    static let tallyDexCollection = UTType(
+        exportedAs: PortableCollectionDocument.formatIdentifier,
+        conformingTo: .json
+    )
+}
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
