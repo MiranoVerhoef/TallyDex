@@ -745,14 +745,82 @@ final class CatalogFoundationTests: XCTestCase {
             prices: [.init(cardID: card.id, variant: .normal, source: .cardmarket,
                            currencyCode: "EUR", amount: 1.50, updatedAt: secondDate)]
         ))
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(cardID: card.id, variant: .normal, source: .cardmarket,
+                           currencyCode: "EUR", amount: 1.75, updatedAt: secondDate)]
+        ))
 
         let current = try await repository.fetchPrices(cardIDs: [card.id])[card.id]
+        let history = try await repository.fetchPriceHistory(
+            cardID: card.id,
+            source: .cardmarket
+        )
         let historyCount = try await database.queue.read { database in
             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM catalogPriceHistory")
         }
 
-        XCTAssertEqual(current?.first?.amount, 1.50)
+        XCTAssertEqual(current?.first?.amount, 1.75)
         XCTAssertEqual(historyCount, 2)
+        XCTAssertEqual(history.map(\.amount), [1.25, 1.75])
+        XCTAssertEqual(history.map(\.variant), [.normal, .normal])
+        XCTAssertEqual(history.map(\.source), [.cardmarket, .cardmarket])
+        XCTAssertEqual(history.map(\.currencyCode), ["EUR", "EUR"])
+    }
+
+    func testPriceHistoryRangesAndSummaryUseExactOrderedPoints() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 24)
+        ))
+        let day: (Int) -> Date = { offset in
+            calendar.date(byAdding: .day, value: offset, to: referenceDate)!
+        }
+        let points = [
+            CatalogPriceHistoryPoint(
+                cardID: "card", variant: .normal, source: .cardmarket,
+                day: day(-31), currencyCode: "EUR", amount: 4,
+                sourceUpdatedAt: day(-31)
+            ),
+            CatalogPriceHistoryPoint(
+                cardID: "card", variant: .normal, source: .cardmarket,
+                day: day(-6), currencyCode: "EUR", amount: 5,
+                sourceUpdatedAt: day(-6)
+            ),
+            CatalogPriceHistoryPoint(
+                cardID: "card", variant: .normal, source: .cardmarket,
+                day: referenceDate, currencyCode: "EUR", amount: 6,
+                sourceUpdatedAt: referenceDate
+            ),
+        ].reversed()
+
+        let sevenDays = CatalogPriceHistoryRange.sevenDays.filter(
+            Array(points),
+            relativeTo: referenceDate,
+            calendar: calendar
+        )
+        let thirtyDays = CatalogPriceHistoryRange.thirtyDays.filter(
+            Array(points),
+            relativeTo: referenceDate,
+            calendar: calendar
+        )
+        let all = CatalogPriceHistoryRange.all.filter(
+            Array(points),
+            relativeTo: referenceDate,
+            calendar: calendar
+        )
+        let summary = try XCTUnwrap(CatalogPriceHistorySummary(points: sevenDays))
+
+        XCTAssertEqual(sevenDays.map(\.amount), [5, 6])
+        XCTAssertEqual(thirtyDays.map(\.amount), [5, 6])
+        XCTAssertEqual(all.map(\.amount), [4, 5, 6])
+        XCTAssertEqual(summary.current, 6)
+        XCTAssertEqual(summary.absoluteChange, 1)
+        XCTAssertEqual(summary.percentageChange, 20)
+        XCTAssertEqual(summary.low, 5)
+        XCTAssertEqual(summary.high, 6)
     }
 
     func testCollectionValueUsesExactVariantsQuantitiesAndReportsMissingPrices() {

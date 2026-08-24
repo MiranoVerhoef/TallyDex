@@ -208,6 +208,89 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
+struct CatalogPriceHistoryPoint: Codable, Equatable, Hashable, Identifiable, Sendable {
+    let cardID: String
+    let variant: CatalogVariantKind
+    let source: CatalogPriceSource
+    let day: Date
+    let currencyCode: String
+    let amount: Double
+    let sourceUpdatedAt: Date
+
+    var id: String {
+        "\(cardID)|\(variant.rawValue)|\(source.rawValue)|\(day.timeIntervalSinceReferenceDate)"
+    }
+}
+
+enum CatalogPriceHistoryRange: String, CaseIterable, Identifiable, Sendable {
+    case sevenDays
+    case thirtyDays
+    case ninetyDays
+    case all
+
+    var id: String { rawValue }
+
+    var shortTitle: String {
+        switch self {
+        case .sevenDays: "7D"
+        case .thirtyDays: "30D"
+        case .ninetyDays: "90D"
+        case .all: "All"
+        }
+    }
+
+    private var dayCount: Int? {
+        switch self {
+        case .sevenDays: 7
+        case .thirtyDays: 30
+        case .ninetyDays: 90
+        case .all: nil
+        }
+    }
+
+    func filter(
+        _ points: [CatalogPriceHistoryPoint],
+        relativeTo date: Date = .now,
+        calendar: Calendar = .current
+    ) -> [CatalogPriceHistoryPoint] {
+        let sorted = points.sorted { $0.day < $1.day }
+        guard let dayCount,
+              let cutoff = calendar.date(
+                byAdding: .day,
+                value: -(dayCount - 1),
+                to: calendar.startOfDay(for: date)
+              ) else {
+            return sorted
+        }
+        return sorted.filter { $0.day >= cutoff }
+    }
+}
+
+struct CatalogPriceHistorySummary: Equatable, Sendable {
+    let current: Double
+    let absoluteChange: Double?
+    let percentageChange: Double?
+    let low: Double
+    let high: Double
+
+    init?(points: [CatalogPriceHistoryPoint]) {
+        let sorted = points.sorted { $0.day < $1.day }
+        guard let first = sorted.first, let last = sorted.last else { return nil }
+        current = last.amount
+        low = sorted.map(\.amount).min() ?? last.amount
+        high = sorted.map(\.amount).max() ?? last.amount
+        if sorted.count > 1 {
+            absoluteChange = last.amount - first.amount
+            percentageChange = first.amount == 0
+                ? nil
+                : ((last.amount - first.amount) / first.amount) * 100
+        } else {
+            absoluteChange = nil
+            percentageChange = nil
+        }
+    }
+}
+
 struct CatalogValueSummary: Equatable, Sendable {
     let amount: Double
     let pricedVariants: Int
@@ -331,6 +414,10 @@ protocol CatalogRepository: Sendable {
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func fetchVariants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>]
     func fetchPrices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]]
+    func fetchPriceHistory(
+        cardID: String,
+        source: CatalogPriceSource
+    ) async throws -> [CatalogPriceHistoryPoint]
     func metadataDate(forKey key: String) async throws -> Date?
     func upsertSeries(_ series: [CatalogSeries]) async throws
     func replaceCatalog(_ snapshots: [CatalogSeriesSnapshot]) async throws
