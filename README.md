@@ -54,7 +54,13 @@ instead of being estimated from another printing. Current prices refresh every
 history views. Card details provide exact per-printing price-history charts with
 7-day, 30-day, 90-day, and All ranges, plus current, change, low, and high
 statistics. Cardmarket and TCGplayer histories remain separate and retain their
-native EUR or USD currency.
+native EUR or USD currency. History is retained for one year by default and has
+a permanent 250,000-point ceiling to prevent unbounded storage growth. Settings
+shows price-data usage and can clear history alone or all cached market data.
+Card details reuse fresh 18-hour data, and the complete search index uses TCGdex
+ETags so an unchanged refresh does not download its multi-megabyte response again.
+Artwork has a 400 MB automatic least-recently-used ceiling, with older card images
+removed before core series, set, and expansion artwork.
 
 When TCGdex supplies Cardmarket's product identifier, card details include an
 **Open on Cardmarket** button that opens the matching marketplace product page.

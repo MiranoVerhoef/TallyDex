@@ -4,6 +4,14 @@ struct HTTPResponse: Sendable {
     let data: Data
     let statusCode: Int
     let retryAfter: String?
+    let etag: String?
+
+    init(data: Data, statusCode: Int, retryAfter: String?, etag: String? = nil) {
+        self.data = data
+        self.statusCode = statusCode
+        self.retryAfter = retryAfter
+        self.etag = etag
+    }
 }
 
 protocol HTTPClient: Sendable {
@@ -26,8 +34,30 @@ struct URLSessionHTTPClient: HTTPClient {
         return HTTPResponse(
             data: data,
             statusCode: response.statusCode,
-            retryAfter: response.value(forHTTPHeaderField: "Retry-After")
+            retryAfter: response.value(forHTTPHeaderField: "Retry-After"),
+            etag: response.value(forHTTPHeaderField: "ETag")
         )
+    }
+}
+
+actor TCGdexETagStore {
+    static let shared = TCGdexETagStore(defaults: .standard)
+
+    private let defaults: UserDefaults?
+    private let keyPrefix = "tcgdex.etag."
+    private var memory: [String: String] = [:]
+
+    init(defaults: UserDefaults? = nil) {
+        self.defaults = defaults
+    }
+
+    func value(for path: String) -> String? {
+        memory[path] ?? defaults?.string(forKey: keyPrefix + path)
+    }
+
+    func setValue(_ value: String, for path: String) {
+        memory[path] = value
+        defaults?.set(value, forKey: keyPrefix + path)
     }
 }
 
@@ -43,6 +73,7 @@ struct TCGdexRetryPolicy: Sendable {
 
 enum TCGdexError: Error, Equatable, Sendable {
     case invalidResponse
+    case notModified
     case rateLimited(retryAfter: String?)
     case serverError(statusCode: Int)
     case httpError(statusCode: Int)
@@ -55,6 +86,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
     private let httpClient: any HTTPClient
     private let retryPolicy: TCGdexRetryPolicy
     private let sleep: @Sendable (Duration) async throws -> Void
+    private let etagStore: TCGdexETagStore?
 
     init(
         session: URLSession = .shared,
@@ -63,7 +95,8 @@ struct TCGdexClient: CatalogProvider, Sendable {
         self.init(
             httpClient: URLSessionHTTPClient(session: session),
             baseURL: baseURL,
-            retryPolicy: .standard
+            retryPolicy: .standard,
+            etagStore: .shared
         )
     }
 
@@ -71,6 +104,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
         httpClient: any HTTPClient,
         baseURL: URL = URL(string: "https://api.tcgdex.net/v2/en/")!,
         retryPolicy: TCGdexRetryPolicy = .standard,
+        etagStore: TCGdexETagStore? = nil,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
         }
@@ -78,6 +112,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
         self.httpClient = httpClient
         self.baseURL = baseURL
         self.retryPolicy = retryPolicy
+        self.etagStore = etagStore
         self.sleep = sleep
     }
 
@@ -126,6 +161,10 @@ struct TCGdexClient: CatalogProvider, Sendable {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let usesConditionalRequest = path == "cards"
+        if usesConditionalRequest, let etag = await etagStore?.value(for: path) {
+            request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
         var attempt = 1
 
         while true {
@@ -143,11 +182,16 @@ struct TCGdexClient: CatalogProvider, Sendable {
 
             switch response.statusCode {
             case 200..<300:
+                if usesConditionalRequest, let etag = response.etag {
+                    await etagStore?.setValue(etag, for: path)
+                }
                 do {
                     return try JSONDecoder().decode(Response.self, from: response.data)
                 } catch {
                     throw TCGdexError.malformedResponse(String(describing: error))
                 }
+            case 304:
+                throw TCGdexError.notModified
             case 429:
                 guard attempt < retryPolicy.maximumAttempts else {
                     throw TCGdexError.rateLimited(retryAfter: response.retryAfter)

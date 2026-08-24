@@ -196,6 +196,16 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func fetchCard(id: String) async throws -> CatalogCard? {
+        try await database.queue.read { database in
+            try Row.fetchOne(
+                database,
+                sql: "SELECT * FROM catalogCard WHERE id = ?",
+                arguments: [id]
+            ).map(Self.catalogCard)
+        }
+    }
+
     func fetchDownloadedSetIDs() async throws -> [String] {
         try await database.queue.read { database in
             try String.fetchAll(
@@ -394,6 +404,89 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             )
             return rows.compactMap(Self.priceHistoryPoint)
         }
+    }
+
+    func priceStorageStatistics() async throws -> CatalogPriceStorageStatistics {
+        try await database.queue.read { database in
+            let currentPriceCount = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM catalogPrice"
+            ) ?? 0
+            let historyPointCount = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM catalogPriceHistory"
+            ) ?? 0
+            let pageCount = try Int64.fetchOne(database, sql: "PRAGMA page_count") ?? 0
+            let pageSize = try Int64.fetchOne(database, sql: "PRAGMA page_size") ?? 0
+            return CatalogPriceStorageStatistics(
+                currentPriceCount: currentPriceCount,
+                historyPointCount: historyPointCount,
+                databaseByteCount: pageCount * pageSize
+            )
+        }
+    }
+
+    @discardableResult
+    func prunePriceHistory(olderThan cutoff: Date?, maximumPoints: Int) async throws -> Int {
+        let cutoffDay = cutoff.map(Self.historyDayString)
+        let removed = try await database.queue.write { database in
+            let before = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM catalogPriceHistory"
+            ) ?? 0
+            if let cutoffDay {
+                try database.execute(
+                    sql: "DELETE FROM catalogPriceHistory WHERE day < ?",
+                    arguments: [cutoffDay]
+                )
+            }
+            let remaining = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM catalogPriceHistory"
+            ) ?? 0
+            let excess = max(0, remaining - max(0, maximumPoints))
+            if excess > 0 {
+                try database.execute(
+                    sql: """
+                    DELETE FROM catalogPriceHistory
+                    WHERE rowid IN (
+                        SELECT rowid
+                        FROM catalogPriceHistory
+                        ORDER BY day ASC, sourceUpdatedAt ASC
+                        LIMIT ?
+                    )
+                    """,
+                    arguments: [excess]
+                )
+            }
+            let after = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM catalogPriceHistory"
+            ) ?? 0
+            return before - after
+        }
+        if removed >= 1_000 {
+            try await compactDatabase()
+        }
+        return removed
+    }
+
+    func clearPriceHistory() async throws {
+        try await database.queue.write { database in
+            try database.execute(sql: "DELETE FROM catalogPriceHistory")
+        }
+        try await compactDatabase()
+    }
+
+    func clearAllPrices() async throws {
+        try await database.queue.write { database in
+            try database.execute(sql: "DELETE FROM catalogPriceHistory")
+            try database.execute(sql: "DELETE FROM catalogPrice")
+            try database.execute(
+                sql: "DELETE FROM catalogMetadata WHERE key LIKE 'catalog.price.%'"
+            )
+        }
+        try await compactDatabase()
     }
 
     func metadataDate(forKey key: String) async throws -> Date? {
@@ -727,6 +820,20 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             month: parts[1],
             day: parts[2]
         ))
+    }
+
+    private static func historyDayString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private func compactDatabase() async throws {
+        try await database.queue.writeWithoutTransaction { database in
+            try database.execute(sql: "VACUUM")
+        }
     }
 
     private static func catalogSet(row: Row) -> CatalogSet {

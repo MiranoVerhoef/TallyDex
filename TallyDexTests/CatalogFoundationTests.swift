@@ -68,6 +68,36 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(requestCount, 2)
     }
 
+    func testTCGdexUsesETagForUnchangedCompleteCardIndex() async throws {
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(
+                data: Data(#"[{"id":"base-1","localId":"1","name":"Card"}]"#.utf8),
+                statusCode: 200,
+                retryAfter: nil,
+                etag: "index-v1"
+            ),
+            HTTPResponse(data: Data(), statusCode: 304, retryAfter: nil),
+        ])
+        let client = TCGdexClient(
+            httpClient: stub,
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero),
+            etagStore: TCGdexETagStore()
+        )
+
+        _ = try await client.fetchCardIndex()
+        do {
+            _ = try await client.fetchCardIndex()
+            XCTFail("Expected an unchanged response")
+        } catch {
+            XCTAssertEqual(error as? TCGdexError, .notModified)
+        }
+
+        let firstHeader = await stub.header("If-None-Match", requestIndex: 0)
+        let secondHeader = await stub.header("If-None-Match", requestIndex: 1)
+        XCTAssertNil(firstHeader)
+        XCTAssertEqual(secondHeader, "index-v1")
+    }
+
     func testTCGdexDecodesDetailedCardVariants() async throws {
         let response = #"""
         {
@@ -769,6 +799,119 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(history.map(\.currencyCode), ["EUR", "EUR"])
     }
 
+    func testPriceStorageCanPruneAndPurgeWithoutTouchingCardData() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let card = CatalogCard(
+            id: "sv01-001", setID: "sv01", localID: "001", name: "Sprigatito",
+            imageURL: nil, category: "Pokemon", illustrator: nil, rarity: "Common"
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        let dates = [
+            "2026-01-01T08:00:00Z",
+            "2026-04-01T08:00:00Z",
+            "2026-08-01T08:00:00Z",
+        ].compactMap(ISO8601DateFormatter().date)
+        for (index, date) in dates.enumerated() {
+            try await repository.replaceCard(CatalogCardSnapshot(
+                card: card,
+                variants: [.normal],
+                prices: [.init(
+                    cardID: card.id,
+                    variant: .normal,
+                    source: .cardmarket,
+                    currencyCode: "EUR",
+                    amount: Double(index + 1),
+                    updatedAt: date
+                )]
+            ))
+        }
+        try await repository.setMetadataDate(
+            dates.last!,
+            forKey: "catalog.price.\(card.id).lastRefresh"
+        )
+
+        var statistics = try await repository.priceStorageStatistics()
+        XCTAssertEqual(statistics.currentPriceCount, 1)
+        XCTAssertEqual(statistics.historyPointCount, 3)
+        XCTAssertGreaterThan(statistics.databaseByteCount, 0)
+
+        let cutoff = ISO8601DateFormatter().date(from: "2026-03-01T00:00:00Z")!
+        let removed = try await repository.prunePriceHistory(
+            olderThan: cutoff,
+            maximumPoints: 1
+        )
+        XCTAssertEqual(removed, 2)
+        statistics = try await repository.priceStorageStatistics()
+        XCTAssertEqual(statistics.historyPointCount, 1)
+
+        try await repository.clearPriceHistory()
+        statistics = try await repository.priceStorageStatistics()
+        XCTAssertEqual(statistics.historyPointCount, 0)
+        XCTAssertEqual(statistics.currentPriceCount, 1)
+        let cachedCardAfterHistoryClear = try await repository.fetchCard(id: card.id)
+        XCTAssertEqual(cachedCardAfterHistoryClear?.name, card.name)
+
+        try await repository.clearAllPrices()
+        statistics = try await repository.priceStorageStatistics()
+        XCTAssertEqual(statistics.currentPriceCount, 0)
+        let refreshMetadata = try await repository.metadataDate(
+            forKey: "catalog.price.\(card.id).lastRefresh"
+        )
+        let cachedCardAfterAllPricesClear = try await repository.fetchCard(id: card.id)
+        XCTAssertNil(refreshMetadata)
+        XCTAssertEqual(cachedCardAfterAllPricesClear?.rarity, "Common")
+    }
+
+    @MainActor
+    func testCardDetailsUseFreshLocalPriceCache() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let card = CatalogCard(
+            id: "sv01-001", setID: "sv01", localID: "001", name: "Sprigatito",
+            imageURL: nil, category: "Pokemon", illustrator: nil, rarity: "Common"
+        )
+        let refreshDate = Date(timeIntervalSince1970: 10_000)
+        let snapshot = CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(
+                cardID: card.id,
+                variant: .normal,
+                source: .cardmarket,
+                currencyCode: "EUR",
+                amount: 1.25,
+                updatedAt: refreshDate
+            )]
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceCard(snapshot)
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.price.\(card.id).lastRefresh"
+        )
+        let provider = CatalogProviderSpy(cardSnapshot: snapshot)
+        let store = CatalogStore(
+            provider: provider,
+            repository: repository,
+            now: { refreshDate.addingTimeInterval(60 * 60) }
+        )
+
+        let loaded = try await store.details(for: card)
+
+        XCTAssertEqual(loaded.prices.first?.amount, 1.25)
+        let cardRequestCount = await provider.cardRequestCount
+        XCTAssertEqual(cardRequestCount, 0)
+    }
+
     func testPriceHistoryRangesAndSummaryUseExactOrderedPoints() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
@@ -908,6 +1051,26 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(remaining.statistics(for: .expansionSymbols).fileCount, 1)
     }
 
+    func testArtworkCacheLimitRemovesCardImagesBeforeCoreArtwork() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let cardDirectory = root.appendingPathComponent("card-artwork", isDirectory: true)
+        let setDirectory = root.appendingPathComponent("set-logos", isDirectory: true)
+        try FileManager.default.createDirectory(at: cardDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: setDirectory, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 10).write(to: cardDirectory.appendingPathComponent("card.webp"))
+        try Data(repeating: 2, count: 10).write(to: setDirectory.appendingPathComponent("set.png"))
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let cache = CatalogArtworkCache(rootDirectory: root, maximumByteCount: 15)
+        try await cache.enforceLimit()
+        let snapshot = await cache.snapshot()
+
+        XCTAssertEqual(snapshot.statistics(for: .cardArtwork), .empty)
+        XCTAssertEqual(snapshot.statistics(for: .setLogos).fileCount, 1)
+        XCTAssertEqual(snapshot.totalByteCount, 10)
+    }
+
     private func set(
         id: String,
         seriesID: String,
@@ -932,6 +1095,7 @@ final class CatalogFoundationTests: XCTestCase {
 
 private actor HTTPClientStub: HTTPClient {
     private var responses: [HTTPResponse]
+    private var requests: [URLRequest] = []
     private(set) var requestCount = 0
 
     init(responses: [HTTPResponse]) {
@@ -940,9 +1104,45 @@ private actor HTTPClientStub: HTTPClient {
 
     func send(_ request: URLRequest) async throws -> HTTPResponse {
         requestCount += 1
+        requests.append(request)
         guard !responses.isEmpty else {
             throw TCGdexError.invalidResponse
         }
         return responses.removeFirst()
+    }
+
+    func header(_ field: String, requestIndex: Int) -> String? {
+        guard requests.indices.contains(requestIndex) else { return nil }
+        return requests[requestIndex].value(forHTTPHeaderField: field)
+    }
+}
+
+private actor CatalogProviderSpy: CatalogProvider {
+    let cardSnapshot: CatalogCardSnapshot
+    private(set) var cardRequestCount = 0
+
+    init(cardSnapshot: CatalogCardSnapshot) {
+        self.cardSnapshot = cardSnapshot
+    }
+
+    func fetchCardIndex() async throws -> [CatalogCard] {
+        throw TCGdexError.invalidResponse
+    }
+
+    func fetchSeriesIndex() async throws -> [CatalogSeries] {
+        throw TCGdexError.invalidResponse
+    }
+
+    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
+        throw TCGdexError.invalidResponse
+    }
+
+    func fetchSet(id: String) async throws -> CatalogSetSnapshot {
+        throw TCGdexError.invalidResponse
+    }
+
+    func fetchCard(id: String) async throws -> CatalogCardSnapshot {
+        cardRequestCount += 1
+        return cardSnapshot
     }
 }

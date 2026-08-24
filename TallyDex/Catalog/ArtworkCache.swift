@@ -69,15 +69,19 @@ enum CatalogArtworkCacheError: Error {
 
 actor CatalogArtworkCache {
     static let shared = CatalogArtworkCache()
+    static let maximumByteCount: Int64 = 400 * 1_024 * 1_024
 
     private let fileManager: FileManager
     private let rootDirectory: URL
+    private let maximumByteCount: Int64
 
     init(
         rootDirectory: URL? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        maximumByteCount: Int64 = CatalogArtworkCache.maximumByteCount
     ) {
         self.fileManager = fileManager
+        self.maximumByteCount = maximumByteCount
         self.rootDirectory = rootDirectory
             ?? fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("TallyDexArtwork", isDirectory: true)
@@ -102,6 +106,10 @@ actor CatalogArtworkCache {
     func data(for reference: CatalogArtworkReference) async throws -> Data {
         let fileURL = cachedFileURL(for: reference)
         if let cached = try? Data(contentsOf: fileURL), !cached.isEmpty {
+            try? fileManager.setAttributes(
+                [.modificationDate: Date()],
+                ofItemAtPath: fileURL.path
+            )
             return cached
         }
 
@@ -116,6 +124,7 @@ actor CatalogArtworkCache {
         let directory = directory(for: reference.category)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
+        try trimIfNeeded()
         return data
     }
 
@@ -171,6 +180,10 @@ actor CatalogArtworkCache {
         try fileManager.removeItem(at: rootDirectory)
     }
 
+    func enforceLimit() throws {
+        try trimIfNeeded()
+    }
+
     private func directory(for category: CatalogArtworkCategory) -> URL {
         rootDirectory.appendingPathComponent(category.rawValue, isDirectory: true)
     }
@@ -184,6 +197,58 @@ actor CatalogArtworkCache {
         return directory(for: reference.category)
             .appendingPathComponent(digest)
             .appendingPathExtension(fileExtension)
+    }
+
+    private func trimIfNeeded() throws {
+        struct CachedFile {
+            let url: URL
+            let byteCount: Int64
+            let modifiedAt: Date
+            let isCoreArtwork: Bool
+        }
+
+        var files: [CachedFile] = []
+        for category in CatalogArtworkCategory.allCases {
+            let isCoreArtwork = category == .seriesLogos
+                || category == .setLogos
+                || category == .expansionSymbols
+            let urls = (try? fileManager.contentsOfDirectory(
+                at: directory(for: category),
+                includingPropertiesForKeys: [
+                    .fileSizeKey,
+                    .isRegularFileKey,
+                    .contentModificationDateKey,
+                ],
+                options: [.skipsHiddenFiles]
+            )) ?? []
+            for url in urls {
+                let values = try? url.resourceValues(forKeys: [
+                    .fileSizeKey,
+                    .isRegularFileKey,
+                    .contentModificationDateKey,
+                ])
+                guard values?.isRegularFile == true else { continue }
+                files.append(CachedFile(
+                    url: url,
+                    byteCount: Int64(values?.fileSize ?? 0),
+                    modifiedAt: values?.contentModificationDate ?? .distantPast,
+                    isCoreArtwork: isCoreArtwork
+                ))
+            }
+        }
+
+        var totalByteCount = files.reduce(Int64(0)) { $0 + $1.byteCount }
+        guard totalByteCount > maximumByteCount else { return }
+        files.sort {
+            if $0.isCoreArtwork != $1.isCoreArtwork {
+                return !$0.isCoreArtwork
+            }
+            return $0.modifiedAt < $1.modifiedAt
+        }
+        for file in files where totalByteCount > maximumByteCount {
+            try fileManager.removeItem(at: file.url)
+            totalByteCount -= file.byteCount
+        }
     }
 }
 
@@ -201,6 +266,7 @@ final class ArtworkCacheStore {
     }
 
     func refreshSnapshot() async {
+        try? await cache.enforceLimit()
         snapshot = await cache.snapshot()
     }
 
@@ -210,6 +276,7 @@ final class ArtworkCacheStore {
         statusMessage = nil
         defer { isPrefetching = false }
 
+        try? await cache.enforceLimit()
         let references = groups.flatMap(\.artworkReferences)
         await cache.prefetch(references)
         snapshot = await cache.snapshot()

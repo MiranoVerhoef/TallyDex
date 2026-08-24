@@ -20,6 +20,8 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.2/TallyDex-v0.5.2-price-data.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.2/TallyDex-v0.5.2-range-label.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.1/TallyDex-v0.5.1-chart-clipping-fix.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.0/TallyDex-v0.5.0-price-history.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.3/TallyDex-v0.4.3-first-tap-import.png",
@@ -42,6 +44,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.5.2",
+          "buildVersion": "21",
+          "date": "2026-08-24",
+          "localizedDescription": "Adds Price Data storage reporting, one-year history retention by default, a permanent 250,000-point history ceiling, history-only and full market-data purge controls, and a 400 MB least-recently-used artwork ceiling. Card details now reuse their 18-hour cache, pull-to-refresh avoids forcing every price, unchanged complete search indexes use zero-body TCGdex ETag responses, and charts show their saved-day coverage.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.2/TallyDex-v0.5.2.ipa",
+          "size": 5294190,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.5.1",
           "buildVersion": "20",
