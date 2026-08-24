@@ -968,6 +968,70 @@ final class CatalogFoundationTests: XCTestCase {
     }
 
     @MainActor
+    func testForcedCardDetailsBypassFreshLocalPriceCache() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let card = CatalogCard(
+            id: "sv01-001", setID: "sv01", localID: "001", name: "Sprigatito",
+            imageURL: nil, category: "Pokemon", illustrator: nil, rarity: "Common"
+        )
+        let refreshDate = Date(timeIntervalSince1970: 10_000)
+        let cachedSnapshot = CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(
+                cardID: card.id,
+                variant: .normal,
+                source: .cardmarket,
+                currencyCode: "EUR",
+                amount: 1.25,
+                updatedAt: refreshDate,
+                average1Day: 1.20
+            )]
+        )
+        let refreshedSnapshot = CatalogCardSnapshot(
+            card: card,
+            variants: [.normal],
+            prices: [.init(
+                cardID: card.id,
+                variant: .normal,
+                source: .cardmarket,
+                currencyCode: "EUR",
+                amount: 1.50,
+                updatedAt: refreshDate.addingTimeInterval(60),
+                average1Day: 1.45
+            )]
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceCard(cachedSnapshot)
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.price.\(card.id).lastRefresh"
+        )
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.price.\(card.id).rollingAveragesChecked"
+        )
+        let provider = CatalogProviderSpy(cardSnapshot: refreshedSnapshot)
+        let store = CatalogStore(
+            provider: provider,
+            repository: repository,
+            now: { refreshDate.addingTimeInterval(60 * 60) }
+        )
+
+        let loaded = try await store.details(for: card, forceRefresh: true)
+
+        XCTAssertEqual(loaded.prices.first?.amount, 1.50)
+        XCTAssertEqual(loaded.prices.first?.average1Day, 1.45)
+        let cardRequestCount = await provider.cardRequestCount
+        XCTAssertEqual(cardRequestCount, 1)
+    }
+
+    @MainActor
     func testCardDetailsRefreshLegacyCacheOnceForRollingAverages() async throws {
         let database = try CatalogDatabase.inMemory()
         let repository = GRDBCatalogRepository(database: database)

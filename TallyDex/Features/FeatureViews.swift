@@ -1470,16 +1470,13 @@ private struct CatalogCardDetailView: View {
             .padding()
             .safeAreaPadding(.bottom, 86)
         }
+        .refreshable {
+            await loadDetails(forceRefresh: true)
+        }
         .navigationTitle(card.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: card.id) {
-            isLoadingDetails = true
-            defer { isLoadingDetails = false }
-            do {
-                snapshot = try await catalogStore.details(for: card)
-            } catch {
-                message = "Detailed card data will be retried the next time you open this card."
-            }
+            await loadDetails()
         }
         .task(id: card.id) {
             isLoadingCollection = true
@@ -1495,6 +1492,22 @@ private struct CatalogCardDetailView: View {
             } catch {
                 collectionMessage = "Your saved collection details couldn’t be loaded."
             }
+        }
+    }
+
+    private func loadDetails(forceRefresh: Bool = false) async {
+        isLoadingDetails = true
+        message = nil
+        defer { isLoadingDetails = false }
+        do {
+            snapshot = try await catalogStore.details(
+                for: card,
+                forceRefresh: forceRefresh
+            )
+        } catch {
+            message = forceRefresh
+                ? "The card couldn’t be refreshed. Cached details remain available."
+                : "Detailed card data will be retried the next time you open this card."
         }
     }
 

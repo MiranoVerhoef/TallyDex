@@ -279,13 +279,18 @@ final class CatalogStore {
         return cached
     }
 
-    func details(for card: CatalogCard) async throws -> CatalogCardSnapshot {
+    func details(
+        for card: CatalogCard,
+        forceRefresh: Bool = false
+    ) async throws -> CatalogCardSnapshot {
         let repository = try resolveRepository()
         let lastPriceRefresh = try await repository.metadataDate(forKey: priceRefreshKey(card.id))
         let lastRollingAverageRefresh = try await repository.metadataDate(
             forKey: rollingAverageRefreshKey(card.id)
         )
-        if !needsPricingRefresh(lastPriceRefresh), lastRollingAverageRefresh != nil {
+        if !forceRefresh,
+           !needsPricingRefresh(lastPriceRefresh),
+           lastRollingAverageRefresh != nil {
             return try await cachedSnapshot(for: card, in: repository)
         }
         do {
