@@ -20,6 +20,8 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-cardmarket-link.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-chaos-rising.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-exact-price.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-search-controls.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-custom-default.png",
@@ -33,6 +35,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.3.2",
+          "buildVersion": "13",
+          "date": "2026-08-24",
+          "localizedDescription": "Adds an exact Open on Cardmarket action to card details and repairs missing Normal, Reverse Holo, and Holo choices by combining TCGdex variant flags with its detailed marketplace printing data, including already-cached cards.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2.ipa",
+          "size": 6889776,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.3.1",
           "buildVersion": "12",

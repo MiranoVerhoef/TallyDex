@@ -113,6 +113,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
         let response: CardDTO = try await request(path: "cards/\(id)")
         let providerVariants = (response.variants?.availableKinds ?? [])
             .union(response.variantsDetailed?.availableKinds ?? [])
+            .union(response.pricing?.availableKinds ?? [])
         let variants = CatalogVariantOverrides.apply(to: providerVariants, cardID: response.id)
         return CatalogCardSnapshot(
             card: response.catalogCard,
@@ -343,18 +344,23 @@ private struct CardDTO: Decodable, Sendable {
 private struct PricingDTO: Decodable, Sendable {
     let cardmarket: CardmarketPricingDTO?
     let tcgplayer: TCGplayerPricingDTO?
+
+    var availableKinds: Set<CatalogVariantKind> {
+        tcgplayer?.availableKinds ?? []
+    }
 }
 
 private struct CardmarketPricingDTO: Decodable, Sendable {
     let updated: String?
     let unit: String?
+    let idProduct: Int?
     let average: Double?
     let trend: Double?
     let averageHolo: Double?
     let trendHolo: Double?
 
     private enum CodingKeys: String, CodingKey {
-        case updated, unit, trend
+        case updated, unit, idProduct, trend
         case average = "avg"
         case averageHolo = "avg-holo"
         case trendHolo = "trend-holo"
@@ -365,13 +371,15 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
         var quotes: [CatalogPriceQuote] = []
         if variants.contains(.normal), let amount = positive(trend ?? average) {
             quotes.append(.init(cardID: cardID, variant: .normal, source: .cardmarket,
-                                currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt))
+                                currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt,
+                                productID: idProduct))
         }
         let foilVariants = variants.intersection([.reverseHolo, .holo])
         if foilVariants.count == 1, let variant = foilVariants.first,
            let amount = positive(trendHolo ?? averageHolo) {
             quotes.append(.init(cardID: cardID, variant: variant, source: .cardmarket,
-                                currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt))
+                                currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt,
+                                productID: idProduct))
         }
         return quotes
     }
@@ -385,7 +393,8 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
             source: .cardmarket,
             currencyCode: unit ?? "EUR",
             amount: amount,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            productID: idProduct
         )
     }
 
@@ -415,7 +424,8 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
         return values.compactMap { variant, market in
             guard let amount = market?.marketPrice, amount > 0 else { return nil }
             return CatalogPriceQuote(cardID: cardID, variant: variant, source: .tcgplayer,
-                                     currencyCode: unit ?? "USD", amount: amount, updatedAt: updatedAt)
+                                     currencyCode: unit ?? "USD", amount: amount, updatedAt: updatedAt,
+                                     productID: market?.productId)
         }
     }
 
@@ -435,12 +445,22 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
             source: .tcgplayer,
             currencyCode: unit ?? "USD",
             amount: amount,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            productID: market?.productId
         )
+    }
+
+    var availableKinds: Set<CatalogVariantKind> {
+        var kinds = Set<CatalogVariantKind>()
+        if normal != nil { kinds.insert(.normal) }
+        if reverseHolofoil != nil { kinds.insert(.reverseHolo) }
+        if holofoil != nil { kinds.insert(.holo) }
+        return kinds
     }
 }
 
 private struct TCGplayerMarketDTO: Decodable, Sendable {
+    let productId: Int?
     let marketPrice: Double?
 }
 
@@ -471,10 +491,22 @@ private struct DetailedVariantDTO: Decodable, Sendable {
 
     func catalogPrices(cardID: String) -> [CatalogPriceQuote] {
         guard let primaryKind else { return [] }
-        return [
-            pricing?.cardmarket?.exactQuote(cardID: cardID, variant: primaryKind),
-            pricing?.tcgplayer?.exactQuote(cardID: cardID, variant: primaryKind),
-        ].compactMap { $0 }
+        let hasSpecialStamp = primaryKind != .normal
+            && primaryKind != .reverseHolo
+            && primaryKind != .holo
+        if hasSpecialStamp || availableKinds.count == 1 {
+            return [
+                pricing?.cardmarket?.exactQuote(cardID: cardID, variant: primaryKind),
+                pricing?.tcgplayer?.exactQuote(cardID: cardID, variant: primaryKind),
+            ].compactMap { $0 }
+        }
+
+        var quotes = pricing?.tcgplayer?.quotes(cardID: cardID) ?? []
+        quotes.append(contentsOf: pricing?.cardmarket?.quotes(
+            cardID: cardID,
+            variants: availableKinds
+        ) ?? [])
+        return quotes
     }
 
     var availableKinds: Set<CatalogVariantKind> {
@@ -489,6 +521,9 @@ private struct DetailedVariantDTO: Decodable, Sendable {
         if stamp?.contains("w-promo") == true { kinds.insert(.watermarkedPromo) }
         if stamp?.contains("pre-release") == true { kinds.insert(.prerelease) }
         if stamp?.contains("staff") == true { kinds.insert(.prereleaseStaff) }
+        if stamp?.isEmpty != false {
+            kinds.formUnion(pricing?.availableKinds ?? [])
+        }
         return kinds
     }
 }
