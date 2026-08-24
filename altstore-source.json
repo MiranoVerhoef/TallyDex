@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.0/TallyDex-v0.5.0-price-history.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.3/TallyDex-v0.4.3-first-tap-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.2/TallyDex-v0.4.2-legacy-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.1/TallyDex-v0.4.1-import-preview.png",
@@ -40,6 +41,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.5.0",
+          "buildVersion": "19",
+          "date": "2026-08-24",
+          "localizedDescription": "Adds exact per-printing price-history charts to card details with 7-day, 30-day, 90-day, and all-time ranges. Cardmarket EUR and TCGplayer USD histories remain separate, with current, change, low, and high statistics and honest one-point or empty states while daily history accumulates.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.0/TallyDex-v0.5.0.ipa",
+          "size": 5262306,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.4.3",
           "buildVersion": "18",

@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import Charts
 
 private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> String {
     amount.formatted(
@@ -1304,6 +1305,10 @@ private struct CatalogCardDetailView: View {
                     }
                 }
 
+                if let snapshot {
+                    priceHistoryLink(snapshot: snapshot)
+                }
+
                 personalSection
                 collectionSection
 
@@ -1390,6 +1395,43 @@ private struct CatalogCardDetailView: View {
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func priceHistoryLink(snapshot: CatalogCardSnapshot) -> some View {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        let pricedVariants = Set(snapshot.prices.filter { $0.source == source }.map(\.variant))
+
+        return NavigationLink {
+            CatalogCardPriceHistoryView(
+                snapshot: snapshot,
+                initialSource: source
+            )
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "chart.xyaxis.line")
+                    .font(.title2)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Price History")
+                        .font(.headline)
+                    Text(pricedVariants.isEmpty
+                         ? "No saved \(source.displayName) prices yet"
+                         : "\(source.displayName) · \(pricedVariants.count) priced \(pricedVariants.count == 1 ? "printing" : "printings")")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -1539,6 +1581,325 @@ private struct CatalogCardDetailView: View {
                 collectionMessage = "Your wishlist or notes couldn’t be saved. Please try again."
             }
         }
+    }
+}
+
+private struct CatalogCardPriceHistoryView: View {
+    let snapshot: CatalogCardSnapshot
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var selectedSource: CatalogPriceSource
+    @State private var selectedVariant: CatalogVariantKind
+    @State private var selectedRange = CatalogPriceHistoryRange.thirtyDays
+    @State private var points: [CatalogPriceHistoryPoint] = []
+    @State private var selectedDay: Date?
+    @State private var isLoading = true
+    @State private var loadMessage: String?
+
+    init(snapshot: CatalogCardSnapshot, initialSource: CatalogPriceSource) {
+        self.snapshot = snapshot
+        let knownVariants = snapshot.variants.union(snapshot.prices.map(\.variant))
+        let initialVariant = CatalogVariantKind.allCases.first { variant in
+            knownVariants.contains(variant)
+                && snapshot.prices.contains { quote in
+                    quote.source == initialSource && quote.variant == variant
+                }
+        } ?? CatalogVariantKind.allCases.first(where: knownVariants.contains) ?? .normal
+        _selectedSource = State(initialValue: initialSource)
+        _selectedVariant = State(initialValue: initialVariant)
+    }
+
+    private var variantOptions: [CatalogVariantKind] {
+        let known = snapshot.variants
+            .union(snapshot.prices.map(\.variant))
+            .union(points.map(\.variant))
+        return CatalogVariantKind.allCases.filter(known.contains)
+    }
+
+    private var displayedPoints: [CatalogPriceHistoryPoint] {
+        selectedRange.filter(points.filter {
+            $0.source == selectedSource && $0.variant == selectedVariant
+        })
+    }
+
+    private var summary: CatalogPriceHistorySummary? {
+        CatalogPriceHistorySummary(points: displayedPoints)
+    }
+
+    private var currencyCode: String {
+        displayedPoints.last?.currencyCode
+            ?? snapshot.prices.first {
+                $0.source == selectedSource && $0.variant == selectedVariant
+            }?.currencyCode
+            ?? selectedSource.currencyCode
+    }
+
+    private var highlightedPoint: CatalogPriceHistoryPoint? {
+        guard let selectedDay else { return nil }
+        return displayedPoints.min {
+            abs($0.day.timeIntervalSince(selectedDay)) < abs($1.day.timeIntervalSince(selectedDay))
+        }
+    }
+
+    private var chartDomain: ClosedRange<Double> {
+        guard let summary else { return 0...1 }
+        let spread = summary.high - summary.low
+        let padding = max(spread * 0.15, summary.high * 0.05, 0.01)
+        return max(0, summary.low - padding)...(summary.high + padding)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(snapshot.card.name)
+                        .font(.title2.bold())
+                    Text("#\(snapshot.card.localID) · Exact printing history")
+                        .foregroundStyle(.secondary)
+                }
+
+                Picker("Marketplace", selection: $selectedSource) {
+                    ForEach(CatalogPriceSource.allCases) { source in
+                        Text(source.displayName).tag(source)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                HStack {
+                    Text("Printing")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Picker("Printing", selection: $selectedVariant) {
+                        ForEach(variantOptions, id: \.self) { variant in
+                            Text(variant.displayName).tag(variant)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+                .padding(14)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+
+                Picker("Range", selection: $selectedRange) {
+                    ForEach(CatalogPriceHistoryRange.allCases) { range in
+                        Text(range.shortTitle).tag(range)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if isLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView("Loading price history…")
+                        Spacer()
+                    }
+                    .frame(minHeight: 280)
+                } else if let loadMessage {
+                    ContentUnavailableView(
+                        "Price History Unavailable",
+                        systemImage: "chart.line.downtrend.xyaxis",
+                        description: Text(loadMessage)
+                    )
+                    .frame(minHeight: 280)
+                } else if displayedPoints.isEmpty {
+                    ContentUnavailableView(
+                        "No \(selectedRange.shortTitle) History",
+                        systemImage: "chart.xyaxis.line",
+                        description: Text("TallyDex has not saved a \(selectedSource.displayName) price for the \(selectedVariant.displayName.lowercased()) printing in this range yet.")
+                    )
+                    .frame(minHeight: 280)
+                } else {
+                    historyChart
+                    summaryGrid
+
+                    if displayedPoints.count == 1 {
+                        Label(
+                            "History has started. The chart will grow as TallyDex saves future daily price updates.",
+                            systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text("TallyDex stores one exact TCGdex market price per source day when this printing refreshes. It never substitutes another variant or converts between EUR and USD.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
+            .padding()
+            .safeAreaPadding(.bottom, 30)
+        }
+        .navigationTitle("Price History")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: "\(snapshot.card.id)|\(selectedSource.rawValue)") {
+            await loadHistory()
+        }
+        .onChange(of: selectedVariant) { _, _ in selectedDay = nil }
+        .onChange(of: selectedRange) { _, _ in selectedDay = nil }
+    }
+
+    private var historyChart: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let highlightedPoint {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(formattedCatalogPrice(highlightedPoint.amount, currencyCode: highlightedPoint.currencyCode))
+                        .font(.title3.bold().monospacedDigit())
+                    Spacer()
+                    Text(highlightedPoint.day.formatted(date: .abbreviated, time: .omitted))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let last = displayedPoints.last {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(formattedCatalogPrice(last.amount, currencyCode: last.currencyCode))
+                        .font(.title3.bold().monospacedDigit())
+                    Spacer()
+                    Text("Latest · \(last.day.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Chart {
+                ForEach(displayedPoints) { point in
+                    AreaMark(
+                        x: .value("Day", point.day),
+                        y: .value("Price", point.amount)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.accentColor.opacity(0.28), Color.accentColor.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                    LineMark(
+                        x: .value("Day", point.day),
+                        y: .value("Price", point.amount)
+                    )
+                    .foregroundStyle(Color.accentColor)
+                    .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.catmullRom)
+
+                    if displayedPoints.count <= 14 {
+                        PointMark(
+                            x: .value("Day", point.day),
+                            y: .value("Price", point.amount)
+                        )
+                        .foregroundStyle(Color.accentColor)
+                    }
+                }
+
+                if let highlightedPoint {
+                    RuleMark(x: .value("Selected day", highlightedPoint.day))
+                        .foregroundStyle(.secondary.opacity(0.55))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                }
+            }
+            .chartYScale(domain: chartDomain)
+            .chartXAxis {
+                AxisMarks(values: .automatic(desiredCount: 4)) {
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                }
+            }
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let amount = value.as(Double.self) {
+                            Text(formattedCatalogPrice(amount, currencyCode: currencyCode))
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+            .chartXSelection(value: $selectedDay)
+            .frame(height: 260)
+            .accessibilityLabel("\(selectedSource.displayName) \(selectedVariant.displayName) price history")
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var summaryGrid: some View {
+        let columns = [GridItem(.flexible()), GridItem(.flexible())]
+        return LazyVGrid(columns: columns, spacing: 12) {
+            historyStat("Current", amount: summary?.current)
+            historyChangeStat
+            historyStat("Low", amount: summary?.low)
+            historyStat("High", amount: summary?.high)
+        }
+    }
+
+    private func historyStat(_ title: String, amount: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(amount.map { formattedCatalogPrice($0, currencyCode: currencyCode) } ?? "—")
+                .font(.headline.monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var historyChangeStat: some View {
+        let change = summary?.absoluteChange
+        let percentage = summary?.percentageChange
+        let color: Color = (change ?? 0) > 0 ? .green : ((change ?? 0) < 0 ? .red : .secondary)
+        return VStack(alignment: .leading, spacing: 5) {
+            Text("Change")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let change {
+                Text("\(change >= 0 ? "+" : "")\(formattedCatalogPrice(change, currencyCode: currencyCode))")
+                    .font(.headline.monospacedDigit())
+                    .foregroundStyle(color)
+                if let percentage {
+                    Text("\(percentage >= 0 ? "+" : "")\(percentage.formatted(.number.precision(.fractionLength(1))))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(color)
+                }
+            } else {
+                Text("—")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Text("Need 2 days")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    @MainActor
+    private func loadHistory() async {
+        isLoading = true
+        loadMessage = nil
+        selectedDay = nil
+        do {
+            points = try await catalogStore.priceHistory(
+                cardID: snapshot.card.id,
+                source: selectedSource
+            )
+            if !variantOptions.contains(selectedVariant), let first = variantOptions.first {
+                selectedVariant = first
+            } else if !points.contains(where: { $0.variant == selectedVariant }),
+                      let firstWithHistory = CatalogVariantKind.allCases.first(where: { variant in
+                          points.contains { $0.variant == variant }
+                      }) {
+                selectedVariant = firstWithHistory
+            }
+        } catch {
+            points = []
+            loadMessage = "Saved prices could not be loaded. No collection data was changed."
+        }
+        isLoading = false
     }
 }
 

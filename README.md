@@ -51,7 +51,10 @@ TCGdex. You can choose the preferred source in Settings. Values are calculated
 per exact printing and quantity; unpriced variants are reported separately
 instead of being estimated from another printing. Current prices refresh every
 18 hours and one snapshot per source day is retained locally for future price
-history views.
+history views. Card details provide exact per-printing price-history charts with
+7-day, 30-day, 90-day, and All ranges, plus current, change, low, and high
+statistics. Cardmarket and TCGplayer histories remain separate and retain their
+native EUR or USD currency.
 
 When TCGdex supplies Cardmarket's product identifier, card details include an
 **Open on Cardmarket** button that opens the matching marketplace product page.

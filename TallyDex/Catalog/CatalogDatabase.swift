@@ -377,6 +377,25 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func fetchPriceHistory(
+        cardID: String,
+        source: CatalogPriceSource
+    ) async throws -> [CatalogPriceHistoryPoint] {
+        try await database.queue.read { database in
+            let rows = try Row.fetchAll(
+                database,
+                sql: """
+                SELECT cardID, variant, source, day, currencyCode, amount, sourceUpdatedAt
+                FROM catalogPriceHistory
+                WHERE cardID = ? AND source = ?
+                ORDER BY day ASC, variant ASC
+                """,
+                arguments: [cardID, source.rawValue]
+            )
+            return rows.compactMap(Self.priceHistoryPoint)
+        }
+    }
+
     func metadataDate(forKey key: String) async throws -> Date? {
         try await database.queue.read { database in
             try Date.fetchOne(
@@ -680,6 +699,34 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             currencyCode: row["currencyCode"], amount: row["amount"], updatedAt: row["updatedAt"],
             productID: row["productID"]
         )
+    }
+
+    private static func priceHistoryPoint(_ row: Row) -> CatalogPriceHistoryPoint? {
+        guard let variant = CatalogVariantKind(rawValue: row["variant"]),
+              let source = CatalogPriceSource(rawValue: row["source"]),
+              let day = historyDay(row["day"]) else { return nil }
+        return CatalogPriceHistoryPoint(
+            cardID: row["cardID"],
+            variant: variant,
+            source: source,
+            day: day,
+            currencyCode: row["currencyCode"],
+            amount: row["amount"],
+            sourceUpdatedAt: row["sourceUpdatedAt"]
+        )
+    }
+
+    private static func historyDay(_ value: String) -> Date? {
+        let parts = value.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar.date(from: DateComponents(
+            timeZone: calendar.timeZone,
+            year: parts[0],
+            month: parts[1],
+            day: parts[2]
+        ))
     }
 
     private static func catalogSet(row: Row) -> CatalogSet {

@@ -186,6 +186,13 @@ final class CatalogStore {
         try await resolveRepository().fetchPrices(cardIDs: cardIDs)
     }
 
+    func priceHistory(
+        cardID: String,
+        source: CatalogPriceSource
+    ) async throws -> [CatalogPriceHistoryPoint] {
+        try await resolveRepository().fetchPriceHistory(cardID: cardID, source: source)
+    }
+
     /// TCGdex's set response contains card summaries but not printing variants.
     /// Hydrate missing detail records with a small concurrency window so
     /// variant-aware goals can calculate an exact denominator without flooding
