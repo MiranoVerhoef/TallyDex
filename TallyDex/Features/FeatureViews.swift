@@ -3737,6 +3737,8 @@ private struct PriceDataSettingsView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @AppStorage(PricingSettings.historyRetentionKey)
     private var retention = PricingSettings.defaultHistoryRetention.rawValue
+    @AppStorage(PricingSettings.foreverHistorySizeLimitKey)
+    private var foreverSizeLimit = PricingSettings.defaultForeverHistorySizeLimit.rawValue
     @State private var statistics: CatalogPriceStorageStatistics?
     @State private var pendingRemoval: RemovalAction?
     @State private var isWorking = false
@@ -3779,10 +3781,24 @@ private struct PriceDataSettingsView: View {
                 }
                 .pickerStyle(.navigationLink)
                 .disabled(isWorking)
+
+                if retention == CatalogPriceHistoryRetention.forever.rawValue {
+                    Picker("Maximum history size", selection: $foreverSizeLimit) {
+                        ForEach(CatalogPriceHistorySizeLimit.allCases) { option in
+                            Text(option.title).tag(option.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .disabled(isWorking)
+                }
             } header: {
                 Text("Automatic Retention")
             } footer: {
-                Text("The default is one year. Even with Forever selected, TallyDex keeps at most \(PricingSettings.maximumHistoryPointCount.formatted()) of the newest points—roughly 40 MB—to prevent unbounded growth.")
+                if retention == CatalogPriceHistoryRetention.forever.rawValue {
+                    Text("Forever keeps history without a date cutoff, up to the selected approximate size. This limit applies only to price history; database indexes and temporary files may use a little more space.")
+                } else {
+                    Text("The default is one year. Time-based retention also keeps at most \(PricingSettings.timeBasedMaximumHistoryPointCount.formatted()) of the newest points as a safety limit.")
+                }
             }
 
             Section {
@@ -3819,6 +3835,10 @@ private struct PriceDataSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadStatistics() }
         .onChange(of: retention) { _, _ in
+            Task { await applyRetention() }
+        }
+        .onChange(of: foreverSizeLimit) { _, _ in
+            guard retention == CatalogPriceHistoryRetention.forever.rawValue else { return }
             Task { await applyRetention() }
         }
         .confirmationDialog(
