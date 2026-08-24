@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.7/TallyDex-v0.5.7-card-refresh.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.6/TallyDex-v0.5.6-cache-fix.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.5/TallyDex-v0.5.5-market-averages.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.4/TallyDex-v0.5.4-offline-sets.png",
@@ -48,6 +49,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.5.7",
+          "buildVersion": "26",
+          "date": "2026-08-24",
+          "localizedDescription": "Adds pull-to-refresh to card details. Pulling down now bypasses the normal 18-hour cache and refreshes that exact card's TCGdex metadata, variants, prices, rolling averages, and local daily price-history point without refreshing the entire set.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.7/TallyDex-v0.5.7.ipa",
+          "size": 5345305,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.5.6",
           "buildVersion": "25",
