@@ -2894,6 +2894,71 @@ private struct CollectionTransferFileDocument: FileDocument {
     }
 }
 
+private struct CollectionBackupSelection: Identifiable {
+    let id = UUID()
+    let data: Data
+    let filename: String
+}
+
+private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
+    let onResult: (Result<CollectionBackupSelection, Error>) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onResult: onResult, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(
+            forOpeningContentTypes: [.item],
+            asCopy: true
+        )
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        picker.shouldShowFileExtensions = true
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onResult: (Result<CollectionBackupSelection, Error>) -> Void
+        private let onCancel: () -> Void
+
+        init(
+            onResult: @escaping (Result<CollectionBackupSelection, Error>) -> Void,
+            onCancel: @escaping () -> Void
+        ) {
+            self.onResult = onResult
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(
+            _ controller: UIDocumentPickerViewController,
+            didPickDocumentsAt urls: [URL]
+        ) {
+            guard let url = urls.first else {
+                onResult(.failure(CocoaError(.fileNoSuchFile)))
+                return
+            }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            do {
+                onResult(.success(CollectionBackupSelection(
+                    data: try Data(contentsOf: url),
+                    filename: url.lastPathComponent
+                )))
+            } catch {
+                onResult(.failure(error))
+            }
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
+}
+
 private struct CollectionDataTransferView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @State private var exportFile = CollectionTransferFileDocument()
@@ -2902,6 +2967,7 @@ private struct CollectionDataTransferView: View {
     @State private var isExporting = false
     @State private var isImporting = false
     @State private var isPreparing = false
+    @State private var stagedImportSelection: CollectionBackupSelection?
     @State private var pendingImport: PreparedCollectionImport?
     @State private var message: String?
     @State private var importError: String?
@@ -2969,16 +3035,24 @@ private struct CollectionDataTransferView: View {
                 message = "The export wasn’t saved. Your collection was not changed."
             }
         }
-        .fileImporter(
-            isPresented: $isImporting,
-            // Older TallyDex versions exported valid backup JSON before the
-            // custom document type was registered. File providers can retain
-            // that original or a dynamic type, so validate the contents after
-            // selection instead of disabling those backups in the picker.
-            allowedContentTypes: [.item],
-            allowsMultipleSelection: false
-        ) { result in
-            handleImportSelection(result)
+        .sheet(isPresented: $isImporting) {
+            CollectionBackupDocumentPicker { result in
+                switch result {
+                case .success(let selection):
+                    stagedImportSelection = selection
+                case .failure:
+                    importError = "That file couldn’t be opened."
+                }
+                isImporting = false
+            } onCancel: {
+                isImporting = false
+            }
+        }
+        .onChange(of: isImporting) { _, isPresented in
+            if !isPresented { beginStagedImport() }
+        }
+        .onChange(of: stagedImportSelection?.id) { _, selectionID in
+            if selectionID != nil, !isImporting { beginStagedImport() }
         }
         .sheet(item: $pendingImport) { prepared in
             CollectionImportPreviewView(prepared: prepared) { resultMessage in
@@ -3020,22 +3094,17 @@ private struct CollectionDataTransferView: View {
         }
     }
 
-    private func handleImportSelection(_ result: Result<[URL], Error>) {
-        guard case let .success(urls) = result, let url = urls.first else {
-            if case .failure = result { importError = "That file couldn’t be opened." }
-            return
-        }
+    private func beginStagedImport() {
+        guard let selection = stagedImportSelection else { return }
+        stagedImportSelection = nil
         isPreparing = true
         message = nil
         Task {
             defer { isPreparing = false }
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
             do {
-                let data = try Data(contentsOf: url)
                 pendingImport = try await collectionStore.prepareImport(
-                    data: data,
-                    filename: url.lastPathComponent
+                    data: selection.data,
+                    filename: selection.filename
                 )
             } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
                 importError = "This backup uses schema version \(version), which this version of TallyDex can’t import."
