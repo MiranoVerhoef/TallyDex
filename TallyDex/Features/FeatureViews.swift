@@ -2904,6 +2904,7 @@ private struct CollectionDataTransferView: View {
     @State private var isPreparing = false
     @State private var pendingImport: PreparedCollectionImport?
     @State private var message: String?
+    @State private var importError: String?
 
     var body: some View {
         Form {
@@ -2970,7 +2971,11 @@ private struct CollectionDataTransferView: View {
         }
         .fileImporter(
             isPresented: $isImporting,
-            allowedContentTypes: [.tallyDexCollection, .json, .data],
+            // Older TallyDex versions exported valid backup JSON before the
+            // custom document type was registered. File providers can retain
+            // that original or a dynamic type, so validate the contents after
+            // selection instead of disabling those backups in the picker.
+            allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
             handleImportSelection(result)
@@ -2980,6 +2985,17 @@ private struct CollectionDataTransferView: View {
                 pendingImport = nil
                 message = resultMessage
             }
+        }
+        .alert(
+            "Couldn’t Import Backup",
+            isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )
+        ) {
+            Button("OK") { importError = nil }
+        } message: {
+            Text(importError ?? "The selected file couldn’t be imported.")
         }
     }
 
@@ -3006,7 +3022,7 @@ private struct CollectionDataTransferView: View {
 
     private func handleImportSelection(_ result: Result<[URL], Error>) {
         guard case let .success(urls) = result, let url = urls.first else {
-            if case .failure = result { message = "That backup couldn’t be opened." }
+            if case .failure = result { importError = "That file couldn’t be opened." }
             return
         }
         isPreparing = true
@@ -3022,9 +3038,9 @@ private struct CollectionDataTransferView: View {
                     filename: url.lastPathComponent
                 )
             } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
-                message = "This backup uses schema version \(version), which this version of TallyDex can’t import."
+                importError = "This backup uses schema version \(version), which this version of TallyDex can’t import."
             } catch {
-                message = "That file is not a valid TallyDex .pokecollection backup. No data was changed."
+                importError = "That file is not a valid TallyDex .pokecollection backup. No data was changed."
             }
         }
     }
