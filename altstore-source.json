@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.1/TallyDex-v0.5.1-chart-clipping-fix.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.0/TallyDex-v0.5.0-price-history.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.3/TallyDex-v0.4.3-first-tap-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.2/TallyDex-v0.4.2-legacy-import.png",
@@ -41,6 +42,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.5.1",
+          "buildVersion": "20",
+          "date": "2026-08-24",
+          "localizedDescription": "Fixes the Price History area fill extending below the chart and appearing behind the summary cards, explanatory text, and bottom tab bar. The fill now uses the visible price range as its baseline and is clipped to the chart bounds.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.1/TallyDex-v0.5.1.ipa",
+          "size": 5262552,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.5.0",
           "buildVersion": "19",

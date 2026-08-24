@@ -1764,7 +1764,8 @@ private struct CatalogCardPriceHistoryView: View {
                 ForEach(displayedPoints) { point in
                     AreaMark(
                         x: .value("Day", point.day),
-                        y: .value("Price", point.amount)
+                        yStart: .value("Visible baseline", chartDomain.lowerBound),
+                        yEnd: .value("Price", point.amount)
                     )
                     .foregroundStyle(
                         LinearGradient(
@@ -1798,6 +1799,7 @@ private struct CatalogCardPriceHistoryView: View {
                 }
             }
             .chartYScale(domain: chartDomain)
+            .clipped()
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 4)) {
                     AxisGridLine()
