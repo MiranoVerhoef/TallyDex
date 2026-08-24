@@ -62,6 +62,14 @@ Countries or country-specific Cardmarket listing preference so that choice is
 ready when seller-level listing support is added; it does not alter TCGdex's
 current Europe-wide aggregate.
 
+## Reporting catalog data
+
+TallyDex uses TCGdex as its single source for card, set, and printing data.
+Missing or incorrect cards can be reported from **Settings → Missing or
+Incorrect Card**, which links to the TallyDex GitHub issue tracker. Reports
+should include the set name and code, card name and collector number, the
+missing or incorrect data, and a reliable source or clear photo.
+
 ## License
 
 TallyDex's original source code, interface, documentation, name, and artwork

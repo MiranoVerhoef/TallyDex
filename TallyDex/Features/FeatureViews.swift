@@ -2824,6 +2824,12 @@ struct SettingsView: View {
                             Label("Collection Backups", systemImage: "clock.arrow.circlepath")
                         }
                     }
+
+                    NavigationLink {
+                        CatalogIssueReportingView()
+                    } label: {
+                        Label("Missing or Incorrect Card", systemImage: "exclamationmark.bubble")
+                    }
                 }
 
                 Section("iCloud") {
@@ -2857,6 +2863,39 @@ struct SettingsView: View {
                 )
             }
         )
+    }
+}
+
+private struct CatalogIssueReportingView: View {
+    private let newIssueURL = URL(
+        string: "https://github.com/MiranoVerhoef/TallyDex/issues/new?template=missing-card.yml"
+    )!
+    private let issuesURL = URL(
+        string: "https://github.com/MiranoVerhoef/TallyDex/issues?q=is%3Aissue%20label%3Acard-data"
+    )!
+
+    var body: some View {
+        Form {
+            Section("How Card Data Works") {
+                Text("TallyDex uses TCGdex as its single source for card, set, and printing data. It does not create a missing card or printing unless that data is available through TCGdex.")
+                Text("If something is missing or incorrect, report it on the TallyDex GitHub. The report can track the problem and link to any upstream TCGdex correction.")
+            }
+
+            Section {
+                Link(destination: newIssueURL) {
+                    Label("Report on GitHub", systemImage: "square.and.pencil")
+                }
+                Link(destination: issuesURL) {
+                    Label("View Existing Reports", systemImage: "list.bullet.rectangle")
+                }
+            } header: {
+                Text("Card Data Reports")
+            } footer: {
+                Text("Include the set name and code, card name and collector number, what is missing or incorrect, and a reliable source or clear photo. A GitHub account is required to submit a report.")
+            }
+        }
+        .navigationTitle("Card Data Help")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -3071,6 +3110,7 @@ private struct AboutTallyDexView: View {
 
             Section("Data & Artwork") {
                 Text("Catalog metadata, set logos, and expansion symbols are supplied by TCGdex and cached locally by TallyDex.")
+                Text("Missing or incorrect catalog data can be reported from Settings → Missing or Incorrect Card.")
                 Link("Visit TCGdex", destination: URL(string: "https://www.tcgdex.net")!)
             }
 

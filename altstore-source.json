@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.3/TallyDex-v0.3.3-card-data-help.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-cardmarket-link.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-chaos-rising.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-exact-price.png",
@@ -35,6 +36,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.3.3",
+          "buildVersion": "14",
+          "date": "2026-08-24",
+          "localizedDescription": "Adds a Missing or Incorrect Card option to Settings, explains that TallyDex uses TCGdex as its single catalog source, links to new and existing TallyDex GitHub card-data reports, and provides a structured issue form for verifiable corrections.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.3/TallyDex-v0.3.3.ipa",
+          "size": 6908979,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.3.2",
           "buildVersion": "13",
