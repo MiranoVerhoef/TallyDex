@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.0/TallyDex-v0.4.0-export-import.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.3/TallyDex-v0.3.3-card-data-help.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-cardmarket-link.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.2/TallyDex-v0.3.2-chaos-rising.png",
@@ -36,6 +37,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.4.0",
+          "buildVersion": "15",
+          "date": "2026-08-24",
+          "localizedDescription": "Adds versioned .pokecollection JSON backups, human-readable CSV export, Files integration, detailed import previews, idempotent timestamp-aware Merge, guarded Replace, and an automatic local rollback snapshot before imports.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.4.0/TallyDex-v0.4.0.ipa",
+          "size": 5192982,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.3.3",
           "buildVersion": "14",

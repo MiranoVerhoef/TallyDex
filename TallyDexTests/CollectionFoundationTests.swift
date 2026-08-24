@@ -564,6 +564,127 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(master.visibleVariants(in: knownVariants), knownVariants)
     }
 
+    func testPortableBackupRoundTripPreservesEveryCollectionRecord() async throws {
+        let source = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let destination = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let update = Date(timeIntervalSince1970: 100)
+        let folderID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
+        try await source.setQuantity(2, cardID: "me01-001", variant: .reverseHolo, updatedAt: update)
+        try await source.saveSetPreference(.init(
+            setID: "me01", status: .hidden, goal: .custom,
+            includedVariants: [.holo, .reverseHolo], includesSecretCards: false, updatedAt: update
+        ))
+        try await source.saveCustomFolder(.init(
+            id: folderID, name: "Lucario", cardNameQuery: "Lucario", displayMode: .ownedOnly,
+            createdAt: update, updatedAt: update
+        ))
+        try await source.saveCardMetadata(.init(
+            cardID: "me01-001", isWishlisted: true, notes: "Binder page 3", updatedAt: update
+        ))
+
+        let exported = try await source.exportCollection(exportedAt: update, appVersion: "0.4.0 (15)")
+        let data = try CollectionTransferCodec.encode(exported)
+        let decoded = try CollectionTransferCodec.decode(data)
+        XCTAssertEqual(decoded, exported)
+
+        try await destination.importCollection(decoded, mode: .replace, importedAt: update.addingTimeInterval(1))
+        let entries = try await destination.fetchEntries(cardID: "me01-001")
+        let preferences = try await destination.fetchSetPreferences()
+        let folders = try await destination.fetchCustomFolders()
+        let metadata = try await destination.fetchCardMetadata(cardID: "me01-001")
+        XCTAssertEqual(entries.first?.quantity, 2)
+        XCTAssertEqual(preferences["me01"]?.includedVariants, [.holo, .reverseHolo])
+        XCTAssertEqual(folders.first?.id, folderID)
+        XCTAssertEqual(metadata.notes, "Binder page 3")
+    }
+
+    func testMergeIsIdempotentAndKeepsNewerLocalConflict() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let older = Date(timeIntervalSince1970: 100)
+        let newer = Date(timeIntervalSince1970: 200)
+        try await repository.setQuantity(3, cardID: "me01-002", variant: .holo, updatedAt: newer)
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: older,
+            appVersion: "0.4.0 (15)",
+            ownership: [
+                .init(cardID: "me01-001", variant: .normal, quantity: 1, updatedAt: older),
+                .init(cardID: "me01-002", variant: .holo, quantity: 1, updatedAt: older),
+            ],
+            setPreferences: [], folders: [], cardMetadata: []
+        )
+
+        let preview = try await repository.previewImport(document, mode: .merge)
+        XCTAssertEqual(preview.additions, 1)
+        XCTAssertEqual(preview.conflicts, 1)
+        try await repository.importCollection(document, mode: .merge, importedAt: newer.addingTimeInterval(1))
+        try await repository.importCollection(document, mode: .merge, importedAt: newer.addingTimeInterval(2))
+
+        let addedEntries = try await repository.fetchEntries(cardID: "me01-001")
+        let conflictedEntries = try await repository.fetchEntries(cardID: "me01-002")
+        let backups = try await repository.fetchBackups()
+        XCTAssertEqual(addedEntries.first?.quantity, 1)
+        XCTAssertEqual(conflictedEntries.first?.quantity, 3)
+        XCTAssertEqual(backups.count, 1)
+    }
+
+    func testReplacePreviewReportsRemovalsAndCreatesRollbackBackup() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let before = Date(timeIntervalSince1970: 100)
+        let importedAt = Date(timeIntervalSince1970: 200)
+        try await repository.setQuantity(1, cardID: "old-card", variant: .normal, updatedAt: before)
+        let empty = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: importedAt,
+            appVersion: "0.4.0 (15)",
+            ownership: [], setPreferences: [], folders: [], cardMetadata: []
+        )
+
+        let preview = try await repository.previewImport(empty, mode: .replace)
+        XCTAssertEqual(preview.removals, 1)
+        try await repository.importCollection(empty, mode: .replace, importedAt: importedAt)
+        let emptyEntries = try await repository.fetchOwnedEntries()
+        XCTAssertTrue(emptyEntries.isEmpty)
+
+        let backups = try await repository.fetchBackups()
+        let rollback = try XCTUnwrap(backups.first)
+        try await repository.restoreBackup(
+            id: rollback.id,
+            safetyBackupReason: "Before rollback",
+            restoredAt: importedAt.addingTimeInterval(1)
+        )
+        let restoredEntries = try await repository.fetchEntries(cardID: "old-card")
+        XCTAssertEqual(restoredEntries.first?.quantity, 1)
+    }
+
+    func testCSVQuotesNotesAndIncludesEveryRecordType() async throws {
+        let date = Date(timeIntervalSince1970: 100)
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: 1,
+            exportedAt: date,
+            appVersion: "0.4.0 (15)",
+            ownership: [.init(cardID: "card-1", variant: .normal, quantity: 1, updatedAt: date)],
+            setPreferences: [.init(
+                setID: "set-1", status: .collecting, goal: .normal,
+                includedVariants: [.normal], includesSecretCards: true, updatedAt: date
+            )],
+            folders: [.init(
+                id: UUID(), name: "Favorites", cardNameQuery: "Lucario", displayMode: .allMatching,
+                createdAt: date, updatedAt: date
+            )],
+            cardMetadata: [.init(cardID: "card-1", isWishlisted: true, notes: "Mint, signed", updatedAt: date)]
+        )
+        let csv = String(decoding: CollectionTransferCodec.csv(document), as: UTF8.self)
+        XCTAssertTrue(csv.contains("ownership"))
+        XCTAssertTrue(csv.contains("set_preference"))
+        XCTAssertTrue(csv.contains("folder"))
+        XCTAssertTrue(csv.contains("card_metadata"))
+        XCTAssertTrue(csv.contains("\"Mint, signed\""))
+    }
+
     private func card(id: String, number: String) -> CatalogCard {
         CatalogCard(
             id: id,

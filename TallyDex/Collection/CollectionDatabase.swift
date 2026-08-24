@@ -247,6 +247,70 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func exportCollection(
+        exportedAt: Date,
+        appVersion: String
+    ) async throws -> PortableCollectionDocument {
+        try await database.queue.read { database in
+            Self.portableDocument(
+                from: try Self.captureSnapshot(in: database),
+                exportedAt: exportedAt,
+                appVersion: appVersion
+            )
+        }
+    }
+
+    func previewImport(
+        _ document: PortableCollectionDocument,
+        mode: CollectionImportMode
+    ) async throws -> CollectionImportPreview {
+        try Self.validate(document)
+        return try await database.queue.read { database in
+            Self.preview(
+                document,
+                current: Self.portableDocument(
+                    from: try Self.captureSnapshot(in: database),
+                    exportedAt: document.exportedAt,
+                    appVersion: document.appVersion
+                ),
+                mode: mode
+            )
+        }
+    }
+
+    func importCollection(
+        _ document: PortableCollectionDocument,
+        mode: CollectionImportMode,
+        importedAt: Date
+    ) async throws {
+        try Self.validate(document)
+        try await database.queue.write { database in
+            let currentPayload = try Self.captureSnapshot(in: database)
+            let current = Self.portableDocument(
+                from: currentPayload,
+                exportedAt: document.exportedAt,
+                appVersion: document.appVersion
+            )
+            let preview = Self.preview(document, current: current, mode: mode)
+            guard preview.hasChanges else { return }
+
+            let safetyBackup = CollectionBackup(
+                id: UUID(),
+                createdAt: importedAt,
+                reason: "Before \(mode.displayName.lowercased()) import"
+            )
+            try Self.insertBackup(safetyBackup, payload: currentPayload, in: database)
+
+            switch mode {
+            case .replace:
+                try Self.applySnapshot(Self.backupPayload(from: document), in: database)
+            case .merge:
+                try Self.merge(document, into: current, in: database)
+            }
+            try Self.pruneBackups(in: database)
+        }
+    }
+
     func createBackup(reason: String, createdAt: Date) async throws -> CollectionBackup {
         let backup = CollectionBackup(id: UUID(), createdAt: createdAt, reason: reason)
         try await database.queue.write { database in
@@ -521,6 +585,232 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         )
     }
 
+    private static func portableDocument(
+        from payload: CollectionBackupPayload,
+        exportedAt: Date,
+        appVersion: String
+    ) -> PortableCollectionDocument {
+        PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: exportedAt,
+            appVersion: appVersion,
+            ownership: payload.variants.compactMap { item in
+                guard let variant = CatalogVariantKind(rawValue: item.variant) else { return nil }
+                return .init(
+                    cardID: item.cardID,
+                    variant: variant,
+                    quantity: item.quantity,
+                    updatedAt: item.updatedAt
+                )
+            }.sorted { ($0.cardID, $0.variant.rawValue) < ($1.cardID, $1.variant.rawValue) },
+            setPreferences: payload.preferences.compactMap { item in
+                guard let goal = CollectionGoal.migrated(persistedValue: item.goal),
+                      let status = SetTrackingStatus(rawValue: item.status) else { return nil }
+                let variants = item.includedVariantsJSON
+                    .flatMap { $0.data(using: .utf8) }
+                    .flatMap { try? JSONDecoder().decode([String].self, from: $0) } ?? [CatalogVariantKind.normal.rawValue]
+                return .init(
+                    setID: item.setID,
+                    status: status,
+                    goal: goal,
+                    includedVariants: variants.compactMap(CatalogVariantKind.init(rawValue:)).sorted { $0.rawValue < $1.rawValue },
+                    includesSecretCards: item.includesSecretCards,
+                    updatedAt: item.updatedAt
+                )
+            }.sorted { $0.setID < $1.setID },
+            folders: payload.folders.compactMap { item in
+                guard let id = UUID(uuidString: item.id),
+                      let mode = CustomCollectionFolderDisplayMode(rawValue: item.displayMode) else { return nil }
+                return .init(
+                    id: id,
+                    name: item.name,
+                    cardNameQuery: item.cardNameQuery,
+                    displayMode: mode,
+                    createdAt: item.createdAt,
+                    updatedAt: item.updatedAt
+                )
+            }.sorted { $0.id.uuidString < $1.id.uuidString },
+            cardMetadata: payload.metadata.map {
+                .init(cardID: $0.cardID, isWishlisted: $0.isWishlisted, notes: $0.notes, updatedAt: $0.updatedAt)
+            }.sorted { $0.cardID < $1.cardID }
+        )
+    }
+
+    private static func backupPayload(from document: PortableCollectionDocument) throws -> CollectionBackupPayload {
+        let encoder = JSONEncoder()
+        return CollectionBackupPayload(
+            variants: document.ownership.map {
+                .init(cardID: $0.cardID, variant: $0.variant.rawValue, quantity: $0.quantity, updatedAt: $0.updatedAt)
+            },
+            preferences: try document.setPreferences.map {
+                let variantsJSON = String(
+                    data: try encoder.encode($0.includedVariants.map(\.rawValue).sorted()),
+                    encoding: .utf8
+                )
+                return .init(
+                    setID: $0.setID,
+                    goal: $0.goal.rawValue,
+                    status: $0.status.rawValue,
+                    includedVariantsJSON: variantsJSON,
+                    includesSecretCards: $0.includesSecretCards,
+                    updatedAt: $0.updatedAt
+                )
+            },
+            folders: document.folders.map {
+                .init(
+                    id: $0.id.uuidString,
+                    name: $0.name,
+                    cardNameQuery: $0.cardNameQuery,
+                    displayMode: $0.displayMode.rawValue,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
+            },
+            metadata: document.cardMetadata.map {
+                .init(cardID: $0.cardID, isWishlisted: $0.isWishlisted, notes: $0.notes, updatedAt: $0.updatedAt)
+            }
+        )
+    }
+
+    private static func validate(_ document: PortableCollectionDocument) throws {
+        guard document.format == PortableCollectionDocument.formatIdentifier else {
+            throw CollectionRepositoryError.invalidImport
+        }
+        guard document.schemaVersion == PortableCollectionDocument.currentSchemaVersion else {
+            throw CollectionRepositoryError.unsupportedImportVersion(document.schemaVersion)
+        }
+        guard document.ownership.allSatisfy({ !$0.cardID.isEmpty && $0.quantity > 0 }),
+              Set(document.ownership.map { "\($0.cardID)|\($0.variant.rawValue)" }).count == document.ownership.count,
+              document.setPreferences.allSatisfy({ !$0.setID.isEmpty && !$0.includedVariants.isEmpty }),
+              Set(document.setPreferences.map(\.setID)).count == document.setPreferences.count,
+              document.folders.allSatisfy({
+                  !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                  !$0.cardNameQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              }),
+              Set(document.folders.map(\.id)).count == document.folders.count,
+              document.cardMetadata.allSatisfy({ !$0.cardID.isEmpty }),
+              Set(document.cardMetadata.map(\.cardID)).count == document.cardMetadata.count else {
+            throw CollectionRepositoryError.invalidImport
+        }
+    }
+
+    private static func preview(
+        _ incoming: PortableCollectionDocument,
+        current: PortableCollectionDocument,
+        mode: CollectionImportMode
+    ) -> CollectionImportPreview {
+        var additions = 0
+        var changes = 0
+        var conflicts = 0
+        var skipped = 0
+        var removals = 0
+
+        func compare<Key: Hashable, Value: Equatable>(
+            incoming: [Key: Value],
+            current: [Key: Value],
+            date: (Value) -> Date
+        ) {
+            for (key, item) in incoming {
+                guard let saved = current[key] else { additions += 1; continue }
+                if saved == item { skipped += 1; continue }
+                if mode == .replace || date(item) > date(saved) {
+                    changes += 1
+                } else {
+                    conflicts += 1
+                }
+            }
+            if mode == .replace {
+                removals += current.keys.filter { incoming[$0] == nil }.count
+            }
+        }
+
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.ownership.map { ("\($0.cardID)|\($0.variant.rawValue)", $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.ownership.map { ("\($0.cardID)|\($0.variant.rawValue)", $0) }),
+            date: \.updatedAt
+        )
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.setPreferences.map { ($0.setID, $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.setPreferences.map { ($0.setID, $0) }),
+            date: \.updatedAt
+        )
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.folders.map { ($0.id, $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.folders.map { ($0.id, $0) }),
+            date: \.updatedAt
+        )
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.cardMetadata.map { ($0.cardID, $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.cardMetadata.map { ($0.cardID, $0) }),
+            date: \.updatedAt
+        )
+        return .init(additions: additions, changes: changes, conflicts: conflicts, skipped: skipped, removals: removals)
+    }
+
+    private static func merge(
+        _ incoming: PortableCollectionDocument,
+        into current: PortableCollectionDocument,
+        in database: Database
+    ) throws {
+        let currentOwnership = Dictionary(uniqueKeysWithValues: current.ownership.map { ("\($0.cardID)|\($0.variant.rawValue)", $0) })
+        for item in incoming.ownership {
+            let saved = currentOwnership["\(item.cardID)|\(item.variant.rawValue)"]
+            guard saved == nil || item.updatedAt > saved!.updatedAt else { continue }
+            try database.execute(
+                sql: """
+                INSERT INTO collectionVariant (cardID, variant, quantity, updatedAt) VALUES (?, ?, ?, ?)
+                ON CONFLICT(cardID, variant) DO UPDATE SET quantity = excluded.quantity, updatedAt = excluded.updatedAt
+                """,
+                arguments: [item.cardID, item.variant.rawValue, item.quantity, item.updatedAt]
+            )
+        }
+
+        let currentPreferences = Dictionary(uniqueKeysWithValues: current.setPreferences.map { ($0.setID, $0) })
+        let encoder = JSONEncoder()
+        for item in incoming.setPreferences {
+            guard currentPreferences[item.setID] == nil || item.updatedAt > currentPreferences[item.setID]!.updatedAt else { continue }
+            let variantsJSON = String(data: try encoder.encode(item.includedVariants.map(\.rawValue).sorted()), encoding: .utf8)
+            try database.execute(
+                sql: """
+                INSERT INTO collectionSetPreference (setID, goal, status, includedVariantsJSON, includesSecretCards, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(setID) DO UPDATE SET goal = excluded.goal, status = excluded.status,
+                    includedVariantsJSON = excluded.includedVariantsJSON,
+                    includesSecretCards = excluded.includesSecretCards, updatedAt = excluded.updatedAt
+                """,
+                arguments: [item.setID, item.goal.rawValue, item.status.rawValue, variantsJSON, item.includesSecretCards, item.updatedAt]
+            )
+        }
+
+        let currentFolders = Dictionary(uniqueKeysWithValues: current.folders.map { ($0.id, $0) })
+        for item in incoming.folders {
+            guard currentFolders[item.id] == nil || item.updatedAt > currentFolders[item.id]!.updatedAt else { continue }
+            try database.execute(
+                sql: """
+                INSERT INTO customCollectionFolder (id, name, cardNameQuery, displayMode, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET name = excluded.name, cardNameQuery = excluded.cardNameQuery,
+                    displayMode = excluded.displayMode, updatedAt = excluded.updatedAt
+                """,
+                arguments: [item.id.uuidString, item.name, item.cardNameQuery, item.displayMode.rawValue, item.createdAt, item.updatedAt]
+            )
+        }
+
+        let currentMetadata = Dictionary(uniqueKeysWithValues: current.cardMetadata.map { ($0.cardID, $0) })
+        for item in incoming.cardMetadata {
+            guard currentMetadata[item.cardID] == nil || item.updatedAt > currentMetadata[item.cardID]!.updatedAt else { continue }
+            try database.execute(
+                sql: """
+                INSERT INTO collectionCardMetadata (cardID, isWishlisted, notes, updatedAt) VALUES (?, ?, ?, ?)
+                ON CONFLICT(cardID) DO UPDATE SET isWishlisted = excluded.isWishlisted,
+                    notes = excluded.notes, updatedAt = excluded.updatedAt
+                """,
+                arguments: [item.cardID, item.isWishlisted, item.notes, item.updatedAt]
+            )
+        }
+    }
+
     private static func insertBackup(
         _ backup: CollectionBackup,
         payload: CollectionBackupPayload,
@@ -662,14 +952,14 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
 }
 
 private struct CollectionBackupPayload: Codable {
-    struct Variant: Codable {
+    struct Variant: Codable, Equatable {
         let cardID: String
         let variant: String
         let quantity: Int
         let updatedAt: Date
     }
 
-    struct Preference: Codable {
+    struct Preference: Codable, Equatable {
         let setID: String
         let goal: String
         let status: String
@@ -678,7 +968,7 @@ private struct CollectionBackupPayload: Codable {
         let updatedAt: Date
     }
 
-    struct Folder: Codable {
+    struct Folder: Codable, Equatable {
         let id: String
         let name: String
         let cardNameQuery: String
@@ -687,7 +977,7 @@ private struct CollectionBackupPayload: Codable {
         let updatedAt: Date
     }
 
-    struct Metadata: Codable {
+    struct Metadata: Codable, Equatable {
         let cardID: String
         let isWishlisted: Bool
         let notes: String

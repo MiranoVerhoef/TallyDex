@@ -70,6 +70,16 @@ Incorrect Card**, which links to the TallyDex GitHub issue tracker. Reports
 should include the set name and code, card name and collector number, the
 missing or incorrect data, and a reliable source or clear photo.
 
+## Portable collection backups
+
+**Settings → Export & Import** creates a versioned `.pokecollection` JSON
+backup or a human-readable CSV export. Full backups preserve owned quantities
+and printings, set goals and visibility, custom folders, wishlist, and notes.
+Imports show additions, changes, conflicts, skipped records, and removals before
+anything is applied. Merge is idempotent and keeps newer local conflicts;
+Replace requires confirmation. TallyDex saves a local rollback snapshot before
+either mode changes collection data.
+
 ## License
 
 TallyDex's original source code, interface, documentation, name, and artwork
