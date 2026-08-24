@@ -89,7 +89,8 @@ The supplied rolling averages are shown separately for each exact Cardmarket
 printing and are saved with the current price for offline use. Cards cached by
 an older build refresh once when opened so their averages are not hidden behind
 an otherwise-fresh price cache. Pulling down in card details forces an immediate
-refresh of that card without refreshing its entire set.
+refresh of that card without refreshing its entire set, after an explicit
+confirmation that explains what will and will not change.
 
 When TCGdex supplies Cardmarket's product identifier, card details include an
 **Open on Cardmarket** button that opens the matching marketplace product page.
