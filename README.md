@@ -54,7 +54,10 @@ instead of being estimated from another printing. Current prices refresh every
 history views.
 
 Country-specific listings and optional currency conversion remain planned for
-a later direct marketplace integration.
+a later direct marketplace integration. Settings already lets you save an All
+Countries or country-specific Cardmarket listing preference so that choice is
+ready when seller-level listing support is added; it does not alter TCGdex's
+current Europe-wide aggregate.
 
 ## License
 

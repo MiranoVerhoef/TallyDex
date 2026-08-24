@@ -20,6 +20,9 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-exact-price.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-search-controls.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1-custom-default.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.0/TallyDex-v0.3.0-collection-value.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.4/TallyDex-v0.2.4-default-goal.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.2.3/TallyDex-v0.2.3-set-search.png",
@@ -30,6 +33,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.3.1",
+          "buildVersion": "12",
+          "date": "2026-08-24",
+          "localizedDescription": "Fixes exact per-printing marketplace prices and card-detail tab-bar clearance, adds partial ownership progress rings, advanced Search filters and layouts, configurable default Custom collection rules, and a saved Cardmarket listing-country preference.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.3.1/TallyDex-v0.3.1.ipa",
+          "size": 6876110,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.3.0",
           "buildVersion": "11",

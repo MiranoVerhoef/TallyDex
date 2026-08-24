@@ -44,12 +44,31 @@ enum CollectionSettings {
     static let allowsMultipleCopiesDefault = false
     static let defaultGoalKey = "collection.defaultGoal"
     static let defaultGoal = CollectionGoal.normal
+    static let defaultCustomVariantsKey = "collection.defaultCustomVariants"
+    static let defaultCustomIncludesSecretCardsKey = "collection.defaultCustomIncludesSecretCards"
+    static let defaultCustomVariants: Set<CatalogVariantKind> = [.normal]
+    static let defaultCustomIncludesSecretCards = true
 
     static var preferredDefaultGoal: CollectionGoal {
         guard let rawValue = UserDefaults.standard.string(forKey: defaultGoalKey) else {
             return defaultGoal
         }
         return CollectionGoal(rawValue: rawValue) ?? defaultGoal
+    }
+
+    static var preferredDefaultCustomVariants: Set<CatalogVariantKind> {
+        guard let rawValues = UserDefaults.standard.stringArray(forKey: defaultCustomVariantsKey) else {
+            return defaultCustomVariants
+        }
+        let variants = Set(rawValues.compactMap(CatalogVariantKind.init(rawValue:)))
+        return variants.isEmpty ? defaultCustomVariants : variants
+    }
+
+    static var preferredDefaultCustomIncludesSecretCards: Bool {
+        guard UserDefaults.standard.object(forKey: defaultCustomIncludesSecretCardsKey) != nil else {
+            return defaultCustomIncludesSecretCards
+        }
+        return UserDefaults.standard.bool(forKey: defaultCustomIncludesSecretCardsKey)
     }
 }
 
@@ -78,14 +97,21 @@ struct SetCollectionPreference: Equatable, Sendable {
     static func defaultPreference(
         setID: String,
         goal: CollectionGoal = .normal,
+        customVariants: Set<CatalogVariantKind> = CollectionSettings.preferredDefaultCustomVariants,
+        customIncludesSecretCards: Bool = CollectionSettings.preferredDefaultCustomIncludesSecretCards,
         updatedAt: Date = .distantPast
     ) -> SetCollectionPreference {
-        SetCollectionPreference(
+        let rules: (variants: Set<CatalogVariantKind>, includesSecretCards: Bool) = switch goal {
+        case .normal: ([.normal], true)
+        case .master: (Set(CatalogVariantKind.allCases), true)
+        case .custom: (customVariants.isEmpty ? [.normal] : customVariants, customIncludesSecretCards)
+        }
+        return SetCollectionPreference(
             setID: setID,
             status: .notCollecting,
             goal: goal,
-            includedVariants: goal == .master ? Set(CatalogVariantKind.allCases) : [.normal],
-            includesSecretCards: goal != .custom,
+            includedVariants: rules.variants,
+            includesSecretCards: rules.includesSecretCards,
             updatedAt: updatedAt
         )
     }

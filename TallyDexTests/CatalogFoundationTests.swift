@@ -185,6 +185,62 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.prices.map(\.variant), [.normal])
     }
 
+    func testDetailedVariantPricingUsesExactMarketplacePrinting() async throws {
+        let response = #"""
+        {
+          "id": "me01-184",
+          "localId": "184",
+          "name": "Lillie's Determination",
+          "set": { "id": "me01" },
+          "variants": { "normal": false, "reverse": false, "holo": true },
+          "variants_detailed": [
+            {
+              "type": "holo",
+              "pricing": {
+                "cardmarket": {
+                  "updated": "2026-08-24T08:03:04.743Z",
+                  "unit": "EUR",
+                  "trend": 61.31,
+                  "trend-holo": 0
+                },
+                "tcgplayer": {
+                  "updated": "2026-08-24T08:03:26.603Z",
+                  "unit": "USD",
+                  "holofoil": { "marketPrice": 64.16 }
+                }
+              }
+            }
+          ],
+          "pricing": {
+            "cardmarket": {
+              "updated": "2026-08-24T08:03:04.743Z",
+              "unit": "EUR",
+              "trend": 61.31,
+              "trend-holo": 0
+            }
+          }
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "me01-184")
+
+        XCTAssertEqual(snapshot.prices.count, 2)
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .cardmarket && $0.variant == .holo }?.amount,
+            61.31
+        )
+        XCTAssertEqual(
+            snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .holo }?.amount,
+            64.16
+        )
+    }
+
     func testTCGdexCombinesLegacyAndDetailedVariantData() async throws {
         let response = #"""
         {
