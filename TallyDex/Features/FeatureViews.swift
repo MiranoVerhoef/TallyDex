@@ -1444,6 +1444,7 @@ private struct CatalogCardDetailView: View {
                 }
 
                 if let snapshot {
+                    rollingAveragesSection(snapshot: snapshot)
                     priceHistoryLink(snapshot: snapshot)
                 }
 
@@ -1570,6 +1571,17 @@ private struct CatalogCardDetailView: View {
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func rollingAveragesSection(snapshot: CatalogCardSnapshot) -> some View {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        let quotes = snapshot.prices
+            .filter { $0.source == source && $0.hasRollingAverages }
+            .sorted { $0.variant.rawValue < $1.variant.rawValue }
+        if !quotes.isEmpty {
+            CatalogRollingAveragesView(source: source, quotes: quotes)
+        }
     }
 
     @ViewBuilder
@@ -1722,6 +1734,69 @@ private struct CatalogCardDetailView: View {
     }
 }
 
+private struct CatalogRollingAveragesView: View {
+    let source: CatalogPriceSource
+    let quotes: [CatalogPriceQuote]
+
+    private struct Period: Identifiable {
+        let id: String
+        let title: String
+        let value: (CatalogPriceQuote) -> Double?
+    }
+
+    private let periods: [Period] = [
+        Period(id: "1d", title: "1 day", value: { $0.average1Day }),
+        Period(id: "7d", title: "7 days", value: { $0.average7Days }),
+        Period(id: "30d", title: "30 days", value: { $0.average30Days }),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Market averages")
+                    .font(.headline)
+                Spacer()
+                Text(source.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(quotes) { quote in
+                VStack(alignment: .leading, spacing: 9) {
+                    if quotes.count > 1 {
+                        Text(quote.variant.displayName)
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    HStack(spacing: 8) {
+                        ForEach(periods) { period in
+                            VStack(spacing: 4) {
+                                Text(period.title)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                Text(period.value(quote).map {
+                                    formattedCatalogPrice($0, currencyCode: quote.currencyCode)
+                                } ?? "—")
+                                .font(.subheadline.weight(.semibold).monospacedDigit())
+                                .minimumScaleFactor(0.75)
+                                .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                }
+            }
+
+            Text("Rolling averages supplied by TCGdex; they are separate from TallyDex’s locally accumulated daily history.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
 private struct CatalogCardPriceHistoryView: View {
     let snapshot: CatalogCardSnapshot
     @Environment(CatalogStore.self) private var catalogStore
@@ -1761,6 +1836,12 @@ private struct CatalogCardPriceHistoryView: View {
 
     private var summary: CatalogPriceHistorySummary? {
         CatalogPriceHistorySummary(points: displayedPoints)
+    }
+
+    private var selectedQuote: CatalogPriceQuote? {
+        snapshot.prices.first {
+            $0.source == selectedSource && $0.variant == selectedVariant
+        }
     }
 
     private var rangeCoverageText: String? {
@@ -1826,6 +1907,10 @@ private struct CatalogCardPriceHistoryView: View {
                 }
                 .padding(14)
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+
+                if let selectedQuote, selectedQuote.hasRollingAverages {
+                    CatalogRollingAveragesView(source: selectedSource, quotes: [selectedQuote])
+                }
 
                 Picker("Range", selection: $selectedRange) {
                     ForEach(CatalogPriceHistoryRange.allCases) { range in

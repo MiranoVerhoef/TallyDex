@@ -400,14 +400,26 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
     let idProduct: Int?
     let average: Double?
     let trend: Double?
+    let average1Day: Double?
+    let average7Days: Double?
+    let average30Days: Double?
     let averageHolo: Double?
     let trendHolo: Double?
+    let average1DayHolo: Double?
+    let average7DaysHolo: Double?
+    let average30DaysHolo: Double?
 
     private enum CodingKeys: String, CodingKey {
         case updated, unit, idProduct, trend
         case average = "avg"
+        case average1Day = "avg1"
+        case average7Days = "avg7"
+        case average30Days = "avg30"
         case averageHolo = "avg-holo"
         case trendHolo = "trend-holo"
+        case average1DayHolo = "avg1-holo"
+        case average7DaysHolo = "avg7-holo"
+        case average30DaysHolo = "avg30-holo"
     }
 
     func quotes(cardID: String, variants: Set<CatalogVariantKind>) -> [CatalogPriceQuote] {
@@ -416,21 +428,27 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
         if variants.contains(.normal), let amount = positive(trend ?? average) {
             quotes.append(.init(cardID: cardID, variant: .normal, source: .cardmarket,
                                 currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt,
-                                productID: idProduct))
+                                productID: idProduct,
+                                average1Day: positive(average1Day),
+                                average7Days: positive(average7Days),
+                                average30Days: positive(average30Days)))
         }
         let foilVariants = variants.intersection([.reverseHolo, .holo])
         if foilVariants.count == 1, let variant = foilVariants.first,
            let amount = positive(trendHolo ?? averageHolo) {
             quotes.append(.init(cardID: cardID, variant: variant, source: .cardmarket,
                                 currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt,
-                                productID: idProduct))
+                                productID: idProduct,
+                                average1Day: positive(average1DayHolo),
+                                average7Days: positive(average7DaysHolo),
+                                average30Days: positive(average30DaysHolo)))
         }
         return quotes
     }
 
     func exactQuote(cardID: String, variant: CatalogVariantKind) -> CatalogPriceQuote? {
         guard let updatedAt = tcgdexDate(updated),
-              let amount = positive(trend ?? average ?? trendHolo ?? averageHolo) else { return nil }
+              let amount = firstPositive(trend, average, trendHolo, averageHolo) else { return nil }
         return CatalogPriceQuote(
             cardID: cardID,
             variant: variant,
@@ -438,13 +456,20 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
             currencyCode: unit ?? "EUR",
             amount: amount,
             updatedAt: updatedAt,
-            productID: idProduct
+            productID: idProduct,
+            average1Day: firstPositive(average1Day, average1DayHolo),
+            average7Days: firstPositive(average7Days, average7DaysHolo),
+            average30Days: firstPositive(average30Days, average30DaysHolo)
         )
     }
 
     private func positive(_ value: Double?) -> Double? {
         guard let value, value > 0 else { return nil }
         return value
+    }
+
+    private func firstPositive(_ values: Double?...) -> Double? {
+        values.lazy.compactMap(positive).first
     }
 }
 

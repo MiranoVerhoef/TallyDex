@@ -85,6 +85,8 @@ Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
 values, but not 30 individual daily price points; TallyDex therefore builds its
 truthful price-history timeline locally instead of inventing backdated samples.
+The supplied rolling averages are shown separately for each exact Cardmarket
+printing and are saved with the current price for offline use.
 
 When TCGdex supplies Cardmarket's product identifier, card details include an
 **Open on Cardmarket** button that opens the matching marketplace product page.
