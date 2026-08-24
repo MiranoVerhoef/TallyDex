@@ -262,6 +262,16 @@ final class CollectionFoundationTests: XCTestCase {
 
     @MainActor
     func testCollectionStoreDefaultsToNormalGoal() async throws {
+        let defaults = UserDefaults.standard
+        let previousGoal = defaults.object(forKey: CollectionSettings.defaultGoalKey)
+        defaults.set(CollectionGoal.normal.rawValue, forKey: CollectionSettings.defaultGoalKey)
+        defer {
+            if let previousGoal {
+                defaults.set(previousGoal, forKey: CollectionSettings.defaultGoalKey)
+            } else {
+                defaults.removeObject(forKey: CollectionSettings.defaultGoalKey)
+            }
+        }
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let store = CollectionStore(repository: repository)
 
@@ -531,6 +541,18 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(preference.goal, .master)
         XCTAssertEqual(preference.includedVariants, Set(CatalogVariantKind.allCases))
         XCTAssertTrue(preference.includesSecretCards)
+    }
+
+    func testDefaultCustomPreferenceUsesConfiguredRules() {
+        let preference = SetCollectionPreference.defaultPreference(
+            setID: "me04",
+            goal: .custom,
+            customVariants: [.holo, .reverseHolo],
+            customIncludesSecretCards: false
+        )
+
+        XCTAssertEqual(preference.includedVariants, [.holo, .reverseHolo])
+        XCTAssertFalse(preference.includesSecretCards)
     }
 
     func testNormalHidesExtraPrintingTypesWithoutDiscardingThem() {

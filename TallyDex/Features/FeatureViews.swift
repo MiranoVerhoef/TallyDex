@@ -8,6 +8,43 @@ private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> St
     )
 }
 
+private struct CardCompletionIndicator: View {
+    let progress: CollectionProgress
+    var size: CGFloat = 34
+
+    private var fraction: Double {
+        guard progress.requiredSlots > 0 else { return 0 }
+        return min(1, max(0, Double(progress.completedSlots) / Double(progress.requiredSlots)))
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.secondary.opacity(0.45), lineWidth: 3)
+            if fraction > 0 {
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(
+                        Color.accentColor,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+            if fraction >= 1 {
+                Image(systemName: "checkmark")
+                    .font(.system(size: size * 0.42, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(
+            progress.requiredSlots == 1
+                ? (progress.completedSlots == 1 ? "Owned" : "Missing")
+                : "\(progress.completedSlots) of \(progress.requiredSlots) required printings owned"
+        )
+    }
+}
+
 private struct CollectionValueSummaryView: View {
     let summary: CatalogValueSummary
     var title = "Estimated value"
@@ -749,14 +786,18 @@ private struct CatalogSetDetailView: View {
     }
 
     private func isMissingForGoal(_ card: CatalogCard) -> Bool {
-        let cardProgress = CollectionProgressCalculator.progress(
+        let cardProgress = progress(for: card)
+        return cardProgress.requiredSlots > 0 && cardProgress.completedSlots < cardProgress.requiredSlots
+    }
+
+    private func progress(for card: CatalogCard) -> CollectionProgress {
+        CollectionProgressCalculator.progress(
             cards: [card],
             set: set,
             preference: collectionPreference,
             availableVariants: availableVariantsByCardID,
             ownedEntries: collectionStore.ownedEntries
         )
-        return cardProgress.requiredSlots > 0 && cardProgress.completedSlots < cardProgress.requiredSlots
     }
 
     var body: some View {
@@ -851,29 +892,14 @@ private struct CatalogSetDetailView: View {
                                             .controlSize(.small)
                                             .frame(width: 34, height: 34)
                                     } else {
-                                        Image(
-                                            systemName: collectionStore.owns(cardID: card.id)
-                                                ? "checkmark.circle.fill"
-                                                : "circle"
-                                        )
-                                        .font(.title2.weight(.semibold))
-                                        .foregroundStyle(
-                                            collectionStore.owns(cardID: card.id)
-                                                ? Color.accentColor
-                                                : Color.secondary
-                                        )
-                                        .frame(width: 34, height: 34)
+                                        CardCompletionIndicator(progress: progress(for: card))
                                     }
                                 }
                                 .background(.regularMaterial, in: Circle())
                                 .contentShape(Circle())
                                 .offset(x: 7, y: -7)
                                 .disabled(updatingCardIDs.contains(card.id))
-                                .accessibilityLabel(
-                                    collectionStore.owns(cardID: card.id)
-                                        ? "Edit owned printings for \(card.name)"
-                                        : "Mark \(card.name) as owned"
-                                )
+                                .accessibilityLabel("Edit owned printings for \(card.name)")
                             }
                         }
                     }
@@ -1119,7 +1145,7 @@ private struct CatalogVariantPickerView: View {
         guard let quote = snapshot?.prices.first(where: {
             $0.variant == variant && $0.source == source
         }) else {
-            return "No exact \(source.displayName) price"
+            return "No TCGdex \(source.displayName) price for this printing"
         }
         return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
     }
@@ -1273,6 +1299,7 @@ private struct CatalogCardDetailView: View {
                 }
             }
             .padding()
+            .safeAreaPadding(.bottom, 86)
         }
         .navigationTitle(card.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -1439,7 +1466,7 @@ private struct CatalogCardDetailView: View {
         guard let quote = snapshot?.prices.first(where: {
             $0.variant == variant && $0.source == source
         }) else {
-            return "No exact \(source.displayName) price"
+            return "No TCGdex \(source.displayName) price for this printing"
         }
         return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
     }
@@ -1629,11 +1656,57 @@ private struct CatalogSetInformationView: View {
     }
 }
 
+private enum SearchResultLayout: String, CaseIterable, Identifiable {
+    case list
+    case grid
+
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var systemImage: String { self == .list ? "list.bullet" : "square.grid.2x2" }
+}
+
 struct SearchView: View {
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage("search.resultLayout") private var resultLayout = SearchResultLayout.list.rawValue
     @State private var query = ""
     @State private var results: [CatalogCardSearchResult] = []
     @State private var isSearching = false
+    @State private var ownershipFilter = CollectionOwnershipFilter.all
+    @State private var selectedSetName = ""
+    @State private var selectedReleaseYear = 0
+    @State private var sort = CollectionCardSort.releaseNewest
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
+    ]
+
+    private var availableSetNames: [String] {
+        Array(Set(results.map(\.setName))).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    private var availableReleaseYears: [Int] {
+        Array(Set(results.compactMap { result in
+            result.setReleaseDate.flatMap { Int($0.prefix(4)) }
+        })).sorted(by: >)
+    }
+
+    private var visibleResults: [CatalogCardSearchResult] {
+        results.filter { result in
+            let isOwned = collectionStore.owns(cardID: result.card.id)
+            let ownershipMatches: Bool = switch ownershipFilter {
+            case .all: true
+            case .owned: isOwned
+            case .missing: !isOwned
+            }
+            return ownershipMatches
+                && (selectedSetName.isEmpty || result.setName == selectedSetName)
+                && (selectedReleaseYear == 0
+                    || result.setReleaseDate?.hasPrefix(String(selectedReleaseYear)) == true)
+        }.sorted(by: compareResults)
+    }
 
     var body: some View {
         NavigationStack {
@@ -1655,29 +1728,23 @@ struct SearchView: View {
                     ProgressView("Searching…")
                 } else if results.isEmpty {
                     ContentUnavailableView.search(text: query)
+                } else if visibleResults.isEmpty {
+                    ContentUnavailableView(
+                        "No Cards for These Filters",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Try another ownership, set, or release-year filter.")
+                    )
                 } else {
-                    List(results) { result in
-                        NavigationLink {
-                            CatalogCardDetailView(card: result.card)
-                        } label: {
-                            HStack(spacing: 12) {
-                                CachedCardImage(reference: result.card.thumbnailArtworkReference)
-                                    .frame(width: 52, height: 72)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(result.card.name)
-                                        .font(.body.weight(.semibold))
-                                    Text("\(result.setName) · #\(result.card.localID)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
+                    resultsContent
                 }
             }
             .navigationTitle("Search")
             .searchable(text: $query, prompt: "Card, set, or number")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    searchFilterMenu
+                }
+            }
             .task(id: "\(query)|\(catalogStore.isPreparingSearchIndex)") {
                 guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     results = []
@@ -1690,6 +1757,166 @@ struct SearchView: View {
                 results = (try? await catalogStore.searchCards(query: query)) ?? []
             }
         }
+    }
+
+    @ViewBuilder
+    private var resultsContent: some View {
+        if SearchResultLayout(rawValue: resultLayout) == .grid {
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 18) {
+                    ForEach(visibleResults) { result in
+                        NavigationLink {
+                            CatalogCardDetailView(card: result.card)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                CatalogCardTile(card: result.card)
+                                Text(result.setName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+                .safeAreaPadding(.bottom, 86)
+            }
+        } else {
+            List(visibleResults) { result in
+                NavigationLink {
+                    CatalogCardDetailView(card: result.card)
+                } label: {
+                    HStack(spacing: 12) {
+                        CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                            .frame(width: 52, height: 72)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(result.card.name)
+                                .font(.body.weight(.semibold))
+                            Text("\(result.setName) · #\(result.card.localID)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if collectionStore.owns(cardID: result.card.id) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.tint)
+                                .accessibilityLabel("Owned")
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+    }
+
+    private var searchFilterMenu: some View {
+        Menu("Filter, sort, and layout", systemImage: "line.3.horizontal.decrease.circle") {
+            Menu("Ownership: \(ownershipFilter.title)") {
+                ForEach(CollectionOwnershipFilter.allCases) { filter in
+                    Button {
+                        ownershipFilter = filter
+                    } label: {
+                        if ownershipFilter == filter {
+                            Label(filter.title, systemImage: "checkmark")
+                        } else {
+                            Text(filter.title)
+                        }
+                    }
+                }
+            }
+
+            Menu(selectedSetName.isEmpty ? "Set: All" : "Set: \(selectedSetName)") {
+                filterButton("All sets", isSelected: selectedSetName.isEmpty) {
+                    selectedSetName = ""
+                }
+                ForEach(availableSetNames, id: \.self) { setName in
+                    filterButton(setName, isSelected: selectedSetName == setName) {
+                        selectedSetName = setName
+                    }
+                }
+            }
+
+            Menu(selectedReleaseYear == 0 ? "Release year: All" : "Release year: \(selectedReleaseYear)") {
+                filterButton("All years", isSelected: selectedReleaseYear == 0) {
+                    selectedReleaseYear = 0
+                }
+                ForEach(availableReleaseYears, id: \.self) { year in
+                    filterButton(String(year), isSelected: selectedReleaseYear == year) {
+                        selectedReleaseYear = year
+                    }
+                }
+            }
+
+            Menu("Sort: \(sort.title)") {
+                ForEach(CollectionCardSort.allCases) { option in
+                    filterButton(option.title, isSelected: sort == option) {
+                        sort = option
+                    }
+                }
+            }
+
+            Menu("Layout: \((SearchResultLayout(rawValue: resultLayout) ?? .list).title)") {
+                ForEach(SearchResultLayout.allCases) { layout in
+                    Button {
+                        resultLayout = layout.rawValue
+                    } label: {
+                        if resultLayout == layout.rawValue {
+                            Label(layout.title, systemImage: "checkmark")
+                        } else {
+                            Label(layout.title, systemImage: layout.systemImage)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+            Button("Reset filters", systemImage: "arrow.counterclockwise") {
+                ownershipFilter = .all
+                selectedSetName = ""
+                selectedReleaseYear = 0
+                sort = .releaseNewest
+            }
+        }
+    }
+
+    private func filterButton(
+        _ title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            if isSelected {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
+
+    private func compareResults(_ left: CatalogCardSearchResult, _ right: CatalogCardSearchResult) -> Bool {
+        switch sort {
+        case .releaseNewest:
+            if left.setReleaseDate != right.setReleaseDate {
+                return (left.setReleaseDate ?? "") > (right.setReleaseDate ?? "")
+            }
+        case .releaseOldest:
+            if left.setReleaseDate != right.setReleaseDate {
+                return (left.setReleaseDate ?? "9999") < (right.setReleaseDate ?? "9999")
+            }
+        case .setName:
+            let comparison = left.setName.localizedCaseInsensitiveCompare(right.setName)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
+        case .collectorNumber:
+            let leftNumber = Int(left.card.localID) ?? .max
+            let rightNumber = Int(right.card.localID) ?? .max
+            if leftNumber != rightNumber { return leftNumber < rightNumber }
+        case .cardName:
+            let comparison = left.card.name.localizedCaseInsensitiveCompare(right.card.name)
+            if comparison != .orderedSame { return comparison == .orderedAscending }
+        }
+        if left.setName != right.setName { return left.setName < right.setName }
+        return left.card.localID.localizedStandardCompare(right.card.localID) == .orderedAscending
     }
 }
 
@@ -2447,8 +2674,13 @@ struct SettingsView: View {
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(CollectionSettings.defaultGoalKey)
     private var defaultCollectionGoal = CollectionSettings.defaultGoal.rawValue
+    @AppStorage(CollectionSettings.defaultCustomIncludesSecretCardsKey)
+    private var defaultCustomIncludesSecretCards = CollectionSettings.defaultCustomIncludesSecretCards
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.cardmarketCountryKey)
+    private var cardmarketCountry = CardmarketCountryPreference.all.rawValue
+    @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
 
     var body: some View {
         NavigationStack {
@@ -2504,6 +2736,23 @@ struct SettingsView: View {
                     ))
                 }
 
+                if CollectionGoal(rawValue: defaultCollectionGoal) == .custom {
+                    Section {
+                        ForEach(CatalogVariantKind.allCases, id: \.self) { variant in
+                            Toggle(
+                                variant.displayName,
+                                isOn: defaultCustomVariantBinding(for: variant)
+                            )
+                            .disabled(defaultCustomVariants == [variant])
+                        }
+                        Toggle("Include cards beyond the main set number", isOn: $defaultCustomIncludesSecretCards)
+                    } header: {
+                        Text("Default Custom Goal")
+                    } footer: {
+                        Text("New Custom sets will start with these printing types. At least one printing type must remain selected; each set can still be edited separately.")
+                    }
+                }
+
                 Section {
                     Picker("Price source", selection: $preferredPriceSource) {
                         ForEach(CatalogPriceSource.allCases) { source in
@@ -2512,10 +2761,19 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
+
+                    if CatalogPriceSource(rawValue: preferredPriceSource) == .cardmarket {
+                        Picker("Listing country", selection: $cardmarketCountry) {
+                            ForEach(CardmarketCountryPreference.allCases) { country in
+                                Text(country.displayName).tag(country.rawValue)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                    }
                 } header: {
                     Text("Prices")
                 } footer: {
-                    Text("Prices come through TCGdex and use each marketplace’s native currency. TallyDex only values a printing when that exact variant has a price; it never guesses or converts currencies.")
+                    Text("Prices come through TCGdex and use each marketplace’s native currency. Exact per-printing marketplace IDs are used when TCGdex provides them. Cardmarket’s current TCGdex values are Europe-wide market aggregates; the listing-country preference is saved for seller-listing support and does not filter the aggregate yet.")
                 }
 
                 Section("Storage") {
@@ -2558,6 +2816,23 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
         }
+    }
+
+    private func defaultCustomVariantBinding(for variant: CatalogVariantKind) -> Binding<Bool> {
+        Binding(
+            get: { defaultCustomVariants.contains(variant) },
+            set: { isIncluded in
+                if isIncluded {
+                    defaultCustomVariants.insert(variant)
+                } else if defaultCustomVariants.count > 1 {
+                    defaultCustomVariants.remove(variant)
+                }
+                UserDefaults.standard.set(
+                    defaultCustomVariants.map(\.rawValue).sorted(),
+                    forKey: CollectionSettings.defaultCustomVariantsKey
+                )
+            }
+        )
     }
 }
 

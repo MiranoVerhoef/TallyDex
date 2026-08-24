@@ -312,9 +312,31 @@ private struct CardDTO: Decodable, Sendable {
     }
 
     func catalogPrices(variants: Set<CatalogVariantKind>) -> [CatalogPriceQuote] {
-        var quotes = pricing?.tcgplayer?.quotes(cardID: id) ?? []
-        quotes.append(contentsOf: pricing?.cardmarket?.quotes(cardID: id, variants: variants) ?? [])
-        return quotes
+        let detailedQuotes = variantsDetailed?.flatMap { variant in
+            variant.catalogPrices(cardID: id)
+        } ?? []
+        var quotesByKey: [String: CatalogPriceQuote] = [:]
+        for quote in detailedQuotes {
+            let key = "\(quote.variant.rawValue)|\(quote.source.rawValue)"
+            if quotesByKey[key] == nil {
+                quotesByKey[key] = quote
+            }
+        }
+
+        var fallbackQuotes = pricing?.tcgplayer?.quotes(cardID: id) ?? []
+        fallbackQuotes.append(contentsOf: pricing?.cardmarket?.quotes(cardID: id, variants: variants) ?? [])
+        for quote in fallbackQuotes {
+            let key = "\(quote.variant.rawValue)|\(quote.source.rawValue)"
+            if quotesByKey[key] == nil {
+                quotesByKey[key] = quote
+            }
+        }
+        return quotesByKey.values.sorted {
+            if $0.variant.rawValue != $1.variant.rawValue {
+                return $0.variant.rawValue < $1.variant.rawValue
+            }
+            return $0.source.rawValue < $1.source.rawValue
+        }
     }
 }
 
@@ -354,6 +376,19 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
         return quotes
     }
 
+    func exactQuote(cardID: String, variant: CatalogVariantKind) -> CatalogPriceQuote? {
+        guard let updatedAt = tcgdexDate(updated),
+              let amount = positive(trend ?? average ?? trendHolo ?? averageHolo) else { return nil }
+        return CatalogPriceQuote(
+            cardID: cardID,
+            variant: variant,
+            source: .cardmarket,
+            currencyCode: unit ?? "EUR",
+            amount: amount,
+            updatedAt: updatedAt
+        )
+    }
+
     private func positive(_ value: Double?) -> Double? {
         guard let value, value > 0 else { return nil }
         return value
@@ -383,6 +418,26 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
                                      currencyCode: unit ?? "USD", amount: amount, updatedAt: updatedAt)
         }
     }
+
+    func exactQuote(cardID: String, variant: CatalogVariantKind) -> CatalogPriceQuote? {
+        let market: TCGplayerMarketDTO? = switch variant {
+        case .normal: normal
+        case .reverseHolo: reverseHolofoil
+        case .holo: holofoil
+        case .firstEdition, .watermarkedPromo, .prerelease, .prereleaseStaff: nil
+        }
+        guard let updatedAt = tcgdexDate(updated),
+              let amount = market?.marketPrice,
+              amount > 0 else { return nil }
+        return CatalogPriceQuote(
+            cardID: cardID,
+            variant: variant,
+            source: .tcgplayer,
+            currencyCode: unit ?? "USD",
+            amount: amount,
+            updatedAt: updatedAt
+        )
+    }
 }
 
 private struct TCGplayerMarketDTO: Decodable, Sendable {
@@ -399,6 +454,28 @@ private func tcgdexDate(_ value: String?) -> Date? {
 private struct DetailedVariantDTO: Decodable, Sendable {
     let type: String
     let stamp: [String]?
+    let pricing: PricingDTO?
+
+    var primaryKind: CatalogVariantKind? {
+        if stamp?.contains("staff") == true { return .prereleaseStaff }
+        if stamp?.contains("pre-release") == true { return .prerelease }
+        if stamp?.contains("w-promo") == true { return .watermarkedPromo }
+        if stamp?.contains("1st-edition") == true { return .firstEdition }
+        return switch type {
+        case "normal": .normal
+        case "reverse": .reverseHolo
+        case "holo": .holo
+        default: nil
+        }
+    }
+
+    func catalogPrices(cardID: String) -> [CatalogPriceQuote] {
+        guard let primaryKind else { return [] }
+        return [
+            pricing?.cardmarket?.exactQuote(cardID: cardID, variant: primaryKind),
+            pricing?.tcgplayer?.exactQuote(cardID: cardID, variant: primaryKind),
+        ].compactMap { $0 }
+    }
 
     var availableKinds: Set<CatalogVariantKind> {
         var kinds = Set<CatalogVariantKind>()
