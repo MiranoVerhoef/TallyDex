@@ -7,6 +7,7 @@ struct TallyDexApp: App {
     @State private var catalogStore = CatalogStore()
     @State private var collectionStore = CollectionStore()
     @State private var artworkCacheStore = ArtworkCacheStore()
+    @State private var localCollectionSharing = LocalCollectionSharingController()
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,7 @@ struct TallyDexApp: App {
                 .environment(catalogStore)
                 .environment(collectionStore)
                 .environment(artworkCacheStore)
+                .environment(localCollectionSharing)
                 .preferredColorScheme(AppAppearance.resolve(appearance).colorScheme)
                 .task {
                     await catalogStore.start()
