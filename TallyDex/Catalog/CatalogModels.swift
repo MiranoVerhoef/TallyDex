@@ -512,9 +512,9 @@ enum CatalogValueCalculator {
     }
 }
 
-/// TCGdex does not currently distinguish stamped Prerelease and Staff prints.
-/// Keep the provider data primary, then apply small, sourced corrections for
-/// English printings that would otherwise be invisible to collectors.
+/// Keep TCGdex's detailed printing data primary, then apply small, sourced
+/// corrections for English Prerelease and Staff printings that the provider
+/// does not yet identify.
 enum CatalogVariantOverrides {
     private struct Override {
         let additions: Set<CatalogVariantKind>
@@ -569,6 +569,10 @@ struct CatalogCardSearchResult: Equatable, Identifiable, Sendable {
     var id: String { card.id }
 }
 
+enum CatalogSearchError: Error, Equatable, Sendable {
+    case variantQueryTooBroad(candidateCount: Int)
+}
+
 struct CatalogSeriesSnapshot: Codable, Equatable, Sendable {
     let series: CatalogSeries
     let sets: [CatalogSet]
@@ -592,7 +596,7 @@ protocol CatalogRepository: Sendable {
     func fetchSets(seriesID: String?) async throws -> [CatalogSet]
     func fetchCards(setID: String) async throws -> [CatalogCard]
     func fetchDownloadedSetIDs() async throws -> [String]
-    func searchCards(query: String) async throws -> [CatalogCardSearchResult]
+    func searchCards(query: String, limit: Int?) async throws -> [CatalogCardSearchResult]
     func fetchCards(matchingName query: String) async throws -> [CatalogCardSearchResult]
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>

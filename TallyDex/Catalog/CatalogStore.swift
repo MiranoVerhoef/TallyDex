@@ -55,6 +55,7 @@ final class CatalogStore {
     private static let lastSearchIndexRefreshKey = "catalog.searchIndex.lastRefresh"
     private static let staleInterval: TimeInterval = 6 * 60 * 60
     private static let pricingStaleInterval: TimeInterval = 18 * 60 * 60
+    private static let maximumVariantSearchCandidates = 500
 
     init(
         provider: any CatalogProvider = TCGdexClient(),
@@ -179,15 +180,21 @@ final class CatalogStore {
     func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
         let parsedQuery = CatalogVariantSearchQuery(query)
         guard let requirement = parsedQuery.requirement else {
-            return try await resolveRepository().searchCards(query: query)
+            return try await resolveRepository().searchCards(query: query, limit: 100)
         }
 
         // TCGdex's complete card index does not include printing variants. Requiring
         // another search term lets us hydrate only a small, relevant candidate set
         // instead of downloading details for the entire catalog.
         guard !parsedQuery.textQuery.isEmpty else { return [] }
-        let candidates = try await resolveRepository().searchCards(query: parsedQuery.textQuery)
+        let candidates = try await resolveRepository().searchCards(
+            query: parsedQuery.textQuery,
+            limit: nil
+        )
         guard !candidates.isEmpty else { return [] }
+        guard candidates.count <= Self.maximumVariantSearchCandidates else {
+            throw CatalogSearchError.variantQueryTooBroad(candidateCount: candidates.count)
+        }
         let variantsByCardID = await prepareVariants(
             for: candidates.map(\.card),
             refreshCachedDetails: false

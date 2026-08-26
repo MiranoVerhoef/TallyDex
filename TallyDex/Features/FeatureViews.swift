@@ -2454,6 +2454,7 @@ struct SearchView: View {
     @State private var query = ""
     @State private var results: [CatalogCardSearchResult] = []
     @State private var isSearching = false
+    @State private var searchMessage: String?
     @State private var ownershipFilter = CollectionOwnershipFilter.all
     @State private var selectedSetName = ""
     @State private var selectedReleaseYear = 0
@@ -2522,6 +2523,12 @@ struct SearchView: View {
                         systemImage: "seal",
                         description: Text("Try “Lucario staff” or “SM95 prerelease” so TallyDex can check the right cards without downloading the entire catalog.")
                     )
+                } else if let searchMessage {
+                    ContentUnavailableView(
+                        "Narrow the Variant Search",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text(searchMessage)
+                    )
                 } else if results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else if visibleResults.isEmpty {
@@ -2547,10 +2554,18 @@ struct SearchView: View {
                     return
                 }
                 isSearching = true
+                searchMessage = nil
                 defer { isSearching = false }
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
-                results = (try? await catalogStore.searchCards(query: query)) ?? []
+                do {
+                    results = try await catalogStore.searchCards(query: query)
+                } catch CatalogSearchError.variantQueryTooBroad(let candidateCount) {
+                    results = []
+                    searchMessage = "That term matches \(candidateCount) cards. Add a full Pokémon name, set, or collector number before prerelease or staff so TallyDex does not download hundreds of unrelated records."
+                } catch {
+                    results = []
+                }
             }
         }
     }

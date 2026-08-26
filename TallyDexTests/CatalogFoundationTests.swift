@@ -788,6 +788,94 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(downloadedSetIDs, ["sv01"])
     }
 
+    func testRepositoryCanReturnMoreThanOneHundredVariantSearchCandidates() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let cards = (1...125).map { number in
+            CatalogCard(
+                id: "sv01-\(number)", setID: "sv01", localID: String(number),
+                name: "Pikachu", imageURL: nil, category: nil, illustrator: nil, rarity: nil
+            )
+        }
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceSearchIndex(cards)
+
+        let ordinaryResults = try await repository.searchCards(query: "Pikachu")
+        let completeCandidates = try await repository.searchCards(query: "Pikachu", limit: nil)
+
+        XCTAssertEqual(ordinaryResults.count, 100)
+        XCTAssertEqual(completeCandidates.count, 125)
+    }
+
+    @MainActor
+    func testStampedVariantSearchChecksMoreThanOneHundredCandidates() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let cards = (1...101).map { number in
+            CatalogCard(
+                id: "sv01-\(number)", setID: "sv01", localID: String(number),
+                name: "Pikachu", imageURL: nil, category: nil, illustrator: nil, rarity: nil
+            )
+        }
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceSearchIndex(cards)
+        for card in cards {
+            try await repository.replaceCard(CatalogCardSnapshot(
+                card: card,
+                variants: [.prereleaseStaff]
+            ))
+        }
+        let provider = CatalogProviderSpy(cardSnapshot: CatalogCardSnapshot(
+            card: cards[0],
+            variants: [.prereleaseStaff]
+        ))
+        let store = CatalogStore(provider: provider, repository: repository)
+
+        let results = try await store.searchCards(query: "Pikachu staff")
+
+        XCTAssertEqual(results.count, 101)
+        let cardRequestCount = await provider.cardRequestCount
+        XCTAssertEqual(cardRequestCount, 0)
+    }
+
+    @MainActor
+    func testStampedVariantSearchRejectsMoreThanFiveHundredCandidates() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let cards = (1...501).map { number in
+            CatalogCard(
+                id: "sv01-\(number)", setID: "sv01", localID: String(number),
+                name: "Broad Match", imageURL: nil, category: nil, illustrator: nil, rarity: nil
+            )
+        }
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        try await repository.replaceSearchIndex(cards)
+        let provider = CatalogProviderSpy(cardSnapshot: CatalogCardSnapshot(
+            card: cards[0],
+            variants: [.prereleaseStaff]
+        ))
+        let store = CatalogStore(provider: provider, repository: repository)
+
+        do {
+            _ = try await store.searchCards(query: "Broad Match staff")
+            XCTFail("Expected an overly broad stamped search to be rejected")
+        } catch let error as CatalogSearchError {
+            XCTAssertEqual(error, .variantQueryTooBroad(candidateCount: 501))
+        }
+
+        let cardRequestCount = await provider.cardRequestCount
+        XCTAssertEqual(cardRequestCount, 0)
+    }
+
     func testVariantSearchQueryRecognizesPrereleaseAndStaffTerms() {
         XCTAssertEqual(
             CatalogVariantSearchQuery("Lucario prerelease"),
