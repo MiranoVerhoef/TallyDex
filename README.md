@@ -77,7 +77,7 @@ individual downloads in Settings → Offline Sets.
 1. Offline set pinning — completed in v0.5.4
 2. Performance and accessibility hardening — completed in v0.6.0
 3. Remove the 100-result ceiling from stamped-variant searches — completed in v0.6.2
-4. Browser-based mass collection editing
+4. Browser-based mass collection editing — completed in v0.7.0
 5. Direct Cardmarket listing preferences, including country and currency
 6. Final real-device, accessibility, performance, and v1.0 hardening
 7. Apple services after Developer Program enrollment: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
@@ -102,6 +102,17 @@ Prerelease or Staff term, allowing Pokémon with unusually many printings to be
 checked completely. Ordinary catalog searches keep their responsive 100-result
 limit. Variant searches matching more than 500 cards ask for a more precise
 Pokémon, set, or collector number before downloading details.
+
+v0.7.0 adds a local browser editor for faster collection entry on a computer.
+Open **Settings → Browser Editor**, start sharing, then enter the displayed local
+address and six-digit pairing code on a computer connected to the same network.
+The responsive editor can load a complete set or search the catalog, filter All,
+Owned, or Missing cards, change exact printing ownership and quantities, and
+edit wishlist and personal notes. Changes save directly to the iPhone, and
+TallyDex creates an automatic rollback backup before each sharing session.
+Sharing runs only while explicitly active, uses a new local session and CSRF
+token each time, locks out repeated incorrect pairing attempts, and sends
+no-store browser headers. Stop sharing when finished.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average

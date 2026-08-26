@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.0/TallyDex-v0.7.0-browser-editor.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.2/TallyDex-v0.6.2-staff-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.1/TallyDex-v0.6.1-staff-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.0/TallyDex-v0.6.0-accessibility.png",
@@ -53,6 +54,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.7.0",
+          "buildVersion": "31",
+          "date": "2026-08-26",
+          "localizedDescription": "Adds a secure local browser editor for faster collection entry from a computer on the same network. Pair with a temporary code, load complete sets or catalog searches, filter All/Owned/Missing, update exact printing ownership or quantities, and edit wishlist and notes. Every session creates a rollback backup and uses a fresh private cookie and editing token.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.0/TallyDex-v0.7.0.ipa",
+          "size": 5438439,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.6.2",
           "buildVersion": "30",

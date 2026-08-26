@@ -3493,6 +3493,7 @@ private struct CustomCollectionFolderDetailView: View {
 struct SettingsView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
+    @Environment(LocalCollectionSharingController.self) private var localCollectionSharing
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
@@ -3577,6 +3578,23 @@ struct SettingsView: View {
                     } footer: {
                         Text("New Custom sets will start with these printing types. At least one printing type must remain selected; each set can still be edited separately.")
                     }
+                }
+
+                Section {
+                    NavigationLink {
+                        LocalCollectionSharingView()
+                    } label: {
+                        LabeledContent {
+                            Text(localCollectionSharing.isRunning ? "Active" : "Off")
+                                .foregroundStyle(localCollectionSharing.isRunning ? .green : .secondary)
+                        } label: {
+                            Label("Browser Editor", systemImage: "desktopcomputer")
+                        }
+                    }
+                } header: {
+                    Text("Computer Access")
+                } footer: {
+                    Text("Temporarily edit this collection from a browser on the same Wi-Fi network. No collection data is uploaded to a cloud service.")
                 }
 
                 Section {
@@ -3688,6 +3706,102 @@ struct SettingsView: View {
                 )
             }
         )
+    }
+}
+
+private struct LocalCollectionSharingView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(LocalCollectionSharingController.self) private var sharing
+    @State private var copied = false
+
+    var body: some View {
+        Form {
+            Section {
+                if sharing.isRunning {
+                    LabeledContent("Status") {
+                        Label("Active", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                    if let url = sharing.accessURL {
+                        LabeledContent("Open on computer") {
+                            Text(url.absoluteString)
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        Button {
+                            UIPasteboard.general.string = url.absoluteString
+                            copied = true
+                        } label: {
+                            Label(copied ? "Link Copied" : "Copy Browser Link", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        }
+                    }
+                    LabeledContent("Pairing code") {
+                        Text(sharing.pairingCode)
+                            .font(.title2.monospaced().weight(.bold))
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent("Saved browser edits", value: "\(sharing.editCount)")
+                    Button("Stop Browser Editing", role: .destructive) {
+                        sharing.stop()
+                    }
+                } else {
+                    Button {
+                        Task {
+                            await sharing.start(
+                                catalogStore: catalogStore,
+                                collectionStore: collectionStore
+                            )
+                        }
+                    } label: {
+                        if sharing.isStarting {
+                            HStack {
+                                ProgressView()
+                                Text("Starting…")
+                            }
+                        } else {
+                            Label("Start Browser Editing", systemImage: "play.fill")
+                        }
+                    }
+                    .disabled(sharing.isStarting || catalogStore.isInitialLoading || collectionStore.isInitialLoading)
+                }
+            } header: {
+                Text("Local Session")
+            } footer: {
+                Text("Starting creates a collection backup first. The six-digit code and browser session are replaced each time sharing starts.")
+            }
+
+            if let message = sharing.statusMessage {
+                Section("Connection") {
+                    Text(message)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("How to Connect") {
+                Label("Keep this iPhone and the computer on the same Wi-Fi network.", systemImage: "wifi")
+                Label("Open the shown address in a modern browser.", systemImage: "safari")
+                Label("Enter the six-digit code from this screen.", systemImage: "number")
+                Label("Keep TallyDex open while editing, then tap Stop.", systemImage: "iphone")
+            }
+
+            Section("Available in the Browser") {
+                Label("Browse complete sets or search the catalog", systemImage: "magnifyingglass")
+                Label("Mark every known printing and adjust quantities", systemImage: "checkmark.circle")
+                Label("Filter cards by All, Owned, or Missing", systemImage: "line.3.horizontal.decrease.circle")
+                Label("Edit wishlist and personal notes", systemImage: "heart.text.square")
+            }
+
+            Section("Privacy & Safety") {
+                Text("The server runs only inside TallyDex and stops when you tap Stop or the app is fully closed. Pairing is protected by a temporary code, a private browser cookie, and a per-session editing token. Requests do not enable cross-origin access.")
+            }
+        }
+        .navigationTitle("Browser Editor")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: sharing.isRunning) { _, running in
+            if !running { copied = false }
+        }
     }
 }
 

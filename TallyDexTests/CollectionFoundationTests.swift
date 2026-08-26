@@ -727,6 +727,44 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertTrue(csv.contains("\"Mint, signed\""))
     }
 
+    func testLocalHTTPRequestParsesEncodedValuesCookiesAndBodyLength() throws {
+        let body = "code=123456&note=Binder+page+%233"
+        let raw = """
+        POST /api/cards/SM%2095/metadata?q=Lucario%20Staff HTTP/1.1\r
+        Host: tallydex.local\r
+        Cookie: tallydex_session=abc123; theme=light\r
+        Content-Type: application/x-www-form-urlencoded\r
+        Content-Length: \(body.utf8.count)\r
+        \r
+        \(body)
+        """
+
+        let request = try XCTUnwrap(LocalHTTPRequest.parse(Data(raw.utf8)))
+
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.path, "/api/cards/SM 95/metadata")
+        XCTAssertEqual(request.query["q"], "Lucario Staff")
+        XCTAssertEqual(request.cookies["tallydex_session"], "abc123")
+        XCTAssertEqual(request.cookies["theme"], "light")
+        XCTAssertEqual(request.formValues["code"], "123456")
+        XCTAssertEqual(request.formValues["note"], "Binder page #3")
+        XCTAssertEqual(LocalHTTPRequest.expectedByteCount(in: Data(raw.utf8)), raw.utf8.count)
+    }
+
+    func testLocalHTTPResponseAddsSecurityAndNoStoreHeaders() throws {
+        let response = LocalHTTPResponse.html("<h1>TallyDex</h1>")
+        let encoded = try XCTUnwrap(String(data: response.encoded, encoding: .utf8))
+
+        XCTAssertTrue(encoded.hasPrefix("HTTP/1.1 200 OK\r\n"))
+        XCTAssertTrue(encoded.contains("Cache-Control: no-store\r\n"))
+        XCTAssertTrue(encoded.contains("Connection: close\r\n"))
+        XCTAssertTrue(encoded.contains("Content-Length: 17\r\n"))
+        XCTAssertTrue(encoded.contains("X-Content-Type-Options: nosniff\r\n"))
+        XCTAssertTrue(encoded.contains("X-Frame-Options: DENY\r\n"))
+        XCTAssertTrue(encoded.contains("Referrer-Policy: no-referrer\r\n"))
+        XCTAssertTrue(encoded.hasSuffix("\r\n\r\n<h1>TallyDex</h1>"))
+    }
+
     private func card(id: String, number: String) -> CatalogCard {
         CatalogCard(
             id: id,

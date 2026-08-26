@@ -73,4 +73,5 @@ struct RootTabView: View {
         .environment(CatalogStore())
         .environment(CollectionStore())
         .environment(ArtworkCacheStore())
+        .environment(LocalCollectionSharingController())
 }
