@@ -76,10 +76,13 @@ individual downloads in Settings → Offline Sets.
 
 1. Offline set pinning — completed in v0.5.4
 2. Performance and accessibility hardening — completed in v0.6.0
-3. Binder planner — next
+3. Remove the 100-result ceiling from stamped-variant searches
 4. Browser-based mass collection editing
-5. Fully on-device card scanner
-6. Apple services last: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
+5. Direct Cardmarket listing preferences, including country and currency
+6. Final real-device, accessibility, performance, and v1.0 hardening
+7. Apple services after Developer Program enrollment: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
+8. Binder planner
+9. Fully on-device card scanner — last
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
 calculates every card’s goal progress in a single pass per set. Card grids,
