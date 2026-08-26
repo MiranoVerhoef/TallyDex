@@ -177,7 +177,24 @@ final class CatalogStore {
     }
 
     func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
-        try await resolveRepository().searchCards(query: query)
+        let parsedQuery = CatalogVariantSearchQuery(query)
+        guard let requirement = parsedQuery.requirement else {
+            return try await resolveRepository().searchCards(query: query)
+        }
+
+        // TCGdex's complete card index does not include printing variants. Requiring
+        // another search term lets us hydrate only a small, relevant candidate set
+        // instead of downloading details for the entire catalog.
+        guard !parsedQuery.textQuery.isEmpty else { return [] }
+        let candidates = try await resolveRepository().searchCards(query: parsedQuery.textQuery)
+        guard !candidates.isEmpty else { return [] }
+        let variantsByCardID = await prepareVariants(
+            for: candidates.map(\.card),
+            refreshCachedDetails: false
+        )
+        return candidates.filter { candidate in
+            requirement.matches(variantsByCardID[candidate.card.id] ?? [])
+        }
     }
 
     func cards(matchingName query: String) async throws -> [CatalogCardSearchResult] {
@@ -226,7 +243,8 @@ final class CatalogStore {
     /// the provider.
     func prepareVariants(
         for cards: [CatalogCard],
-        forcePriceRefresh: Bool = false
+        forcePriceRefresh: Bool = false,
+        refreshCachedDetails: Bool = true
     ) async -> [String: Set<CatalogVariantKind>] {
         guard let repository = try? resolveRepository() else { return [:] }
         let cardIDs = cards.map(\.id)
@@ -237,10 +255,13 @@ final class CatalogStore {
             let lastPriceRefresh: Date? = (try? await repository.metadataDate(
                 forKey: priceRefreshKey(card.id)
             )) ?? nil
+            let needsInitialDetails = cached[card.id]?.isEmpty != false && lastPriceRefresh == nil
             if forcePriceRefresh
-                || cached[card.id]?.isEmpty != false
-                || cachedPrices[card.id]?.isEmpty != false && lastPriceRefresh == nil
-                || needsPricingRefresh(lastPriceRefresh) {
+                || needsInitialDetails
+                || refreshCachedDetails && (
+                    cachedPrices[card.id]?.isEmpty != false && lastPriceRefresh == nil
+                        || needsPricingRefresh(lastPriceRefresh)
+                ) {
                 cardsNeedingRefresh.append(card)
             }
         }

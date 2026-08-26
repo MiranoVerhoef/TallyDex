@@ -87,6 +87,13 @@ completion controls, market averages, and price-history summaries now adapt to
 Accessibility text sizes, and frequently used collection controls meet a 44-point
 minimum touch target.
 
+v0.6.1 adds variant-aware catalog search. Searches such as **Lucario staff**,
+**Lucario prerelease**, or **SM95 staff** first find matching cards in the local
+complete index, then download only missing TCGdex detail records and filter the
+results by their actual printing metadata. A card, set, or collector number is
+required with the stamp term so TallyDex never presents a partial catalog-wide
+result as complete.
+
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
 values, but not 30 individual daily price points; TallyDex therefore builds its

@@ -101,6 +101,76 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
+struct CatalogVariantSearchQuery: Equatable, Sendable {
+    enum Requirement: Equatable, Sendable {
+        case prerelease
+        case staff
+
+        func matches(_ variants: Set<CatalogVariantKind>) -> Bool {
+            switch self {
+            case .prerelease:
+                variants.contains(.prerelease) || variants.contains(.prereleaseStaff)
+            case .staff:
+                variants.contains(.prereleaseStaff)
+            }
+        }
+
+        var displayName: String {
+            switch self {
+            case .prerelease: "Prerelease"
+            case .staff: "Prerelease Staff"
+            }
+        }
+    }
+
+    let textQuery: String
+    let requirement: Requirement?
+
+    init(textQuery: String, requirement: Requirement?) {
+        self.textQuery = textQuery
+        self.requirement = requirement
+    }
+
+    init(_ query: String) {
+        let rawTokens = query.split(whereSeparator: \Character.isWhitespace).map(String.init)
+        var textTokens: [String] = []
+        var foundPrerelease = false
+        var foundStaff = false
+        var index = 0
+
+        while index < rawTokens.count {
+            let token = Self.normalized(rawTokens[index])
+            if token == "staff" {
+                foundStaff = true
+            } else if token == "prerelease" || token == "pre-release" {
+                foundPrerelease = true
+            } else if token == "pre",
+                      rawTokens.indices.contains(index + 1),
+                      Self.normalized(rawTokens[index + 1]) == "release" {
+                foundPrerelease = true
+                index += 1
+            } else {
+                textTokens.append(rawTokens[index])
+            }
+            index += 1
+        }
+
+        textQuery = textTokens.joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        requirement = if foundStaff {
+            .staff
+        } else if foundPrerelease {
+            .prerelease
+        } else {
+            nil
+        }
+    }
+
+    private static func normalized(_ token: String) -> String {
+        token.lowercased().trimmingCharacters(in: .punctuationCharacters)
+    }
+}
+
 enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
     case cardmarket
     case tcgplayer
