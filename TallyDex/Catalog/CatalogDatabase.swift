@@ -223,7 +223,10 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
-    func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
+    func searchCards(
+        query: String,
+        limit: Int? = 100
+    ) async throws -> [CatalogCardSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         return try await database.queue.read { database in
@@ -234,6 +237,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 let pattern = "%\(token)%"
                 return [pattern, pattern, pattern]
             }
+            let resolvedLimit = limit.map { max(1, $0) } ?? -1
             return try Row.fetchAll(
                 database,
                 sql: """
@@ -243,7 +247,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 JOIN catalogSet ON catalogSet.id = search.setID
                 WHERE \(whereClause)
                 ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
-                LIMIT 100
+                LIMIT \(resolvedLimit)
                 """,
                 arguments: StatementArguments(arguments)
             ).map { row in

@@ -76,7 +76,7 @@ individual downloads in Settings → Offline Sets.
 
 1. Offline set pinning — completed in v0.5.4
 2. Performance and accessibility hardening — completed in v0.6.0
-3. Remove the 100-result ceiling from stamped-variant searches
+3. Remove the 100-result ceiling from stamped-variant searches — completed in v0.6.2
 4. Browser-based mass collection editing
 5. Direct Cardmarket listing preferences, including country and currency
 6. Final real-device, accessibility, performance, and v1.0 hardening
@@ -96,6 +96,12 @@ complete index, then download only missing TCGdex detail records and filter the
 results by their actual printing metadata. A card, set, or collector number is
 required with the stamp term so TallyDex never presents a partial catalog-wide
 result as complete.
+
+v0.6.2 removes the ordinary 100-result ceiling when a search includes a
+Prerelease or Staff term, allowing Pokémon with unusually many printings to be
+checked completely. Ordinary catalog searches keep their responsive 100-result
+limit. Variant searches matching more than 500 cards ask for a more precise
+Pokémon, set, or collector number before downloading details.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
