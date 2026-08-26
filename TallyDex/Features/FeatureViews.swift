@@ -2492,6 +2492,10 @@ struct SearchView: View {
         }.sorted(by: compareResults)
     }
 
+    private var variantSearch: CatalogVariantSearchQuery {
+        CatalogVariantSearchQuery(query)
+    }
+
     var body: some View {
         let visibleResults = visibleResults
 
@@ -2512,6 +2516,12 @@ struct SearchView: View {
                     }
                 } else if isSearching && results.isEmpty {
                     ProgressView("Searching…")
+                } else if variantSearch.requirement != nil && variantSearch.textQuery.isEmpty {
+                    ContentUnavailableView(
+                        "Add a Card, Set, or Number",
+                        systemImage: "seal",
+                        description: Text("Try “Lucario staff” or “SM95 prerelease” so TallyDex can check the right cards without downloading the entire catalog.")
+                    )
                 } else if results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else if visibleResults.isEmpty {
@@ -2525,7 +2535,7 @@ struct SearchView: View {
                 }
             }
             .navigationTitle("Search")
-            .searchable(text: $query, prompt: "Card, set, or number")
+            .searchable(text: $query, prompt: "Card, set, number, prerelease, or staff")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     searchFilterMenu
@@ -2560,6 +2570,11 @@ struct SearchView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
+                                if let requirement = variantSearch.requirement {
+                                    Label(requirement.displayName, systemImage: "seal.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -2582,6 +2597,11 @@ struct SearchView: View {
                             Text("\(result.setName) · #\(result.card.localID)")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
+                            if let requirement = variantSearch.requirement {
+                                Label(requirement.displayName, systemImage: "seal.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Spacer()
                         if collectionStore.owns(cardID: result.card.id) {

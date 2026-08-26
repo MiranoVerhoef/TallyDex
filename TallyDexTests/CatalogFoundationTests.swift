@@ -788,6 +788,52 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(downloadedSetIDs, ["sv01"])
     }
 
+    func testVariantSearchQueryRecognizesPrereleaseAndStaffTerms() {
+        XCTAssertEqual(
+            CatalogVariantSearchQuery("Lucario prerelease"),
+            .init(textQuery: "Lucario", requirement: .prerelease)
+        )
+        XCTAssertEqual(
+            CatalogVariantSearchQuery("pre-release SM95"),
+            .init(textQuery: "SM95", requirement: .prerelease)
+        )
+        XCTAssertEqual(
+            CatalogVariantSearchQuery("Lucario pre release staff"),
+            .init(textQuery: "Lucario", requirement: .staff)
+        )
+        XCTAssertTrue(
+            CatalogVariantSearchQuery.Requirement.prerelease.matches([.prereleaseStaff])
+        )
+    }
+
+    @MainActor
+    func testCatalogSearchHydratesAndFiltersStampedVariants() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sm", name: "Sun & Moon", logoURL: nil)
+        let promoSet = set(id: "smp", seriesID: "sm", name: "SM Black Star Promos")
+        let lucario = CatalogCard(
+            id: "smp-test", setID: "smp", localID: "TEST", name: "Lucario",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [promoSet]),
+        ])
+        try await repository.replaceSearchIndex([lucario])
+        let provider = CatalogProviderSpy(cardSnapshot: CatalogCardSnapshot(
+            card: lucario,
+            variants: [.prerelease, .prereleaseStaff]
+        ))
+        let store = CatalogStore(provider: provider, repository: repository)
+
+        let staffResults = try await store.searchCards(query: "Lucario staff")
+        let prereleaseResults = try await store.searchCards(query: "prerelease Lucario")
+
+        XCTAssertEqual(staffResults.map(\.card.id), [lucario.id])
+        XCTAssertEqual(prereleaseResults.map(\.card.id), [lucario.id])
+        let cardRequestCount = await provider.cardRequestCount
+        XCTAssertEqual(cardRequestCount, 1, "The second query should reuse the hydrated variants")
+    }
+
     func testRepositoryCachesCurrentPricesAndDailyHistory() async throws {
         let database = try CatalogDatabase.inMemory()
         let repository = GRDBCatalogRepository(database: database)

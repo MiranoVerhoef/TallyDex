@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.1/TallyDex-v0.6.1-staff-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.0/TallyDex-v0.6.0-accessibility.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.8/TallyDex-v0.5.8-refresh-confirmation.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.7/TallyDex-v0.5.7-card-refresh.png",
@@ -51,6 +52,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.6.1",
+          "buildVersion": "29",
+          "date": "2026-08-26",
+          "localizedDescription": "Adds truthful variant-aware search for prerelease and Staff printings. Queries such as Lucario staff, Lucario prerelease, or SM95 staff hydrate only matching candidates from TCGdex, cache their variant details, and show the matched stamp in results. Stamp-only searches ask for a card, set, or number instead of returning a partial catalog-wide result.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.1/TallyDex-v0.6.1.ipa",
+          "size": 5373080,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.6.0",
           "buildVersion": "28",
