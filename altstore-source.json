@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.0/TallyDex-v0.6.0-accessibility.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.8/TallyDex-v0.5.8-refresh-confirmation.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.7/TallyDex-v0.5.7-card-refresh.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.5.6/TallyDex-v0.5.6-cache-fix.png",
@@ -50,6 +51,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.6.0",
+          "buildVersion": "28",
+          "date": "2026-08-26",
+          "localizedDescription": "Performance and accessibility hardening: owned cards and printings now use synchronized indexes, every set calculates per-card goal progress in one pass, and large-text layouts adapt across series, sets, card grids, market averages, and price history. Completion and quantity controls now provide 44-point touch targets and clearer VoiceOver actions. Also fixes remove-all ownership missing a previously unloaded printing.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.6.0/TallyDex-v0.6.0.ipa",
+          "size": 5363463,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.5.8",
           "buildVersion": "27",

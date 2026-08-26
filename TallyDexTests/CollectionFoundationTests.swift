@@ -85,6 +85,31 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(entries, [])
     }
 
+    @MainActor
+    func testCollectionStoreKeepsOwnershipIndexesInSync() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        try await repository.setQuantity(
+            2,
+            cardID: "sv-test-001",
+            variant: .normal,
+            updatedAt: .now
+        )
+        let store = CollectionStore(repository: repository)
+        await store.start()
+
+        XCTAssertTrue(store.owns(cardID: "sv-test-001"))
+        XCTAssertEqual(store.ownedCardIDs, Set(["sv-test-001"]))
+        XCTAssertEqual(store.entries(for: "sv-test-001").first?.quantity, 2)
+
+        try await store.setQuantity(1, cardID: "sv-test-001", variant: .reverseHolo)
+        XCTAssertEqual(Set(store.entries(for: "sv-test-001").map(\.variant)), [.normal, .reverseHolo])
+
+        try await store.removeAllOwnership(cardID: "sv-test-001")
+        XCTAssertFalse(store.owns(cardID: "sv-test-001"))
+        XCTAssertTrue(store.ownedCardIDs.isEmpty)
+        XCTAssertTrue(store.entries(for: "sv-test-001").isEmpty)
+    }
+
     func testSetGoalPersistsWithoutChangingOwnership() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let update = Date(timeIntervalSince1970: 100)
@@ -444,6 +469,23 @@ final class CollectionFoundationTests: XCTestCase {
 
         XCTAssertEqual(normal, CollectionProgress(completedSlots: 1, requiredSlots: 3))
         XCTAssertEqual(master, CollectionProgress(completedSlots: 2, requiredSlots: 6))
+
+        let perCard = CollectionProgressCalculator.progressByCardID(
+            cards: cards,
+            set: set,
+            preference: preference(setID: set.id, goal: .master),
+            availableVariants: variants,
+            ownedEntries: owned
+        )
+        XCTAssertEqual(
+            perCard[cards[0].id],
+            CollectionProgress(completedSlots: 2, requiredSlots: 2)
+        )
+        XCTAssertEqual(
+            perCard[cards[1].id],
+            CollectionProgress(completedSlots: 0, requiredSlots: 2)
+        )
+        XCTAssertEqual(CollectionProgressCalculator.combined(perCard), master)
     }
 
     func testGoalAwareProgressAppliesCustomRules() {

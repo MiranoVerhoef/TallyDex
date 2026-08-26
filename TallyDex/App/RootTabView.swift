@@ -13,20 +13,32 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            Tab("Sets", systemImage: "square.grid.2x2", value: .sets) {
+            Tab(value: .sets) {
                 SetsView()
+            } label: {
+                Label("Sets", systemImage: "square.grid.2x2")
+                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
 
-            Tab("Search", systemImage: "magnifyingglass", value: .search) {
+            Tab(value: .search) {
                 SearchView()
+            } label: {
+                Label("Search", systemImage: "magnifyingglass")
+                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
 
-            Tab("Collection", systemImage: "rectangle.stack", value: .collection) {
+            Tab(value: .collection) {
                 CollectionView()
+            } label: {
+                Label("Collection", systemImage: "rectangle.stack")
+                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
 
-            Tab("Settings", systemImage: "gearshape", value: .settings) {
+            Tab(value: .settings) {
                 SettingsView()
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
         }
         .onChange(of: collectionStore.pendingExternalImport?.id) { _, id in

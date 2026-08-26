@@ -186,17 +186,37 @@ enum CollectionProgressCalculator {
         availableVariants: [String: Set<CatalogVariantKind>],
         ownedEntries: [CollectionVariantEntry]
     ) -> CollectionProgress {
+        combined(
+            progressByCardID(
+                cards: cards,
+                set: set,
+                preference: preference,
+                availableVariants: availableVariants,
+                ownedEntries: ownedEntries
+            )
+        )
+    }
+
+    static func progressByCardID(
+        cards: [CatalogCard],
+        set: CatalogSet,
+        preference: SetCollectionPreference,
+        availableVariants: [String: Set<CatalogVariantKind>],
+        ownedEntries: [CollectionVariantEntry]
+    ) -> [String: CollectionProgress] {
         let owned = Dictionary(grouping: ownedEntries.filter { $0.quantity > 0 }, by: \.cardID)
-        var requiredSlots = 0
-        var completedSlots = 0
+        var result: [String: CollectionProgress] = [:]
+        result.reserveCapacity(cards.count)
 
         for card in cards where includes(card: card, set: set, preference: preference) {
             let knownVariants = availableVariants[card.id] ?? []
             let ownedVariants = Set((owned[card.id] ?? []).map(\.variant))
 
             if preference.goal == .normal {
-                requiredSlots += 1
-                if !ownedVariants.isEmpty { completedSlots += 1 }
+                result[card.id] = CollectionProgress(
+                    completedSlots: ownedVariants.isEmpty ? 0 : 1,
+                    requiredSlots: 1
+                )
                 continue
             }
 
@@ -204,12 +224,23 @@ enum CollectionProgressCalculator {
                 for: preference,
                 knownVariants: knownVariants
             )
-            if requiredVariants.isEmpty { continue }
-
-            requiredSlots += requiredVariants.count
-            completedSlots += requiredVariants.intersection(ownedVariants).count
+            result[card.id] = CollectionProgress(
+                completedSlots: requiredVariants.intersection(ownedVariants).count,
+                requiredSlots: requiredVariants.count
+            )
         }
-        return CollectionProgress(completedSlots: completedSlots, requiredSlots: requiredSlots)
+        return result
+    }
+
+    static func combined(_ progressByCardID: [String: CollectionProgress]) -> CollectionProgress {
+        progressByCardID.values.reduce(
+            into: CollectionProgress(completedSlots: 0, requiredSlots: 0)
+        ) { result, progress in
+            result = CollectionProgress(
+                completedSlots: result.completedSlots + progress.completedSlots,
+                requiredSlots: result.requiredSlots + progress.requiredSlots
+            )
+        }
     }
 
     static func includes(

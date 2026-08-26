@@ -53,12 +53,16 @@ private struct CollectionValueSummaryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label(title, systemImage: "chart.line.uptrend.xyaxis")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(formattedCatalogPrice(summary.amount, currencyCode: summary.currencyCode))
-                    .font(.headline.monospacedDigit())
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    summaryTitle
+                    Spacer()
+                    summaryAmount
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    summaryTitle
+                    summaryAmount
+                }
             }
             Text(detailText)
                 .font(.caption)
@@ -67,6 +71,16 @@ private struct CollectionValueSummaryView: View {
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
         .accessibilityElement(children: .combine)
+    }
+
+    private var summaryTitle: some View {
+        Label(title, systemImage: "chart.line.uptrend.xyaxis")
+            .font(.subheadline.weight(.semibold))
+    }
+
+    private var summaryAmount: some View {
+        Text(formattedCatalogPrice(summary.amount, currencyCode: summary.currencyCode))
+            .font(.headline.monospacedDigit())
     }
 
     private var detailText: String {
@@ -192,6 +206,7 @@ enum SetsBrowsingStyle: String, CaseIterable, Identifiable {
 struct SetsView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(SetsScope.storageKey) private var defaultScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @State private var selectedScope = SetsScope.all
@@ -220,17 +235,19 @@ struct SetsView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    HStack {
-                        Image("TallyDexLogo")
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
-                            .frame(width: 132, height: 44)
-                            .accessibilityLabel("TallyDex")
-                        Spacer()
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        HStack {
+                            Image("TallyDexLogo")
+                                .resizable()
+                                .interpolation(.high)
+                                .scaledToFit()
+                                .frame(width: 132, height: 44)
+                                .accessibilityLabel("TallyDex")
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
 
                     HStack {
                         Text("Sets")
@@ -238,7 +255,7 @@ struct SetsView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                    .padding(.top, 10)
+                    .padding(.top, dynamicTypeSize.isAccessibilitySize ? 4 : 10)
                     .padding(.bottom, 14)
 
                     Picker("Sets view", selection: $selectedScope) {
@@ -429,55 +446,75 @@ private struct CatalogPlaceholderMark: View {
 private struct CatalogSetRow: View {
     let set: CatalogSet
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            CatalogArtwork(reference: set.preferredArtworkReference)
-            .frame(width: 116, height: 76)
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(set.name)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-
-                if set.isUpcoming(), let releaseDate = set.releaseDateValue {
-                    Label {
-                        Text("Upcoming · \(releaseDate.formatted(date: .abbreviated, time: .omitted))")
-                    } icon: {
-                        Image(systemName: "calendar.badge.clock")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.blue)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    artwork
+                        .frame(maxWidth: 170, minHeight: 58, maxHeight: 76)
+                    setDetails
                 }
-
-                if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
-                    Text(abbreviation)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                } else if let symbolURL = set.symbolURL {
-                    CatalogSymbol(url: symbolURL, setID: set.id)
-                        .frame(width: 30, height: 20)
-                        .accessibilityLabel("Expansion symbol")
-                }
-
-                if artworkCacheStore.isPinned(setID: set.id) {
-                    Label("Offline", systemImage: "arrow.down.circle.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.blue)
-                } else if artworkCacheStore.isPreparing(setID: set.id) {
-                    Label("Preparing…", systemImage: "arrow.down.circle")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else if let progress = artworkCacheStore.downloadProgress[set.id] {
-                    ProgressView(value: progress) {
-                        Text("Downloading \(Int(progress * 100))%")
-                    }
-                    .font(.caption2)
+            } else {
+                HStack(spacing: 12) {
+                    artwork
+                        .frame(width: 116, height: 76)
+                    setDetails
                 }
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var artwork: some View {
+        CatalogArtwork(reference: set.preferredArtworkReference)
+            .accessibilityHidden(true)
+    }
+
+    private var setDetails: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(set.name)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if set.isUpcoming(), let releaseDate = set.releaseDateValue {
+                Label {
+                    Text("Upcoming · \(releaseDate.formatted(date: .abbreviated, time: .omitted))")
+                } icon: {
+                    Image(systemName: "calendar.badge.clock")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.blue)
+            }
+
+            if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
+                Text(abbreviation)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            } else if let symbolURL = set.symbolURL {
+                CatalogSymbol(url: symbolURL, setID: set.id)
+                    .frame(width: 30, height: 20)
+                    .accessibilityLabel("Expansion symbol")
+            }
+
+            if artworkCacheStore.isPinned(setID: set.id) {
+                Label("Offline", systemImage: "arrow.down.circle.fill")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.blue)
+            } else if artworkCacheStore.isPreparing(setID: set.id) {
+                Label("Preparing…", systemImage: "arrow.down.circle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if let progress = artworkCacheStore.downloadProgress[set.id] {
+                ProgressView(value: progress) {
+                    Text("Downloading \(Int(progress * 100))%")
+                }
+                .font(.caption2)
+            }
+        }
     }
 }
 
@@ -738,22 +775,44 @@ private struct CatalogSetCollectionSettingsView: View {
 
 private struct CatalogSeriesRow: View {
     let group: CatalogSeriesGroup
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 14) {
-            CatalogArtwork(reference: group.preferredArtworkReference)
-            .frame(width: 124, height: 72)
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(group.series.name)
-                    .font(.body.weight(.semibold))
-                Text("\(group.sets.count) \(group.sets.count == 1 ? "set" : "sets")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    seriesArtwork
+                        .frame(maxWidth: 180, minHeight: 52, maxHeight: 68)
+                    seriesDetails
+                }
+            } else {
+                HStack(spacing: 14) {
+                    seriesArtwork
+                        .frame(width: 124, height: 72)
+                    seriesDetails
+                }
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var seriesArtwork: some View {
+        CatalogArtwork(reference: group.preferredArtworkReference)
+            .accessibilityHidden(true)
+    }
+
+    private var seriesDetails: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(group.series.name)
+                .font(.body.weight(.semibold))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+            Text("\(group.sets.count) \(group.sets.count == 1 ? "set" : "sets")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -795,6 +854,7 @@ private struct CatalogSetDetailView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var isShowingInformation = false
@@ -811,9 +871,11 @@ private struct CatalogSetDetailView: View {
     @State private var isPreparingGoalMetadata = false
     @State private var isConfirmingOfflineDownload = false
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
-    ]
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14)]
+    }
 
     private var collectionGoal: CollectionGoal {
         collectionStore.goal(for: set.id)
@@ -823,39 +885,30 @@ private struct CatalogSetDetailView: View {
         collectionStore.preference(for: set.id)
     }
 
-    private var progress: CollectionProgress {
-        CollectionProgressCalculator.progress(
-            cards: cards,
-            set: set,
-            preference: collectionPreference,
-            availableVariants: availableVariantsByCardID,
-            ownedEntries: collectionStore.ownedEntries
-        )
-    }
-
     private var valueSummary: CatalogValueSummary {
-        let cardIDs = Set(cards.map(\.id))
         return CatalogValueCalculator.summary(
-            entries: collectionStore.ownedEntries.filter { cardIDs.contains($0.cardID) },
+            entries: cards.flatMap { collectionStore.entries(for: $0.id) },
             prices: pricesByCardID,
             source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
         )
     }
 
     private var hasOwnedSetCards: Bool {
-        let cardIDs = Set(cards.map(\.id))
-        return collectionStore.ownedEntries.contains {
-            $0.quantity > 0 && cardIDs.contains($0.cardID)
-        }
+        cards.contains { collectionStore.owns(cardID: $0.id) }
     }
 
-    private var visibleCards: [CatalogCard] {
+    private func visibleCards(
+        progressByCardID: [String: CollectionProgress]
+    ) -> [CatalogCard] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return cards.filter { card in
+            let cardProgress = progressByCardID[card.id]
+                ?? CollectionProgress(completedSlots: 0, requiredSlots: 0)
             let filterMatches = switch selectedFilter {
             case .all: true
             case .owned: collectionStore.owns(cardID: card.id)
-            case .missing: isMissingForGoal(card)
+            case .missing: cardProgress.requiredSlots > 0
+                    && cardProgress.completedSlots < cardProgress.requiredSlots
             }
             let searchMatches = query.isEmpty
                 || card.name.localizedCaseInsensitiveContains(query)
@@ -864,22 +917,17 @@ private struct CatalogSetDetailView: View {
         }
     }
 
-    private func isMissingForGoal(_ card: CatalogCard) -> Bool {
-        let cardProgress = progress(for: card)
-        return cardProgress.requiredSlots > 0 && cardProgress.completedSlots < cardProgress.requiredSlots
-    }
-
-    private func progress(for card: CatalogCard) -> CollectionProgress {
-        CollectionProgressCalculator.progress(
-            cards: [card],
+    var body: some View {
+        let progressByCardID = CollectionProgressCalculator.progressByCardID(
+            cards: cards,
             set: set,
             preference: collectionPreference,
             availableVariants: availableVariantsByCardID,
             ownedEntries: collectionStore.ownedEntries
         )
-    }
+        let progress = CollectionProgressCalculator.combined(progressByCardID)
+        let visibleCards = visibleCards(progressByCardID: progressByCardID)
 
-    var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
                 CatalogArtwork(reference: set.preferredArtworkReference)
@@ -985,16 +1033,25 @@ private struct CatalogSetDetailView: View {
                                     if updatingCardIDs.contains(card.id) {
                                         ProgressView()
                                             .controlSize(.small)
-                                            .frame(width: 34, height: 34)
+                                            .frame(width: 44, height: 44)
                                     } else {
-                                        CardCompletionIndicator(progress: progress(for: card))
+                                        CardCompletionIndicator(
+                                            progress: progressByCardID[card.id]
+                                                ?? CollectionProgress(completedSlots: 0, requiredSlots: 0)
+                                        )
+                                        .frame(width: 44, height: 44)
                                     }
                                 }
                                 .background(.regularMaterial, in: Circle())
                                 .contentShape(Circle())
                                 .offset(x: 7, y: -7)
                                 .disabled(updatingCardIDs.contains(card.id))
-                                .accessibilityLabel("Edit owned printings for \(card.name)")
+                                .accessibilityLabel(checkmarkAccessibilityLabel(for: card))
+                                .accessibilityHint(
+                                    collectionGoal == .normal
+                                        ? "Double tap to toggle ownership"
+                                        : "Double tap to choose owned printings"
+                                )
                             }
                         }
                     }
@@ -1070,6 +1127,15 @@ private struct CatalogSetDetailView: View {
                 await loadGoalVariants()
             }
         }
+    }
+
+    private func checkmarkAccessibilityLabel(for card: CatalogCard) -> String {
+        if collectionGoal == .master || collectionGoal == .custom {
+            return "Choose owned printings for \(card.name)"
+        }
+        return collectionStore.owns(cardID: card.id)
+            ? "Remove \(card.name) from collection"
+            : "Mark \(card.name) as owned"
     }
 
     private func handleCheckmarkTap(for card: CatalogCard) {
@@ -1262,6 +1328,7 @@ private struct CatalogVariantPickerView: View {
                         .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.bordered)
+                .frame(minWidth: 44, minHeight: 44)
                 .disabled(quantity == 0 || isUpdating)
 
                 Text("\(quantity)")
@@ -1275,6 +1342,7 @@ private struct CatalogVariantPickerView: View {
                         .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.borderedProminent)
+                .frame(minWidth: 44, minHeight: 44)
                 .disabled(isUpdating)
             }
         }
@@ -1326,22 +1394,45 @@ private struct CatalogVariantPickerView: View {
 
 private struct CatalogCardTile: View {
     let card: CatalogCard
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            CachedCardImage(reference: card.thumbnailArtworkReference)
-                .aspectRatio(245 / 337, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-
-            Text(card.name)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-            Text("#\(card.localID)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                HStack(alignment: .top, spacing: 14) {
+                    cardImage
+                        .frame(width: 82, height: 113)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(card.name)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("Collector number \(card.localID)")
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 7) {
+                    cardImage
+                        .aspectRatio(245 / 337, contentMode: .fit)
+                    Text(card.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    Text("#\(card.localID)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var cardImage: some View {
+        CachedCardImage(reference: card.thumbnailArtworkReference)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
@@ -1699,6 +1790,7 @@ private struct CatalogCardDetailView: View {
                         .font(.title2)
                 }
                 .buttonStyle(.plain)
+                .frame(minWidth: 44, minHeight: 44)
                 .disabled(isUpdating)
                 .accessibilityLabel(
                     quantity > 0 ? "Remove \(variant.displayName)" : "Mark \(variant.displayName) as owned"
@@ -1766,6 +1858,7 @@ private struct CatalogCardDetailView: View {
 private struct CatalogRollingAveragesView: View {
     let source: CatalogPriceSource
     let quotes: [CatalogPriceQuote]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private struct Period: Identifiable {
         let id: String
@@ -1796,22 +1889,17 @@ private struct CatalogRollingAveragesView: View {
                         Text(quote.variant.displayName)
                             .font(.subheadline.weight(.semibold))
                     }
-                    HStack(spacing: 8) {
-                        ForEach(periods) { period in
-                            VStack(spacing: 4) {
-                                Text(period.title)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                Text(period.value(quote).map {
-                                    formattedCatalogPrice($0, currencyCode: quote.currencyCode)
-                                } ?? "—")
-                                .font(.subheadline.weight(.semibold).monospacedDigit())
-                                .minimumScaleFactor(0.75)
-                                .lineLimit(1)
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 8) {
+                            ForEach(periods) { period in
+                                averageRow(period, quote: quote)
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            ForEach(periods) { period in
+                                averageTile(period, quote: quote)
+                            }
                         }
                     }
                 }
@@ -1824,11 +1912,45 @@ private struct CatalogRollingAveragesView: View {
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
+
+    private func averageTile(_ period: Period, quote: CatalogPriceQuote) -> some View {
+        VStack(spacing: 4) {
+            Text(period.title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            averageAmount(period, quote: quote)
+                .minimumScaleFactor(0.75)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func averageRow(_ period: Period, quote: CatalogPriceQuote) -> some View {
+        HStack {
+            Text(period.title)
+                .foregroundStyle(.secondary)
+            Spacer()
+            averageAmount(period, quote: quote)
+        }
+        .padding(12)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func averageAmount(_ period: Period, quote: CatalogPriceQuote) -> some View {
+        Text(period.value(quote).map {
+            formattedCatalogPrice($0, currencyCode: quote.currencyCode)
+        } ?? "—")
+        .font(.subheadline.weight(.semibold).monospacedDigit())
+    }
 }
 
 private struct CatalogCardPriceHistoryView: View {
     let snapshot: CatalogCardSnapshot
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedSource: CatalogPriceSource
     @State private var selectedVariant: CatalogVariantKind
     @State private var selectedRange = CatalogPriceHistoryRange.thirtyDays
@@ -2095,7 +2217,9 @@ private struct CatalogCardPriceHistoryView: View {
     }
 
     private var summaryGrid: some View {
-        let columns = [GridItem(.flexible()), GridItem(.flexible())]
+        let columns = dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
         return LazyVGrid(columns: columns, spacing: 12) {
             historyStat("Current", amount: summary?.current)
             historyChangeStat
@@ -2325,6 +2449,7 @@ private enum SearchResultLayout: String, CaseIterable, Identifiable {
 struct SearchView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("search.resultLayout") private var resultLayout = SearchResultLayout.list.rawValue
     @State private var query = ""
     @State private var results: [CatalogCardSearchResult] = []
@@ -2334,9 +2459,11 @@ struct SearchView: View {
     @State private var selectedReleaseYear = 0
     @State private var sort = CollectionCardSort.releaseNewest
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
-    ]
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14)]
+    }
 
     private var availableSetNames: [String] {
         Array(Set(results.map(\.setName))).sorted {
@@ -2366,6 +2493,8 @@ struct SearchView: View {
     }
 
     var body: some View {
+        let visibleResults = visibleResults
+
         NavigationStack {
             Group {
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2392,7 +2521,7 @@ struct SearchView: View {
                         description: Text("Try another ownership, set, or release-year filter.")
                     )
                 } else {
-                    resultsContent
+                    resultsContent(visibleResults)
                 }
             }
             .navigationTitle("Search")
@@ -2417,7 +2546,7 @@ struct SearchView: View {
     }
 
     @ViewBuilder
-    private var resultsContent: some View {
+    private func resultsContent(_ visibleResults: [CatalogCardSearchResult]) -> some View {
         if SearchResultLayout(rawValue: resultLayout) == .grid {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 18) {
@@ -2590,7 +2719,7 @@ struct CollectionView: View {
     @State private var editingFolder: CustomCollectionFolder?
 
     private var ownedCardIDs: [String] {
-        Array(Set(collectionStore.ownedEntries.map(\.cardID))).sorted()
+        collectionStore.ownedCardIDs.sorted()
     }
 
     private var ownedCardIDsKey: String {
@@ -2708,7 +2837,7 @@ struct CollectionView: View {
     }
 
     private func collectionSummary(cardID: String) -> String {
-        let entries = collectionStore.ownedEntries.filter { $0.cardID == cardID }
+        let entries = collectionStore.entries(for: cardID)
         let total = entries.reduce(0) { $0 + $1.quantity }
         let variants = entries
             .sorted { $0.variant.displayName < $1.variant.displayName }
@@ -2928,6 +3057,7 @@ private struct CustomCollectionFolderDetailView: View {
     let folder: CustomCollectionFolder
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var matches: [CatalogCardSearchResult] = []
@@ -2942,9 +3072,11 @@ private struct CustomCollectionFolderDetailView: View {
     @State private var selectedReleaseYear = 0
     @State private var sort = CollectionCardSort.releaseNewest
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14),
-    ]
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14)]
+    }
 
     init(folder: CustomCollectionFolder) {
         self.folder = folder
@@ -3109,7 +3241,7 @@ private struct CustomCollectionFolderDetailView: View {
                                         if updatingCardIDs.contains(result.card.id) {
                                             ProgressView()
                                                 .controlSize(.small)
-                                                .frame(width: 34, height: 34)
+                                                .frame(width: 44, height: 44)
                                         } else {
                                             Image(
                                                 systemName: collectionStore.owns(cardID: result.card.id)
@@ -3122,7 +3254,7 @@ private struct CustomCollectionFolderDetailView: View {
                                                     ? Color.accentColor
                                                     : Color.secondary
                                             )
-                                            .frame(width: 34, height: 34)
+                                            .frame(width: 44, height: 44)
                                         }
                                     }
                                     .background(.regularMaterial, in: Circle())
@@ -3136,9 +3268,10 @@ private struct CustomCollectionFolderDetailView: View {
                                     }
                                     .accessibilityLabel(
                                         collectionStore.owns(cardID: result.card.id)
-                                            ? "Toggle standard printing for \(result.card.name)"
+                                            ? "Remove \(result.card.name) from collection"
                                             : "Mark \(result.card.name) as owned"
                                     )
+                                    .accessibilityHint("Touch and hold to choose printings")
                                 }
 
                                 Text(result.setName)
