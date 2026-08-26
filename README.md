@@ -74,12 +74,18 @@ individual downloads in Settings → Offline Sets.
 
 ## Roadmap order
 
-1. Offline set pinning
-2. Performance and accessibility hardening
-3. Binder planner
+1. Offline set pinning — completed in v0.5.4
+2. Performance and accessibility hardening — completed in v0.6.0
+3. Binder planner — next
 4. Browser-based mass collection editing
 5. Fully on-device card scanner
 6. Apple services last: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
+
+v0.6.0 indexes owned cards and their printings for fast collection lookups and
+calculates every card’s goal progress in a single pass per set. Card grids,
+completion controls, market averages, and price-history summaries now adapt to
+Accessibility text sizes, and frequently used collection controls meet a 44-point
+minimum touch target.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average

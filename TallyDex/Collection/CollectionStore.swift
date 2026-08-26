@@ -6,6 +6,7 @@ import Observation
 final class CollectionStore {
     private(set) var quantitiesByCardID: [String: [CatalogVariantKind: Int]] = [:]
     private(set) var ownedEntries: [CollectionVariantEntry] = []
+    private(set) var ownedCardIDs: Set<String> = []
     private(set) var goalsBySetID: [String: CollectionGoal] = [:]
     private(set) var setPreferencesByID: [String: SetCollectionPreference] = [:]
     private(set) var customFolders: [CustomCollectionFolder] = []
@@ -19,6 +20,7 @@ final class CollectionStore {
     @ObservationIgnored private var repository: (any CollectionRepository)?
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var ownedEntriesByCardID: [String: [CollectionVariantEntry]] = [:]
 
     init(
         repository: (any CollectionRepository)? = nil,
@@ -188,13 +190,17 @@ final class CollectionStore {
         if let loadedQuantity = quantitiesByCardID[cardID]?[variant] {
             return loadedQuantity
         }
-        return ownedEntries.first {
-            $0.cardID == cardID && $0.variant == variant
+        return ownedEntriesByCardID[cardID]?.first {
+            $0.variant == variant
         }?.quantity ?? 0
     }
 
     func owns(cardID: String) -> Bool {
-        ownedEntries.contains { $0.cardID == cardID && $0.quantity > 0 }
+        ownedCardIDs.contains(cardID)
+    }
+
+    func entries(for cardID: String) -> [CollectionVariantEntry] {
+        ownedEntriesByCardID[cardID] ?? []
     }
 
     func quantities(for cardID: String, forceReload: Bool = false) async throws -> [CatalogVariantKind: Int] {
@@ -221,7 +227,9 @@ final class CollectionStore {
             updatedAt: updatedAt
         )
 
-        var quantities = quantitiesByCardID[cardID] ?? [:]
+        var quantities = quantitiesByCardID[cardID] ?? Dictionary(
+            uniqueKeysWithValues: entries(for: cardID).map { ($0.variant, $0.quantity) }
+        )
         if quantity == 0 {
             quantities.removeValue(forKey: variant)
         } else {
@@ -244,6 +252,7 @@ final class CollectionStore {
             if $0.updatedAt == $1.updatedAt { return $0.id < $1.id }
             return $0.updatedAt > $1.updatedAt
         }
+        refreshOwnershipIndex(for: cardID)
     }
 
     func removeAllOwnership(cardID: String) async throws {
@@ -271,12 +280,32 @@ final class CollectionStore {
         async let folders = repository.fetchCustomFolders()
         async let savedBackups = repository.fetchBackups()
         ownedEntries = try await entries
+        rebuildOwnershipIndexes()
         setPreferencesByID = try await preferences
         goalsBySetID = setPreferencesByID.mapValues(\.goal)
         customFolders = try await folders
         backups = try await savedBackups
         quantitiesByCardID.removeAll()
         cardMetadataByID.removeAll()
+    }
+
+    private func rebuildOwnershipIndexes() {
+        ownedEntriesByCardID = Dictionary(
+            grouping: ownedEntries.filter { $0.quantity > 0 },
+            by: \.cardID
+        )
+        ownedCardIDs = Set(ownedEntriesByCardID.keys)
+    }
+
+    private func refreshOwnershipIndex(for cardID: String) {
+        let entries = ownedEntries.filter { $0.cardID == cardID && $0.quantity > 0 }
+        if entries.isEmpty {
+            ownedEntriesByCardID.removeValue(forKey: cardID)
+            ownedCardIDs.remove(cardID)
+        } else {
+            ownedEntriesByCardID[cardID] = entries
+            ownedCardIDs.insert(cardID)
+        }
     }
 
     private func sortCustomFolders() {
