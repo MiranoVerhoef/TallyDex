@@ -20,6 +20,15 @@ struct TallyDexApp: App {
                 .task {
                     await catalogStore.start()
                     await artworkCacheStore.prefetch(groups: catalogStore.groups)
+#if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("-BrowserEditorTesting") {
+                        await collectionStore.start()
+                        await localCollectionSharing.start(
+                            catalogStore: catalogStore,
+                            collectionStore: collectionStore
+                        )
+                    }
+#endif
                 }
                 .task {
                     await collectionStore.start()
