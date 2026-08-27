@@ -114,11 +114,16 @@ Sharing runs only while explicitly active, uses a new local session and CSRF
 token each time, locks out repeated incorrect pairing attempts, and sends
 no-store browser headers. Stop sharing when finished.
 
-v0.7.1 makes the browser editor easier to use with large catalogs. The set
-chooser is now searchable, grouped by series, and filterable into Main sets,
-Promos & subsets, and Other collections. Wishlist and personal notes now open
-in a focused dialog, so editing one card no longer stretches every card in its
-grid row.
+v0.7.2 adds persistent browser layout controls for two through six cards per
+row (or an automatic layout) and Compact, Comfortable, or Spacious spacing.
+Every card tile now has the same height, including cards with different numbers
+of known printings. Each card also opens a computer-friendly Cardmarket panel
+with its exact printing price, TCGdex 1-day, 7-day, and 30-day rolling averages,
+locally recorded 7/30/90-day or all-time history, range summaries, and the exact
+Cardmarket product link. Wishlist and notes remain in their own focused dialog.
+
+The set chooser is searchable, grouped by series, and filterable into Main
+sets, Promos & subsets, and Other collections.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
