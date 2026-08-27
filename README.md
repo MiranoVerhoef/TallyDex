@@ -114,6 +114,12 @@ Sharing runs only while explicitly active, uses a new local session and CSRF
 token each time, locks out repeated incorrect pairing attempts, and sends
 no-store browser headers. Stop sharing when finished.
 
+v0.7.1 makes the browser editor easier to use with large catalogs. The set
+chooser is now searchable, grouped by series, and filterable into Main sets,
+Promos & subsets, and Other collections. Wishlist and personal notes now open
+in a focused dialog, so editing one card no longer stretches every card in its
+grid row.
+
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
 values, but not 30 individual daily price points; TallyDex therefore builds its
