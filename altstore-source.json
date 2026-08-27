@@ -20,6 +20,8 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.2/TallyDex-v0.7.2-browser-grid.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.2/TallyDex-v0.7.2-market-history.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.1/TallyDex-v0.7.1-set-picker.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.1/TallyDex-v0.7.1-browser-editor.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.0/TallyDex-v0.7.0-browser-editor.png",
@@ -56,6 +58,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.7.2",
+          "buildVersion": "33",
+          "date": "2026-08-27",
+          "localizedDescription": "Adds persistent browser layout controls for Auto or 2–6 cards per row and Compact, Comfortable, or Spacious spacing, with equal-height card tiles. Every card now opens a computer-friendly Cardmarket panel with exact-printing price, TCGdex rolling averages, locally saved price history, range summaries, and the exact product link.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.2/TallyDex-v0.7.2.ipa",
+          "size": 5453250,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.7.1",
           "buildVersion": "32",

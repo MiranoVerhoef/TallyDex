@@ -271,12 +271,43 @@ struct LocalSharingCardDTO: Encodable, Sendable {
 struct LocalSharingBootstrapDTO: Encodable, Sendable {
     let sets: [LocalSharingSetDTO]
     let allowsMultipleCopies: Bool
+    let browserGridColumns: String
+    let browserGridSpacing: String
 }
 
 struct LocalSharingCardsDTO: Encodable, Sendable {
     let cards: [LocalSharingCardDTO]
     let resultCount: Int
     let mayBeTruncated: Bool
+}
+
+struct LocalSharingMarketQuoteDTO: Encodable, Sendable {
+    let variant: String
+    let variantName: String
+    let currencyCode: String
+    let amount: Double
+    let updatedAt: String
+    let average1Day: Double?
+    let average7Days: Double?
+    let average30Days: Double?
+    let marketplaceURL: String?
+}
+
+struct LocalSharingMarketHistoryPointDTO: Encodable, Sendable {
+    let variant: String
+    let variantName: String
+    let day: String
+    let currencyCode: String
+    let amount: Double
+}
+
+struct LocalSharingMarketDTO: Encodable, Sendable {
+    let cardID: String
+    let cardName: String
+    let cardNumber: String
+    let setName: String
+    let quotes: [LocalSharingMarketQuoteDTO]
+    let history: [LocalSharingMarketHistoryPointDTO]
 }
 
 private struct LocalSharingQuantityUpdate: Decodable {
@@ -287,6 +318,11 @@ private struct LocalSharingQuantityUpdate: Decodable {
 private struct LocalSharingMetadataUpdate: Decodable {
     let wishlisted: Bool
     let notes: String
+}
+
+private struct LocalSharingLayoutUpdate: Decodable {
+    let columns: String
+    let spacing: String
 }
 
 @MainActor
@@ -430,7 +466,9 @@ final class LocalCollectionSharingController {
                 sets: sets,
                 allowsMultipleCopies: UserDefaults.standard.bool(
                     forKey: CollectionSettings.allowsMultipleCopiesKey
-                )
+                ),
+                browserGridColumns: UserDefaults.standard.string(forKey: Self.browserGridColumnsKey) ?? "4",
+                browserGridSpacing: UserDefaults.standard.string(forKey: Self.browserGridSpacingKey) ?? "comfortable"
             ))
         }
 
@@ -468,8 +506,34 @@ final class LocalCollectionSharingController {
             }
         }
 
+        let marketPrefix = "/api/cards/"
+        if request.method == "GET",
+           request.path.hasPrefix(marketPrefix),
+           request.path.hasSuffix("/market") {
+            let cardID = String(request.path.dropFirst(marketPrefix.count).dropLast("/market".count))
+            do {
+                guard let result = try await catalogStore.searchResults(cardIDs: [cardID]).first else {
+                    return .error("This card is no longer available in the local catalog.", statusCode: 404)
+                }
+                let snapshot = try await catalogStore.details(for: result.card)
+                let history = try await catalogStore.priceHistory(cardID: cardID, source: .cardmarket)
+                return .json(Self.marketDTO(snapshot: snapshot, setName: result.setName, history: history))
+            } catch {
+                return .error("Cardmarket prices couldn’t be loaded. Try again.", statusCode: 500)
+            }
+        }
+
         guard request.headers["x-tallydex-csrf"] == csrfToken else {
             return .error("The editing session is no longer valid. Reload the page.", statusCode: 403)
+        }
+        if request.method == "POST", request.path == "/api/browser-layout" {
+            guard let update = try? JSONDecoder().decode(LocalSharingLayoutUpdate.self, from: request.body),
+                  ["auto", "2", "3", "4", "5", "6"].contains(update.columns),
+                  ["compact", "comfortable", "spacious"].contains(update.spacing)
+            else { return .error("Invalid browser layout.", statusCode: 400) }
+            UserDefaults.standard.set(update.columns, forKey: Self.browserGridColumnsKey)
+            UserDefaults.standard.set(update.spacing, forKey: Self.browserGridSpacingKey)
+            return .json(["saved": true])
         }
         let quantityPrefix = "/api/cards/"
         if request.method == "POST", request.path.hasPrefix(quantityPrefix), request.path.hasSuffix("/quantity") {
@@ -553,6 +617,55 @@ final class LocalCollectionSharingController {
         )
     }
 
+    private static func marketDTO(
+        snapshot: CatalogCardSnapshot,
+        setName: String,
+        history: [CatalogPriceHistoryPoint]
+    ) -> LocalSharingMarketDTO {
+        let isoFormatter = ISO8601DateFormatter()
+        let dayFormatter = DateFormatter()
+        dayFormatter.calendar = Calendar(identifier: .gregorian)
+        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        dayFormatter.dateFormat = "yyyy-MM-dd"
+
+        let quotes = snapshot.prices
+            .filter { $0.source == .cardmarket }
+            .sorted { $0.variant.rawValue < $1.variant.rawValue }
+            .map { quote in
+                LocalSharingMarketQuoteDTO(
+                    variant: quote.variant.rawValue,
+                    variantName: quote.variant.displayName,
+                    currencyCode: quote.currencyCode,
+                    amount: quote.amount,
+                    updatedAt: isoFormatter.string(from: quote.updatedAt),
+                    average1Day: quote.average1Day,
+                    average7Days: quote.average7Days,
+                    average30Days: quote.average30Days,
+                    marketplaceURL: quote.marketplaceURL?.absoluteString
+                )
+            }
+        let historyPoints = history
+            .sorted { $0.day < $1.day }
+            .map { point in
+                LocalSharingMarketHistoryPointDTO(
+                    variant: point.variant.rawValue,
+                    variantName: point.variant.displayName,
+                    day: dayFormatter.string(from: point.day),
+                    currencyCode: point.currencyCode,
+                    amount: point.amount
+                )
+            }
+        return LocalSharingMarketDTO(
+            cardID: snapshot.card.id,
+            cardName: snapshot.card.name,
+            cardNumber: snapshot.card.localID,
+            setName: setName,
+            quotes: quotes,
+            history: historyPoints
+        )
+    }
+
     nonisolated private static func localIPv4Address() -> String? {
         var pointer: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&pointer) == 0, let first = pointer else { return nil }
@@ -613,32 +726,43 @@ final class LocalCollectionSharingController {
         <header><div><div class="brand">TallyDex</div><small>Browser collection editor</small></div><div class="secure">Connected locally</div></header>
         <main class="editor"><section class="toolbar"><div class="field grow"><label for="search">Search cards</label><input id="search" type="search" placeholder="Lucario, SM95, Chaos Rising…"></div>
         <div class="field grow"><label for="choose-set">Or choose a set</label><button id="choose-set" class="select-button" type="button"><span id="selected-set">Choose a set</span><span aria-hidden="true">⌄</span></button></div><button id="load">Load cards</button></section>
-        <section class="statusbar"><div id="status">Choose a set or search for cards.</div><div class="filters"><button data-filter="all" class="active">All</button><button data-filter="owned">Owned</button><button data-filter="missing">Missing</button></div></section>
+        <section class="statusbar"><div id="status">Choose a set or search for cards.</div><div class="view-tools"><label>Cards per row <select id="grid-columns"><option value="auto">Auto</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option></select></label><label>Spacing <select id="grid-spacing"><option value="compact">Compact</option><option value="comfortable" selected>Comfortable</option><option value="spacious">Spacious</option></select></label></div><div class="filters"><button data-filter="all" class="active">All</button><button data-filter="owned">Owned</button><button data-filter="missing">Missing</button></div></section>
         <div id="cards" class="cards"></div></main>
         <dialog id="set-dialog" class="sheet"><form method="dialog" class="dialog-shell"><div class="dialog-heading"><div><h2>Choose a set</h2><p>Search by set or series, then choose where to browse.</p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div><input id="set-search" type="search" placeholder="Search sets or series…" autocomplete="off"><div class="set-scopes" aria-label="Set type"><button type="button" data-set-scope="all" class="active">All</button><button type="button" data-set-scope="main">Main sets</button><button type="button" data-set-scope="special">Promos & subsets</button><button type="button" data-set-scope="other">Other</button></div><div id="set-list" class="set-list"></div></form></dialog>
         <dialog id="metadata-dialog" class="sheet metadata-sheet"><form method="dialog" class="dialog-shell"><div class="dialog-heading"><div><h2 id="metadata-title">Wishlist & notes</h2><p id="metadata-subtitle"></p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div><label class="wish"><input id="metadata-wishlist" type="checkbox"> Add to wishlist</label><label for="metadata-notes">Personal notes</label><textarea id="metadata-notes" maxlength="10000" placeholder="Binder location, condition, trade notes…"></textarea><div class="dialog-actions"><button class="secondary" value="cancel">Cancel</button><button id="save-metadata" type="button">Save</button></div></form></dialog>
+        <dialog id="market-dialog" class="sheet market-sheet"><div class="dialog-shell"><div class="dialog-heading"><div><h2 id="market-title">Cardmarket</h2><p id="market-subtitle"></p></div><button class="icon-button" type="button" data-close-market aria-label="Close">×</button></div><div id="market-content"><div class="loader"></div></div></div></dialog>
         <div id="toast" role="status"></div>
         <script>
-        const csrf=\(csrfJSON);const state={cards:[],sets:[],filter:'all',multiple:false,selectedSetID:'',setScope:'all',metadataCardID:''};
+        const csrf=\(csrfJSON);const state={cards:[],sets:[],filter:'all',multiple:false,selectedSetID:'',setScope:'all',metadataCardID:'',marketCardID:'',marketData:null,marketVariant:'',marketRange:'30'};
         const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         async function api(path,options={}){const headers={'Accept':'application/json',...(options.body?{'Content-Type':'application/json','X-TallyDex-CSRF':csrf}:{}),...(options.headers||{})};const response=await fetch(path,{...options,headers});if(response.status===401){location.reload();throw new Error('Session ended');}const data=await response.json();if(!response.ok)throw new Error(data.error||'Request failed');return data;}
         function toast(message,bad=false){const el=document.querySelector('#toast');el.textContent=message;el.className=bad?'show bad':'show';setTimeout(()=>el.className='',2200);}
-        async function start(){try{const data=await api('/api/bootstrap');state.multiple=data.allowsMultipleCopies;state.sets=data.sets;renderSetList();}catch(e){document.querySelector('#status').textContent=e.message;}}
+        async function start(){try{const data=await api('/api/bootstrap');state.multiple=data.allowsMultipleCopies;state.sets=data.sets;document.querySelector('#grid-columns').value=data.browserGridColumns;document.querySelector('#grid-spacing').value=data.browserGridSpacing;applyLayout();renderSetList();}catch(e){document.querySelector('#status').textContent=e.message;}}
         async function load(){const q=document.querySelector('#search').value.trim(),setID=state.selectedSetID;if(!q&&!setID){toast('Choose a set or enter a search.',true);return;}const params=q?'q='+encodeURIComponent(q):'setID='+encodeURIComponent(setID);document.querySelector('#status').textContent='Loading cards and printing variants from your iPhone…';document.querySelector('#cards').innerHTML='<div class="loader"></div>';try{const data=await api('/api/cards?'+params);state.cards=data.cards;render();document.querySelector('#status').textContent=data.resultCount+' cards'+(data.mayBeTruncated?' · narrow your search to see every match':'');}catch(e){document.querySelector('#cards').innerHTML='';document.querySelector('#status').textContent=e.message;}}
         function renderSetList(){const query=document.querySelector('#set-search').value.trim().toLowerCase();const filtered=state.sets.filter(set=>(state.setScope==='all'||set.category===state.setScope)&&(!query||(set.name+' '+set.seriesName).toLowerCase().includes(query)));const groups=new Map();filtered.forEach(set=>{if(!groups.has(set.seriesName))groups.set(set.seriesName,[]);groups.get(set.seriesName).push(set);});document.querySelector('#set-list').innerHTML=[...groups].map(([series,sets])=>`<section class="set-group"><h3>${esc(series)}</h3>${sets.map(set=>`<button type="button" class="set-option" data-set-id="${esc(set.id)}"><span><strong>${esc(set.name)}</strong><small>${esc(series)}</small></span><span class="set-date">${esc(set.releaseDate||'Date unknown')}</span></button>`).join('')}</section>`).join('')||'<div class="empty compact">No sets match this search.</div>';}
         function visible(){return state.cards.filter(card=>state.filter==='all'||(state.filter==='owned'&&card.owned)||(state.filter==='missing'&&!card.owned));}
-        function render(){const root=document.querySelector('#cards');root.innerHTML=visible().map(card=>`<article class="card" data-id="${esc(card.id)}"><div class="cardtop">${card.imageURL?`<img loading="lazy" src="${esc(card.imageURL)}" alt="">`:'<div class="placeholder">TD</div>'}<div><h2>${esc(card.name)}</h2><p>${esc(card.setName)} · #${esc(card.number)}</p></div></div><div class="variants">${card.variants.map(v=>variantHTML(card,v)).join('')}</div><button type="button" class="metadata-button" data-edit-meta><span>${card.wishlisted?'♥':'♡'} Wishlist & notes</span><small>${card.notes?'Notes added':card.wishlisted?'Wishlisted':'Add details'}</small></button></article>`).join('')||'<div class="empty">No cards match this filter.</div>';}
+        function render(){const root=document.querySelector('#cards');root.innerHTML=visible().map(card=>`<article class="card" data-id="${esc(card.id)}"><div class="cardtop">${card.imageURL?`<img loading="lazy" src="${esc(card.imageURL)}" alt="">`:'<div class="placeholder">TD</div>'}<div><h2>${esc(card.name)}</h2><p>${esc(card.setName)} · #${esc(card.number)}</p></div></div><div class="variants">${card.variants.map(v=>variantHTML(card,v)).join('')}</div><div class="card-actions"><button type="button" class="metadata-button" data-edit-meta><span>${card.wishlisted?'♥':'♡'} Wishlist & notes</span><small>${card.notes?'Notes added':card.wishlisted?'Wishlisted':'Add details'}</small></button><button type="button" class="market-button" data-open-market><span>€ Cardmarket</span><small>Prices & history</small></button></div></article>`).join('')||'<div class="empty">No cards match this filter.</div>';}
         function variantHTML(card,v){if(state.multiple)return `<div class="variant"><span>${esc(v.name)}</span><div class="stepper"><button data-step="-1" data-variant="${esc(v.id)}" aria-label="Remove one">−</button><strong data-quantity="${esc(v.id)}">${v.quantity}</strong><button data-step="1" data-variant="${esc(v.id)}" aria-label="Add one">+</button></div></div>`;return `<label class="variant check"><span>${esc(v.name)}</span><input type="checkbox" data-check data-variant="${esc(v.id)}" ${v.quantity>0?'checked':''}></label>`;}
         async function setQuantity(card,variant,quantity){quantity=Math.max(0,Math.min(999,quantity));await api('/api/cards/'+encodeURIComponent(card.id)+'/quantity',{method:'POST',body:JSON.stringify({variant,quantity})});const item=card.variants.find(v=>v.id===variant);item.quantity=quantity;card.owned=card.variants.some(v=>v.quantity>0);toast('Saved '+card.name);if(state.filter!=='all')render();}
         function openMetadata(card){state.metadataCardID=card.id;document.querySelector('#metadata-title').textContent=card.name;document.querySelector('#metadata-subtitle').textContent=card.setName+' · #'+card.number;document.querySelector('#metadata-wishlist').checked=card.wishlisted;document.querySelector('#metadata-notes').value=card.notes;document.querySelector('#metadata-dialog').showModal();}
+        function applyLayout(){const columns=document.querySelector('#grid-columns').value,spacing=document.querySelector('#grid-spacing').value,root=document.querySelector('#cards');root.style.setProperty('--grid-columns',columns==='auto'?'repeat(auto-fill,minmax(280px,1fr))':`repeat(${columns},minmax(0,1fr))`);root.dataset.spacing=spacing;}
+        async function saveLayout(){applyLayout();try{await api('/api/browser-layout',{method:'POST',body:JSON.stringify({columns:document.querySelector('#grid-columns').value,spacing:document.querySelector('#grid-spacing').value})});}catch(err){toast(err.message,true);}}
+        const money=(value,currency='EUR')=>value==null?'—':new Intl.NumberFormat(undefined,{style:'currency',currency:currency||'EUR'}).format(value);
+        const dateLabel=value=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(new Date(value.length===10?value+'T00:00:00Z':value)):'—';
+        function marketVariantOptions(data){const found=new Map();[...data.quotes,...data.history].forEach(item=>found.set(item.variant,item.variantName));return [...found].map(([id,name])=>({id,name}));}
+        function rangePoints(points){if(state.marketRange==='all')return points;const days=Number(state.marketRange),cutoff=new Date();cutoff.setHours(0,0,0,0);cutoff.setDate(cutoff.getDate()-(days-1));return points.filter(point=>new Date(point.day+'T00:00:00Z')>=cutoff);}
+        function marketChart(points,currency){if(!points.length)return '<div class="market-empty"><strong>No saved history in this range</strong><span>TallyDex saves one exact daily point when this printing refreshes. The graph will grow over time.</span></div>';const values=points.map(point=>point.amount),low=Math.min(...values),high=Math.max(...values),spread=high-low||Math.max(high*.08,.01),min=Math.max(0,low-spread*.18),max=high+spread*.18,w=760,h=260,px=46,py=26,times=points.map(point=>new Date(point.day+'T00:00:00Z').getTime()),first=Math.min(...times),last=Math.max(...times),x=(time)=>first===last?w/2:px+(time-first)/(last-first)*(w-px*2),y=(value)=>h-py-(value-min)/(max-min)*(h-py*2),line=points.map((point,index)=>`${index?'L':'M'} ${x(times[index]).toFixed(1)} ${y(point.amount).toFixed(1)}`).join(' '),area=`${line} L ${x(times[times.length-1]).toFixed(1)} ${h-py} L ${x(times[0]).toFixed(1)} ${h-py} Z`;return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Price history from ${esc(dateLabel(points[0].day))} to ${esc(dateLabel(points.at(-1).day))}"><line x1="${px}" y1="${py}" x2="${px}" y2="${h-py}"/><line x1="${px}" y1="${h-py}" x2="${w-px}" y2="${h-py}"/><path class="chart-area" d="${area}"/><path class="chart-line" d="${line}"/>${points.map((point,index)=>`<circle cx="${x(times[index]).toFixed(1)}" cy="${y(point.amount).toFixed(1)}" r="4"><title>${esc(dateLabel(point.day))}: ${esc(money(point.amount,point.currencyCode||currency))}</title></circle>`).join('')}<text x="${px}" y="18">${esc(money(high,currency))}</text><text x="${px}" y="${h-5}">${esc(dateLabel(points[0].day))}</text><text x="${w-px}" y="${h-5}" text-anchor="end">${esc(dateLabel(points.at(-1).day))}</text></svg></div>`;}
+        function renderMarket(){const data=state.marketData,root=document.querySelector('#market-content');if(!data)return;const variants=marketVariantOptions(data);if(!state.marketVariant||!variants.some(item=>item.id===state.marketVariant))state.marketVariant=variants[0]?.id||'';const quote=data.quotes.find(item=>item.variant===state.marketVariant),allPoints=data.history.filter(item=>item.variant===state.marketVariant).sort((a,b)=>a.day.localeCompare(b.day)),points=rangePoints(allPoints),currency=quote?.currencyCode||points.at(-1)?.currencyCode||'EUR',latest=points.at(-1),first=points[0],change=points.length>1?latest.amount-first.amount:null,percent=change!=null&&first.amount?change/first.amount*100:null,low=points.length?Math.min(...points.map(item=>item.amount)):null,high=points.length?Math.max(...points.map(item=>item.amount)):null;root.innerHTML=`<div class="market-controls"><label>Printing<select id="market-variant">${variants.map(item=>`<option value="${esc(item.id)}" ${item.id===state.marketVariant?'selected':''}>${esc(item.name)}</option>`).join('')}</select></label><div class="range-picker">${[['7','7D'],['30','30D'],['90','90D'],['all','All']].map(([id,label])=>`<button type="button" data-market-range="${id}" class="${state.marketRange===id?'active':''}">${label}</button>`).join('')}</div></div>${quote?`<section class="quote-panel"><div><span>Current Cardmarket price</span><strong>${esc(money(quote.amount,currency))}</strong><small>Updated ${esc(dateLabel(quote.updatedAt))}</small></div><div class="averages"><div><span>1-day average</span><strong>${esc(money(quote.average1Day,currency))}</strong></div><div><span>7-day average</span><strong>${esc(money(quote.average7Days,currency))}</strong></div><div><span>30-day average</span><strong>${esc(money(quote.average30Days,currency))}</strong></div></div>${quote.marketplaceURL?`<a class="market-link" href="${esc(quote.marketplaceURL)}" target="_blank" rel="noopener noreferrer">Open exact printing on Cardmarket ↗</a>`:''}</section>`:'<div class="market-empty compact"><strong>No current Cardmarket price</strong><span>TCGdex does not currently provide an exact price for this printing.</span></div>'}<div class="history-heading"><div><h3>Price history</h3><p>${allPoints.length} locally saved ${allPoints.length===1?'day':'days'} · exact printing only</p></div></div>${marketChart(points,currency)}${points.length?`<div class="summary-grid"><div><span>Current</span><strong>${esc(money(latest.amount,currency))}</strong></div><div><span>Change</span><strong class="${change>0?'up':change<0?'down':''}">${change==null?'—':(change>0?'+':'')+money(change,currency)}</strong><small>${percent==null?'':(percent>0?'+':'')+percent.toFixed(1)+'%'}</small></div><div><span>Low</span><strong>${esc(money(low,currency))}</strong></div><div><span>High</span><strong>${esc(money(high,currency))}</strong></div></div>`:''}<p class="market-note">Rolling averages come from TCGdex. Price history is stored locally on this iPhone when the exact printing refreshes; TallyDex never substitutes another variant or converts currencies.</p>`;document.querySelector('#market-variant').onchange=e=>{state.marketVariant=e.target.value;renderMarket();};root.querySelector('.range-picker').onclick=e=>{const button=e.target.closest('[data-market-range]');if(!button)return;state.marketRange=button.dataset.marketRange;renderMarket();};}
+        async function openMarket(card){state.marketCardID=card.id;state.marketData=null;state.marketVariant='';state.marketRange='30';document.querySelector('#market-title').textContent=card.name;document.querySelector('#market-subtitle').textContent=card.setName+' · #'+card.number+' · Cardmarket via TCGdex';document.querySelector('#market-content').innerHTML='<div class="loader"></div>';document.querySelector('#market-dialog').showModal();try{state.marketData=await api('/api/cards/'+encodeURIComponent(card.id)+'/market');if(state.marketCardID===card.id)renderMarket();}catch(err){document.querySelector('#market-content').innerHTML=`<div class="market-empty"><strong>Prices unavailable</strong><span>${esc(err.message)}</span></div>`;}}
         document.querySelector('#load').onclick=load;document.querySelector('#search').addEventListener('keydown',e=>{if(e.key==='Enter'){state.selectedSetID='';document.querySelector('#selected-set').textContent='Choose a set';load();}});
         document.querySelector('#choose-set').onclick=()=>{document.querySelector('#set-dialog').showModal();requestAnimationFrame(()=>document.querySelector('#set-search').focus());};
         document.querySelector('#set-search').oninput=renderSetList;document.querySelector('.set-scopes').onclick=e=>{const button=e.target.closest('[data-set-scope]');if(!button)return;state.setScope=button.dataset.setScope;document.querySelectorAll('[data-set-scope]').forEach(b=>b.classList.toggle('active',b===button));renderSetList();};
         document.querySelector('#set-list').onclick=e=>{const option=e.target.closest('[data-set-id]');if(!option)return;const set=state.sets.find(item=>item.id===option.dataset.setId);state.selectedSetID=set.id;document.querySelector('#selected-set').textContent=set.seriesName+' · '+set.name;document.querySelector('#search').value='';document.querySelector('#set-dialog').close();load();};
         document.querySelector('.filters').onclick=e=>{const button=e.target.closest('[data-filter]');if(!button)return;state.filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b===button));render();};
-        document.querySelector('#cards').addEventListener('click',async e=>{const article=e.target.closest('.card');if(!article)return;const card=state.cards.find(c=>c.id===article.dataset.id);try{const step=e.target.closest('[data-step]');if(step){const item=card.variants.find(v=>v.id===step.dataset.variant);await setQuantity(card,item.id,item.quantity+Number(step.dataset.step));article.querySelector(`[data-quantity="${CSS.escape(item.id)}"]`).textContent=item.quantity;return;}if(e.target.closest('[data-edit-meta]'))openMetadata(card);}catch(err){toast(err.message,true);render();}});
+        document.querySelector('#cards').addEventListener('click',async e=>{const article=e.target.closest('.card');if(!article)return;const card=state.cards.find(c=>c.id===article.dataset.id);try{const step=e.target.closest('[data-step]');if(step){const item=card.variants.find(v=>v.id===step.dataset.variant);await setQuantity(card,item.id,item.quantity+Number(step.dataset.step));article.querySelector(`[data-quantity="${CSS.escape(item.id)}"]`).textContent=item.quantity;return;}if(e.target.closest('[data-edit-meta]')){openMetadata(card);return;}if(e.target.closest('[data-open-market]'))openMarket(card);}catch(err){toast(err.message,true);render();}});
         document.querySelector('#cards').addEventListener('change',async e=>{if(!e.target.matches('[data-check]'))return;const article=e.target.closest('.card'),card=state.cards.find(c=>c.id===article.dataset.id);try{await setQuantity(card,e.target.dataset.variant,e.target.checked?1:0);}catch(err){toast(err.message,true);render();}});
         document.querySelector('#save-metadata').onclick=async()=>{const card=state.cards.find(c=>c.id===state.metadataCardID);if(!card)return;const wishlisted=document.querySelector('#metadata-wishlist').checked,notes=document.querySelector('#metadata-notes').value;try{await api('/api/cards/'+encodeURIComponent(card.id)+'/metadata',{method:'POST',body:JSON.stringify({wishlisted,notes})});card.wishlisted=wishlisted;card.notes=notes;document.querySelector('#metadata-dialog').close();render();toast('Wishlist and notes saved');}catch(err){toast(err.message,true);}};
+        document.querySelector('#grid-columns').onchange=saveLayout;document.querySelector('#grid-spacing').onchange=saveLayout;document.querySelector('[data-close-market]').onclick=()=>document.querySelector('#market-dialog').close();
         document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();}));
         start();
         </script></body></html>
@@ -650,8 +774,11 @@ final class LocalCollectionSharingController {
     """
 
     private static let editorCSS = """
-    header{display:flex;justify-content:space-between;align-items:center;padding:1rem 4vw;background:white;position:sticky;top:0;z-index:5;box-shadow:0 2px 20px #102a4320}header small{color:#66758a}.secure{font-weight:700;color:#18794e;background:#def7e7;padding:.55rem .8rem;border-radius:999px}.editor{width:min(94%,1400px);margin:1.5rem auto}.toolbar{display:flex;gap:1rem;align-items:end;background:white;padding:1rem;border-radius:18px}.grow{flex:1}.field label{margin-top:0}.select-button{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;background:white;color:#14213d;border:1px solid #cad2df;font-weight:500;padding:.8rem}.statusbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 0;color:#536277}.filters,.set-scopes{display:flex;background:#e2e7ef;border-radius:12px;padding:3px}.filters button,.set-scopes button{background:transparent;color:#344054;padding:.55rem .9rem}.filters button.active,.set-scopes button.active{background:white;color:#087fe8;box-shadow:0 2px 7px #1112}.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:1rem;align-items:start}.card{background:white;border-radius:20px;padding:1rem;box-shadow:0 7px 26px #102a4312}.cardtop{display:flex;gap:1rem;align-items:center}.cardtop img,.placeholder{width:74px;height:103px;object-fit:contain;border-radius:8px;background:#edf1f7}.placeholder{display:grid;place-items:center;font-weight:900;color:#087fe8}.card h2{font-size:1.1rem;margin:0 0 .35rem}.card p{margin:0;color:#6b778c}.variants{margin-top:1rem;border-top:1px solid #e8ebf0}.variant{min-height:48px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8ebf0}.check input{width:24px;height:24px}.stepper{display:flex;align-items:center;gap:.6rem}.stepper button{width:36px;height:36px;padding:0;font-size:1.3rem}.stepper strong{min-width:2ch;text-align:center}.metadata-button{width:100%;margin-top:1rem;background:#eef6ff;color:#075fae;display:flex;justify-content:space-between;align-items:center;text-align:left}.metadata-button small{color:#66758a;font-weight:500}.sheet{width:min(92vw,760px);max-height:86vh;border:0;border-radius:24px;padding:0;box-shadow:0 30px 100px #102a4355}.sheet::backdrop{background:#102a4366;backdrop-filter:blur(3px)}.dialog-shell{padding:1.25rem}.dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.dialog-heading h2{margin:0}.dialog-heading p{margin:.35rem 0 1rem;color:#66758a}.icon-button{flex:none;width:42px;height:42px;padding:0;border-radius:50%;font-size:1.6rem;background:#edf1f7;color:#344054}.set-scopes{margin:1rem 0;overflow-x:auto}.set-scopes button{white-space:nowrap}.set-list{max-height:55vh;overflow:auto;padding-right:.3rem}.set-group{margin:0 0 1rem}.set-group h3{position:sticky;top:0;margin:0;padding:.65rem .25rem;background:white;color:#536277;font-size:.9rem;text-transform:uppercase;letter-spacing:.04em}.set-option{width:100%;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-align:left;background:white;color:#14213d;border-top:1px solid #e8ebf0;border-radius:0;padding:.8rem .25rem}.set-option span:first-child{display:flex;flex-direction:column;gap:.15rem}.set-option small,.set-date{color:#66758a;font-weight:500}.set-date{white-space:nowrap}.metadata-sheet{width:min(92vw,560px)}.metadata-sheet label{display:block;font-weight:700;margin:1rem 0 .4rem}.wish{display:flex!important;align-items:center;gap:.65rem}.wish input{width:24px;height:24px}.metadata-sheet textarea{min-height:150px;resize:vertical}.dialog-actions{display:flex;justify-content:flex-end;gap:.7rem;margin-top:1rem}.secondary{background:#e8edf4;color:#344054}#toast{position:fixed;right:1rem;bottom:1rem;background:#14213d;color:white;padding:.8rem 1rem;border-radius:12px;opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:20}#toast.show{opacity:1;transform:none}#toast.bad{background:#b42318}.loader{width:42px;height:42px;border:5px solid #d8e9fb;border-top-color:#087fe8;border-radius:50%;animation:spin .8s linear infinite;margin:4rem auto}.empty{text-align:center;color:#66758a;padding:4rem}.empty.compact{padding:2rem}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:700px){.toolbar{flex-direction:column;align-items:stretch}.statusbar{align-items:flex-start;flex-direction:column}.cards{grid-template-columns:1fr}.secure{font-size:.8rem}.set-date{display:none}.metadata-button{align-items:flex-start;flex-direction:column;gap:.2rem}}
+    header{display:flex;justify-content:space-between;align-items:center;padding:1rem 4vw;background:white;position:sticky;top:0;z-index:5;box-shadow:0 2px 20px #102a4320}header small{color:#66758a}.secure{font-weight:700;color:#18794e;background:#def7e7;padding:.55rem .8rem;border-radius:999px}.editor{width:min(94%,1400px);margin:1.5rem auto}.toolbar{display:flex;gap:1rem;align-items:end;background:white;padding:1rem;border-radius:18px}.grow{flex:1}.field label{margin-top:0}.select-button{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;background:white;color:#14213d;border:1px solid #cad2df;font-weight:500;padding:.8rem}.statusbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 0;color:#536277}.view-tools{display:flex;align-items:center;gap:.7rem;margin-left:auto}.view-tools label{display:flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:700;white-space:nowrap}.view-tools select{width:auto;padding:.5rem 2rem .5rem .65rem}.filters,.set-scopes,.range-picker{display:flex;background:#e2e7ef;border-radius:12px;padding:3px}.filters button,.set-scopes button,.range-picker button{background:transparent;color:#344054;padding:.55rem .9rem}.filters button.active,.set-scopes button.active,.range-picker button.active{background:white;color:#087fe8;box-shadow:0 2px 7px #1112}.cards{--grid-columns:repeat(4,minmax(0,1fr));--card-gap:1rem;--card-padding:1rem;display:grid;grid-template-columns:var(--grid-columns);grid-auto-rows:1fr;gap:var(--card-gap);align-items:stretch}.cards[data-spacing="compact"]{--card-gap:.55rem;--card-padding:.7rem}.cards[data-spacing="spacious"]{--card-gap:1.5rem;--card-padding:1.3rem}.card{height:100%;display:flex;flex-direction:column;background:white;border-radius:20px;padding:var(--card-padding);box-shadow:0 7px 26px #102a4312;min-width:0}.cardtop{display:flex;gap:1rem;align-items:center;min-height:103px}.cardtop>div:last-child{min-width:0}.cardtop img,.placeholder{flex:none;width:74px;height:103px;object-fit:contain;border-radius:8px;background:#edf1f7}.placeholder{display:grid;place-items:center;font-weight:900;color:#087fe8}.card h2{font-size:1.1rem;margin:0 0 .35rem;overflow-wrap:anywhere}.card p{margin:0;color:#6b778c;overflow-wrap:anywhere}.variants{margin-top:1rem;border-top:1px solid #e8ebf0}.variant{min-height:48px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8ebf0}.check input{width:24px;height:24px}.stepper{display:flex;align-items:center;gap:.6rem}.stepper button{width:36px;height:36px;padding:0;font-size:1.3rem}.stepper strong{min-width:2ch;text-align:center}.card-actions{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:auto;padding-top:1rem}.metadata-button,.market-button{width:100%;min-width:0;background:#eef6ff;color:#075fae;display:flex;justify-content:space-between;align-items:flex-start;flex-direction:column;gap:.15rem;text-align:left;padding:.7rem}.metadata-button small,.market-button small{color:#66758a;font-weight:500}.market-button{background:#fff5d6;color:#725200}.sheet{width:min(92vw,760px);max-height:86vh;border:0;border-radius:24px;padding:0;box-shadow:0 30px 100px #102a4355}.sheet::backdrop{background:#102a4366;backdrop-filter:blur(3px)}.dialog-shell{padding:1.25rem}.dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.dialog-heading h2{margin:0}.dialog-heading p{margin:.35rem 0 1rem;color:#66758a}.icon-button{flex:none;width:42px;height:42px;padding:0;border-radius:50%;font-size:1.6rem;background:#edf1f7;color:#344054}.set-scopes{margin:1rem 0;overflow-x:auto}.set-scopes button{white-space:nowrap}.set-list{max-height:55vh;overflow:auto;padding-right:.3rem}.set-group{margin:0 0 1rem}.set-group h3{position:sticky;top:0;margin:0;padding:.65rem .25rem;background:white;color:#536277;font-size:.9rem;text-transform:uppercase;letter-spacing:.04em}.set-option{width:100%;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-align:left;background:white;color:#14213d;border-top:1px solid #e8ebf0;border-radius:0;padding:.8rem .25rem}.set-option span:first-child{display:flex;flex-direction:column;gap:.15rem}.set-option small,.set-date{color:#66758a;font-weight:500}.set-date{white-space:nowrap}.metadata-sheet{width:min(92vw,560px)}.metadata-sheet label{display:block;font-weight:700;margin:1rem 0 .4rem}.wish{display:flex!important;align-items:center;gap:.65rem}.wish input{width:24px;height:24px}.metadata-sheet textarea{min-height:150px;resize:vertical}.dialog-actions{display:flex;justify-content:flex-end;gap:.7rem;margin-top:1rem}.secondary{background:#e8edf4;color:#344054}.market-sheet{width:min(94vw,900px)}.market-controls{display:flex;justify-content:space-between;align-items:end;gap:1rem;margin-bottom:1rem}.market-controls label{font-weight:700}.market-controls select{margin-top:.35rem}.quote-panel{background:#f5f8fc;border-radius:18px;padding:1rem;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(320px,1.5fr);gap:1rem;align-items:center}.quote-panel>div:first-child{display:flex;flex-direction:column;gap:.25rem}.quote-panel>div:first-child>strong{font-size:2rem}.quote-panel span,.summary-grid span{color:#66758a;font-size:.85rem}.quote-panel small,.summary-grid small{color:#66758a}.averages{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}.averages div,.summary-grid div{display:flex;flex-direction:column;gap:.2rem;background:white;border-radius:12px;padding:.75rem}.market-link{grid-column:1/-1;color:#075fae;font-weight:700;text-decoration:none}.history-heading{display:flex;justify-content:space-between;align-items:end;margin:1.3rem 0 .4rem}.history-heading h3{margin:0}.history-heading p{margin:.25rem 0 0;color:#66758a}.chart{background:#f5f8fc;border-radius:16px;padding:.5rem}.chart svg{display:block;width:100%;height:auto;max-height:290px;overflow:visible}.chart line{stroke:#b8c4d4;stroke-width:1}.chart text{fill:#66758a;font-size:13px}.chart-area{fill:#cfe8ff;stroke:none}.chart-line{fill:none;stroke:#087fe8;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}.chart circle{fill:white;stroke:#087fe8;stroke-width:3}.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-top:.8rem}.summary-grid strong{font-size:1.15rem}.up{color:#18794e}.down{color:#b42318}.market-note{color:#66758a;font-size:.85rem;line-height:1.45}.market-empty{min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;text-align:center;color:#66758a}.market-empty strong{font-size:1.1rem;color:#344054}.market-empty.compact{min-height:auto;padding:1.2rem;background:#f5f8fc;border-radius:16px}#toast{position:fixed;right:1rem;bottom:1rem;background:#14213d;color:white;padding:.8rem 1rem;border-radius:12px;opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:20}#toast.show{opacity:1;transform:none}#toast.bad{background:#b42318}.loader{width:42px;height:42px;border:5px solid #d8e9fb;border-top-color:#087fe8;border-radius:50%;animation:spin .8s linear infinite;margin:4rem auto}.empty{text-align:center;color:#66758a;padding:4rem}.empty.compact{padding:2rem}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:900px){.statusbar{flex-wrap:wrap}.view-tools{order:3;width:100%;margin:0}.quote-panel{grid-template-columns:1fr}.market-link{grid-column:auto}}@media(max-width:700px){.toolbar{flex-direction:column;align-items:stretch}.statusbar{align-items:flex-start;flex-direction:column}.view-tools{align-items:flex-start;flex-wrap:wrap}.cards{grid-template-columns:1fr}.secure{font-size:.8rem}.set-date{display:none}.card-actions{grid-template-columns:1fr}.market-controls{align-items:stretch;flex-direction:column}.range-picker{width:100%}.range-picker button{flex:1}.averages,.summary-grid{grid-template-columns:1fr 1fr}}
     """
+
+    private static let browserGridColumnsKey = "browserEditorGridColumns"
+    private static let browserGridSpacingKey = "browserEditorGridSpacing"
 
     private static func browserCategory(for set: CatalogSet, seriesName: String) -> String {
         let normalizedSeries = seriesName.lowercased()
