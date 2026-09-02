@@ -68,6 +68,49 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(requestCount, 2)
     }
 
+    func testTCGdexCapsRetryAfterDelay() async throws {
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(), statusCode: 429, retryAfter: "3600"),
+            HTTPResponse(
+                data: Data(#"[{"id":"base","name":"Base"}]"#.utf8),
+                statusCode: 200,
+                retryAfter: nil
+            ),
+        ])
+        let delays = DurationRecorder()
+        let client = TCGdexClient(
+            httpClient: stub,
+            retryPolicy: .init(maximumAttempts: 2, baseDelay: .zero),
+            sleep: { duration in await delays.append(duration) }
+        )
+
+        _ = try await client.fetchSeriesIndex()
+
+        let recordedDelays = await delays.values
+        XCTAssertEqual(recordedDelays, [.seconds(30)])
+    }
+
+    func testTCGdexDoesNotRetryCancelledRequest() async {
+        let stub = CancelledHTTPClientStub()
+        let client = TCGdexClient(
+            httpClient: stub,
+            retryPolicy: .init(maximumAttempts: 3, baseDelay: .zero),
+            sleep: { _ in }
+        )
+
+        do {
+            _ = try await client.fetchSeriesIndex()
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Expected CancellationError, received \(error)")
+        }
+
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(requestCount, 1)
+    }
+
     func testTCGdexUsesETagForUnchangedCompleteCardIndex() async throws {
         let stub = HTTPClientStub(responses: [
             HTTPResponse(
@@ -1407,7 +1450,9 @@ final class CatalogFoundationTests: XCTestCase {
             category: .cardArtwork,
             offlineSetID: "set-one"
         )
-        let expected = Data(repeating: 7, count: 24)
+        let expected = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
 
         try await cache.storeOffline(expected, for: reference, setID: "set-one")
         try await cache.removeAll()
@@ -1417,11 +1462,65 @@ final class CatalogFoundationTests: XCTestCase {
         let statistics = await cache.offlineStatistics(setID: "set-one")
         XCTAssertEqual(restored, expected)
         XCTAssertEqual(statistics.fileCount, 1)
-        XCTAssertEqual(statistics.byteCount, 24)
+        XCTAssertEqual(statistics.byteCount, Int64(expected.count))
 
         try await cache.removeOfflineSet(setID: "set-one")
         let removedStatistics = await cache.offlineStatistics(setID: "set-one")
         XCTAssertEqual(removedStatistics, .empty)
+    }
+
+    func testArtworkCacheRejectsMalformedImageData() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = CatalogArtworkCache(rootDirectory: root)
+        let reference = CatalogArtworkReference(
+            url: URL(string: "https://assets.example/set")!,
+            category: .setLogos
+        )
+
+        do {
+            try await cache.storeOffline(Data("not an image".utf8), for: reference, setID: "set-one")
+            XCTFail("Expected malformed image data to be rejected")
+        } catch CatalogArtworkCacheError.invalidImageData {
+            // Expected.
+        } catch {
+            XCTFail("Expected invalidImageData, received \(error)")
+        }
+    }
+
+    func testArtworkCacheRepairsCorruptCachedFile() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imageData = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+        ])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub)
+        let reference = CatalogArtworkReference(
+            url: URL(string: "https://assets.example/set")!,
+            category: .setLogos
+        )
+
+        let initiallyCached = try await cache.data(for: reference)
+        XCTAssertEqual(initiallyCached, imageData)
+        let cacheDirectory = root.appendingPathComponent("set-logos", isDirectory: true)
+        let cachedFile = try XCTUnwrap(
+            FileManager.default.contentsOfDirectory(
+                at: cacheDirectory,
+                includingPropertiesForKeys: nil
+            ).first
+        )
+        try Data("broken".utf8).write(to: cachedFile, options: .atomic)
+
+        let repaired = try await cache.data(for: reference)
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(repaired, imageData)
+        XCTAssertEqual(requestCount, 2)
     }
 
     @MainActor
@@ -1486,6 +1585,23 @@ private actor HTTPClientStub: HTTPClient {
     func header(_ field: String, requestIndex: Int) -> String? {
         guard requests.indices.contains(requestIndex) else { return nil }
         return requests[requestIndex].value(forHTTPHeaderField: field)
+    }
+}
+
+private actor CancelledHTTPClientStub: HTTPClient {
+    private(set) var requestCount = 0
+
+    func send(_ request: URLRequest) async throws -> HTTPResponse {
+        requestCount += 1
+        throw CancellationError()
+    }
+}
+
+private actor DurationRecorder {
+    private(set) var values: [Duration] = []
+
+    func append(_ value: Duration) {
+        values.append(value)
     }
 }
 

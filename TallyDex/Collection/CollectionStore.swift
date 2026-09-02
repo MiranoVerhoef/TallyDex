@@ -111,6 +111,11 @@ final class CollectionStore {
     }
 
     func prepareImport(data: Data, filename: String) async throws -> PreparedCollectionImport {
+        guard data.count <= CollectionTransferCodec.maximumImportByteCount else {
+            throw CollectionRepositoryError.importTooLarge(
+                maximumByteCount: CollectionTransferCodec.maximumImportByteCount
+            )
+        }
         let document: PortableCollectionDocument
         do {
             document = try CollectionTransferCodec.decode(data)
@@ -139,11 +144,17 @@ final class CollectionStore {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
-            let data = try Data(contentsOf: url)
+            let data = try CollectionTransferCodec.readImportData(at: url)
             pendingExternalImport = try await prepareImport(
                 data: data,
                 filename: url.lastPathComponent
             )
+        } catch CollectionRepositoryError.importTooLarge(let maximumByteCount) {
+            let limit = ByteCountFormatter.string(
+                fromByteCount: Int64(maximumByteCount),
+                countStyle: .file
+            )
+            externalImportError = "That backup is larger than the \(limit) safety limit. No data was changed."
         } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
             externalImportError = "This backup uses schema version \(version), which this version of TallyDex can’t import."
         } catch {

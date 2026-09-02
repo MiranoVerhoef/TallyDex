@@ -80,8 +80,8 @@ individual downloads in Settings → Offline Sets.
 4. Browser-based mass collection editing — completed in v0.7.0
 5. Direct Cardmarket listings — integration boundary and preferences reserved in
    v0.8.0; activation waits for permitted official Cardmarket API access
-6. Final real-device, accessibility, performance, and v1.0 hardening — started
-   in v0.8.0
+6. Final real-device, accessibility, performance, and v1.0 hardening — continued
+   in v0.8.1
 7. Apple services after Developer Program enrollment: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
 8. Binder planner
 9. Fully on-device card scanner — last
@@ -135,6 +135,15 @@ access. This release also starts final hardening: local browser sharing stops
 whenever TallyDex is no longer active, tab labels respect the user's full
 Dynamic Type setting, and backup import plus browser-session generation no
 longer rely on forced unwraps.
+
+v0.8.1 makes failures explicit and recoverable. Catalog search now distinguishes
+an unavailable service from a genuine zero-result search and offers Try Again;
+empty catalog and set screens offer the same recovery path. Cancelled requests
+stop immediately, while server-requested retry delays are capped at 30 seconds.
+Artwork is decoded before it is cached, and corrupt cached images are removed and
+downloaded again automatically. Backup imports are preflighted with a 25 MB safety
+limit before their contents are loaded, and foreground activation no longer starts
+duplicate artwork work.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average

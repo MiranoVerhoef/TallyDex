@@ -88,6 +88,27 @@ struct PreparedCollectionImport: Identifiable, Sendable {
 }
 
 enum CollectionTransferCodec {
+    static let maximumImportByteCount = 25 * 1_024 * 1_024
+
+    static func readImportData(at url: URL) throws -> Data {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        guard values.isRegularFile == true else {
+            throw CollectionRepositoryError.invalidImport
+        }
+        if let fileSize = values.fileSize, fileSize > maximumImportByteCount {
+            throw CollectionRepositoryError.importTooLarge(
+                maximumByteCount: maximumImportByteCount
+            )
+        }
+        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        guard data.count <= maximumImportByteCount else {
+            throw CollectionRepositoryError.importTooLarge(
+                maximumByteCount: maximumImportByteCount
+            )
+        }
+        return data
+    }
+
     static func encode(_ document: PortableCollectionDocument) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

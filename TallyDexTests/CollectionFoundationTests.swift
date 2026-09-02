@@ -640,6 +640,23 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(metadata.notes, "Binder page 3")
     }
 
+    @MainActor
+    func testOversizedBackupIsRejectedBeforeDecoding() async throws {
+        let store = CollectionStore(
+            repository: GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        )
+        let oversized = Data(count: CollectionTransferCodec.maximumImportByteCount + 1)
+
+        do {
+            _ = try await store.prepareImport(data: oversized, filename: "too-large.pokecollection")
+            XCTFail("Expected the oversized backup to be rejected")
+        } catch CollectionRepositoryError.importTooLarge(let maximumByteCount) {
+            XCTAssertEqual(maximumByteCount, CollectionTransferCodec.maximumImportByteCount)
+        } catch {
+            XCTFail("Expected importTooLarge, received \(error)")
+        }
+    }
+
     func testMergeIsIdempotentAndKeepsNewerLocalConflict() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let older = Date(timeIntervalSince1970: 100)
