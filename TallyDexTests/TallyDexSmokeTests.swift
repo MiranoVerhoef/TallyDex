@@ -30,4 +30,23 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertTrue(UTType.tallyDexCollection.conforms(to: .json))
         XCTAssertEqual(UTType.tallyDexCollection.preferredFilenameExtension, "pokecollection")
     }
+
+    func testFutureCardmarketCurrenciesRemainExplicit() {
+        XCTAssertEqual(
+            CardmarketCurrencyPreference.allCases.map(\.rawValue),
+            ["EUR", "USD"]
+        )
+        XCTAssertEqual(PricingSettings.defaultCardmarketCurrency, .eur)
+    }
+
+    func testFutureCardmarketCountryMappingUsesOfficialSellerIdentifiers() {
+        XCTAssertNil(CardmarketCountryPreference.all.cardmarketSellerCountryID)
+        XCTAssertEqual(CardmarketCountryPreference.netherlands.cardmarketSellerCountryID, 23)
+        XCTAssertEqual(CardmarketCountryPreference.unitedKingdom.cardmarketSellerCountryID, 13)
+        XCTAssertEqual(CardmarketCountryPreference.iceland.cardmarketSellerCountryID, 37)
+        XCTAssertEqual(
+            Set(CardmarketCountryPreference.allCases.compactMap(\.cardmarketSellerCountryID)).count,
+            CardmarketCountryPreference.allCases.count - 1
+        )
+    }
 }

@@ -3507,6 +3507,8 @@ struct SettingsView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @AppStorage(PricingSettings.cardmarketCountryKey)
     private var cardmarketCountry = CardmarketCountryPreference.all.rawValue
+    @AppStorage(PricingSettings.cardmarketCurrencyKey)
+    private var cardmarketCurrency = PricingSettings.defaultCardmarketCurrency.rawValue
     @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
 
     var body: some View {
@@ -3605,19 +3607,37 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
-
-                    if CatalogPriceSource(rawValue: preferredPriceSource) == .cardmarket {
-                        Picker("Listing country", selection: $cardmarketCountry) {
-                            ForEach(CardmarketCountryPreference.allCases) { country in
-                                Text(country.displayName).tag(country.rawValue)
-                            }
-                        }
-                        .pickerStyle(.navigationLink)
-                    }
                 } header: {
                     Text("Prices")
                 } footer: {
-                    Text("Prices come through TCGdex and use each marketplace’s native currency. Exact per-printing marketplace IDs are used when TCGdex provides them. Cardmarket’s current TCGdex values are Europe-wide market aggregates; the listing-country preference is saved for seller-listing support and does not filter the aggregate yet.")
+                    Text("Prices come through TCGdex and use each marketplace’s native currency. Exact per-printing marketplace IDs are used when TCGdex provides them.")
+                }
+
+                Section {
+                    LabeledContent {
+                        Text("Waiting for access")
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        Label("Official API", systemImage: "hourglass")
+                    }
+
+                    Picker("Seller country", selection: $cardmarketCountry) {
+                        ForEach(CardmarketCountryPreference.allCases) { country in
+                            Text(country.displayName).tag(country.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+
+                    Picker("Display currency", selection: $cardmarketCurrency) {
+                        ForEach(CardmarketCurrencyPreference.allCases) { currency in
+                            Text(currency.displayName).tag(currency.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                } header: {
+                    Text("Future Cardmarket Listings")
+                } footer: {
+                    Text("Reserved for when TallyDex can obtain permitted official Cardmarket API access. These choices are saved now, but do not filter or convert the current Europe-wide TCGdex aggregates.")
                 }
 
                 Section("Storage") {
@@ -3769,7 +3789,7 @@ private struct LocalCollectionSharingView: View {
             } header: {
                 Text("Local Session")
             } footer: {
-                Text("Starting creates a collection backup first. The six-digit code and browser session are replaced each time sharing starts.")
+                Text("Starting creates a collection backup first. The six-digit code and browser session are replaced each time sharing starts. Sharing stops automatically whenever TallyDex is no longer active.")
             }
 
             if let message = sharing.statusMessage {
@@ -3794,7 +3814,7 @@ private struct LocalCollectionSharingView: View {
             }
 
             Section("Privacy & Safety") {
-                Text("The server runs only inside TallyDex and stops when you tap Stop or the app is fully closed. Pairing is protected by a temporary code, a private browser cookie, and a per-session editing token. Requests do not enable cross-origin access.")
+                Text("The server runs only inside TallyDex and stops when you tap Stop, leave the app, or fully close it. Pairing is protected by a temporary code, a private browser cookie, and a per-session editing token. Requests do not enable cross-origin access.")
             }
         }
         .navigationTitle("Browser Editor")

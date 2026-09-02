@@ -195,9 +195,11 @@ enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
 enum PricingSettings {
     static let sourceKey = "pricing.preferredSource"
     static let cardmarketCountryKey = "pricing.cardmarket.country"
+    static let cardmarketCurrencyKey = "pricing.cardmarket.currency"
     static let historyRetentionKey = "pricing.history.retention"
     static let foreverHistorySizeLimitKey = "pricing.history.foreverSizeLimit"
     static let defaultSource = CatalogPriceSource.cardmarket
+    static let defaultCardmarketCurrency = CardmarketCurrencyPreference.eur
     static let defaultHistoryRetention = CatalogPriceHistoryRetention.oneYear
     static let defaultForeverHistorySizeLimit = CatalogPriceHistorySizeLimit.mb50
     static let timeBasedMaximumHistoryPointCount = 250_000
@@ -298,20 +300,30 @@ enum CardmarketCountryPreference: String, CaseIterable, Identifiable, Sendable {
     case all
     case austria = "AT"
     case belgium = "BE"
+    case bulgaria = "BG"
+    case croatia = "HR"
+    case cyprus = "CY"
     case czechia = "CZ"
     case denmark = "DK"
+    case estonia = "EE"
     case finland = "FI"
     case france = "FR"
     case germany = "DE"
     case greece = "GR"
     case hungary = "HU"
+    case iceland = "IS"
     case ireland = "IE"
     case italy = "IT"
+    case latvia = "LV"
+    case liechtenstein = "LI"
+    case lithuania = "LT"
     case luxembourg = "LU"
+    case malta = "MT"
     case netherlands = "NL"
     case norway = "NO"
     case poland = "PL"
     case portugal = "PT"
+    case romania = "RO"
     case slovakia = "SK"
     case slovenia = "SI"
     case spain = "ES"
@@ -325,6 +337,92 @@ enum CardmarketCountryPreference: String, CaseIterable, Identifiable, Sendable {
         guard self != .all else { return "All countries" }
         return Locale.current.localizedString(forRegionCode: rawValue) ?? rawValue
     }
+
+    /// Reserved for Cardmarket's seller-country filter when new third-party API
+    /// applications are accepted again. Current TCGdex aggregates ignore it.
+    var cardmarketSellerCountryID: Int? {
+        switch self {
+        case .all: nil
+        case .austria: 1
+        case .belgium: 2
+        case .bulgaria: 3
+        case .switzerland: 4
+        case .cyprus: 5
+        case .czechia: 6
+        case .germany: 7
+        case .denmark: 8
+        case .estonia: 9
+        case .spain: 10
+        case .finland: 11
+        case .france: 12
+        case .unitedKingdom: 13
+        case .greece: 14
+        case .hungary: 15
+        case .ireland: 16
+        case .italy: 17
+        case .liechtenstein: 18
+        case .lithuania: 19
+        case .luxembourg: 20
+        case .latvia: 21
+        case .malta: 22
+        case .netherlands: 23
+        case .norway: 24
+        case .poland: 25
+        case .portugal: 26
+        case .romania: 27
+        case .sweden: 28
+        case .slovenia: 30
+        case .slovakia: 31
+        case .croatia: 35
+        case .iceland: 37
+        }
+    }
+}
+
+enum CardmarketCurrencyPreference: String, CaseIterable, Identifiable, Sendable {
+    case eur = "EUR"
+    case usd = "USD"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .eur: "Euro (EUR)"
+        case .usd: "US Dollar (USD)"
+        }
+    }
+}
+
+struct CardmarketListingPreferences: Equatable, Sendable {
+    let country: CardmarketCountryPreference
+    let currency: CardmarketCurrencyPreference
+}
+
+struct CardmarketListingRequest: Equatable, Sendable {
+    let productID: Int
+    let preferences: CardmarketListingPreferences
+}
+
+struct CardmarketListing: Equatable, Identifiable, Sendable {
+    let id: Int
+    let productID: Int
+    let sellerCountryCode: String
+    let currencyCode: String
+    let amount: Double
+    let condition: String?
+    let language: String?
+    let isFoil: Bool
+    let isReverseHolo: Bool
+}
+
+enum CardmarketListingAvailability: Equatable, Sendable {
+    case waitingForOfficialAPI
+    case available
+}
+
+protocol CardmarketListingProvider: Sendable {
+    var availability: CardmarketListingAvailability { get }
+    func listings(for request: CardmarketListingRequest) async throws -> [CardmarketListing]
 }
 
 struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {

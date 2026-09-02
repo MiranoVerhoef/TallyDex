@@ -78,8 +78,10 @@ individual downloads in Settings → Offline Sets.
 2. Performance and accessibility hardening — completed in v0.6.0
 3. Remove the 100-result ceiling from stamped-variant searches — completed in v0.6.2
 4. Browser-based mass collection editing — completed in v0.7.0
-5. Direct Cardmarket listing preferences, including country and currency
-6. Final real-device, accessibility, performance, and v1.0 hardening
+5. Direct Cardmarket listings — integration boundary and preferences reserved in
+   v0.8.0; activation waits for permitted official Cardmarket API access
+6. Final real-device, accessibility, performance, and v1.0 hardening — started
+   in v0.8.0
 7. Apple services after Developer Program enrollment: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
 8. Binder planner
 9. Fully on-device card scanner — last
@@ -125,6 +127,15 @@ Cardmarket product link. Wishlist and notes remain in their own focused dialog.
 The set chooser is searchable, grouped by series, and filterable into Main
 sets, Promos & subsets, and Other collections.
 
+v0.8.0 reserves the direct Cardmarket listing integration without scraping or
+pretending that current aggregate prices are seller listings. Settings now save
+an official seller-country choice and EUR or USD display preference, while a
+provider boundary is ready to connect once Cardmarket accepts permitted API
+access. This release also starts final hardening: local browser sharing stops
+whenever TallyDex is no longer active, tab labels respect the user's full
+Dynamic Type setting, and backup import plus browser-session generation no
+longer rely on forced unwraps.
+
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
 values, but not 30 individual daily price points; TallyDex therefore builds its
@@ -139,11 +150,12 @@ confirmation that explains what will and will not change.
 When TCGdex supplies Cardmarket's product identifier, card details include an
 **Open on Cardmarket** button that opens the matching marketplace product page.
 
-Country-specific listings and optional currency conversion remain planned for
-a later direct marketplace integration. Settings already lets you save an All
-Countries or country-specific Cardmarket listing preference so that choice is
-ready when seller-level listing support is added; it does not alter TCGdex's
-current Europe-wide aggregate.
+Country-specific listings and optional currency conversion are explicitly
+reserved for when TallyDex can obtain permitted official Cardmarket API access.
+Settings already saves an All Countries or official seller-country preference
+plus EUR or USD, so enabling the provider later will not require a data
+migration. These choices do not filter or convert TCGdex's current Europe-wide
+aggregate.
 
 ## Reporting catalog data
 

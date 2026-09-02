@@ -33,6 +33,10 @@ struct TallyDexApp: App {
                 .task {
                     await collectionStore.start()
                 }
+                .onChange(of: scenePhase) { _, newPhase in
+                    guard newPhase != .active, localCollectionSharing.isRunning else { return }
+                    localCollectionSharing.stop()
+                }
                 .task(id: scenePhase) {
                     guard scenePhase == .active else { return }
                     await catalogStore.refreshIfNeeded()
