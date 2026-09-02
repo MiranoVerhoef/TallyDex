@@ -190,10 +190,10 @@ final class LocalHTTPServer: @unchecked Sendable {
     }
 
     func stop() {
-        queue.async { [weak self] in
-            self?.listener?.cancel()
-            self?.listener = nil
-            self?.handler = nil
+        queue.sync {
+            listener?.cancel()
+            listener = nil
+            handler = nil
         }
     }
 
@@ -719,7 +719,9 @@ final class LocalCollectionSharingController {
     """
 
     private static func editorHTML(csrfToken: String) -> String {
-        let csrfJSON = String(data: try! JSONEncoder().encode(csrfToken), encoding: .utf8)!
+        let csrfJSON = (try? JSONEncoder().encode(csrfToken))
+            .flatMap { String(data: $0, encoding: .utf8) }
+            ?? "\"\""
         return """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
         <title>TallyDex Browser Editor</title><style>\(sharedCSS)\(editorCSS)</style></head><body>

@@ -755,8 +755,10 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
     ) throws {
         let currentOwnership = Dictionary(uniqueKeysWithValues: current.ownership.map { ("\($0.cardID)|\($0.variant.rawValue)", $0) })
         for item in incoming.ownership {
-            let saved = currentOwnership["\(item.cardID)|\(item.variant.rawValue)"]
-            guard saved == nil || item.updatedAt > saved!.updatedAt else { continue }
+            if let saved = currentOwnership["\(item.cardID)|\(item.variant.rawValue)"],
+               item.updatedAt <= saved.updatedAt {
+                continue
+            }
             try database.execute(
                 sql: """
                 INSERT INTO collectionVariant (cardID, variant, quantity, updatedAt) VALUES (?, ?, ?, ?)
@@ -769,7 +771,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         let currentPreferences = Dictionary(uniqueKeysWithValues: current.setPreferences.map { ($0.setID, $0) })
         let encoder = JSONEncoder()
         for item in incoming.setPreferences {
-            guard currentPreferences[item.setID] == nil || item.updatedAt > currentPreferences[item.setID]!.updatedAt else { continue }
+            if let saved = currentPreferences[item.setID], item.updatedAt <= saved.updatedAt {
+                continue
+            }
             let variantsJSON = String(data: try encoder.encode(item.includedVariants.map(\.rawValue).sorted()), encoding: .utf8)
             try database.execute(
                 sql: """
@@ -785,7 +789,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
 
         let currentFolders = Dictionary(uniqueKeysWithValues: current.folders.map { ($0.id, $0) })
         for item in incoming.folders {
-            guard currentFolders[item.id] == nil || item.updatedAt > currentFolders[item.id]!.updatedAt else { continue }
+            if let saved = currentFolders[item.id], item.updatedAt <= saved.updatedAt {
+                continue
+            }
             try database.execute(
                 sql: """
                 INSERT INTO customCollectionFolder (id, name, cardNameQuery, displayMode, createdAt, updatedAt)
@@ -799,7 +805,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
 
         let currentMetadata = Dictionary(uniqueKeysWithValues: current.cardMetadata.map { ($0.cardID, $0) })
         for item in incoming.cardMetadata {
-            guard currentMetadata[item.cardID] == nil || item.updatedAt > currentMetadata[item.cardID]!.updatedAt else { continue }
+            if let saved = currentMetadata[item.cardID], item.updatedAt <= saved.updatedAt {
+                continue
+            }
             try database.execute(
                 sql: """
                 INSERT INTO collectionCardMetadata (cardID, isWishlisted, notes, updatedAt) VALUES (?, ?, ?, ?)

@@ -17,28 +17,24 @@ struct RootTabView: View {
                 SetsView()
             } label: {
                 Label("Sets", systemImage: "square.grid.2x2")
-                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
 
             Tab(value: .search) {
                 SearchView()
             } label: {
                 Label("Search", systemImage: "magnifyingglass")
-                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
 
             Tab(value: .collection) {
                 CollectionView()
             } label: {
                 Label("Collection", systemImage: "rectangle.stack")
-                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
 
             Tab(value: .settings) {
                 SettingsView()
             } label: {
                 Label("Settings", systemImage: "gearshape")
-                    .dynamicTypeSize(...DynamicTypeSize.large)
             }
         }
         .onChange(of: collectionStore.pendingExternalImport?.id) { _, id in
