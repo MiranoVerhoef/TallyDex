@@ -293,11 +293,17 @@ struct SetsView: View {
             ProgressView("Loading saved catalog…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if selectedScope == .all && catalogStore.groups.isEmpty {
-            ContentUnavailableView(
-                "Catalog Unavailable",
-                systemImage: "wifi.exclamationmark",
-                description: Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
-            )
+            ContentUnavailableView {
+                Label("Catalog Unavailable", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
+            } actions: {
+                Button("Try Again") {
+                    Task { await catalogStore.refresh() }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(catalogStore.isRefreshing)
+            }
         } else if scopedGroups.isEmpty {
             ContentUnavailableView(
                 selectedScope.title,
@@ -986,11 +992,20 @@ private struct CatalogSetDetailView: View {
                     ProgressView("Updating card list…")
                         .frame(maxWidth: .infinity, minHeight: 220)
                 } else if cards.isEmpty {
-                    ContentUnavailableView(
-                        set.isUpcoming() ? "Cards Not Announced Yet" : "Card List Unavailable",
-                        systemImage: "rectangle.grid.3x2",
-                        description: Text(cardMessage ?? "Pull down to check for this set’s cards again.")
-                    )
+                    ContentUnavailableView {
+                        Label(
+                            set.isUpcoming() ? "Cards Not Announced Yet" : "Card List Unavailable",
+                            systemImage: "rectangle.grid.3x2"
+                        )
+                    } description: {
+                        Text(cardMessage ?? "Check for this set’s cards again.")
+                    } actions: {
+                        Button(set.isUpcoming() ? "Check Again" : "Try Again") {
+                            Task { await loadCards(forceRefresh: true) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isLoadingCards)
+                    }
                 } else {
                     Picker("Cards", selection: $selectedFilter) {
                         ForEach(SetCardFilter.allCases) { filter in
@@ -2455,6 +2470,8 @@ struct SearchView: View {
     @State private var results: [CatalogCardSearchResult] = []
     @State private var isSearching = false
     @State private var searchMessage: String?
+    @State private var searchFailureMessage: String?
+    @State private var searchAttempt = 0
     @State private var ownershipFilter = CollectionOwnershipFilter.all
     @State private var selectedSetName = ""
     @State private var selectedReleaseYear = 0
@@ -2529,6 +2546,17 @@ struct SearchView: View {
                         systemImage: "line.3.horizontal.decrease.circle",
                         description: Text(searchMessage)
                     )
+                } else if let searchFailureMessage {
+                    ContentUnavailableView {
+                        Label("Search Unavailable", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(searchFailureMessage)
+                    } actions: {
+                        Button("Try Again") {
+                            searchAttempt += 1
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else if results.isEmpty {
                     ContentUnavailableView.search(text: query)
                 } else if visibleResults.isEmpty {
@@ -2548,13 +2576,16 @@ struct SearchView: View {
                     searchFilterMenu
                 }
             }
-            .task(id: "\(query)|\(catalogStore.isPreparingSearchIndex)") {
+            .task(id: "\(query)|\(catalogStore.isPreparingSearchIndex)|\(searchAttempt)") {
                 guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     results = []
+                    searchMessage = nil
+                    searchFailureMessage = nil
                     return
                 }
                 isSearching = true
                 searchMessage = nil
+                searchFailureMessage = nil
                 defer { isSearching = false }
                 try? await Task.sleep(for: .milliseconds(250))
                 guard !Task.isCancelled else { return }
@@ -2563,8 +2594,11 @@ struct SearchView: View {
                 } catch CatalogSearchError.variantQueryTooBroad(let candidateCount) {
                     results = []
                     searchMessage = "That term matches \(candidateCount) cards. Add a full Pokémon name, set, or collector number before prerelease or staff so TallyDex does not download hundreds of unrelated records."
+                } catch is CancellationError {
+                    return
                 } catch {
                     results = []
+                    searchFailureMessage = "TallyDex couldn’t search the saved catalog. Check your connection or storage, then try again."
                 }
             }
         }
@@ -3897,7 +3931,7 @@ private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             do {
                 onResult(.success(CollectionBackupSelection(
-                    data: try Data(contentsOf: url),
+                    data: try CollectionTransferCodec.readImportData(at: url),
                     filename: url.lastPathComponent
                 )))
             } catch {
@@ -3992,6 +4026,12 @@ private struct CollectionDataTransferView: View {
                 switch result {
                 case .success(let selection):
                     stagedImportSelection = selection
+                case .failure(CollectionRepositoryError.importTooLarge(let maximumByteCount)):
+                    let limit = ByteCountFormatter.string(
+                        fromByteCount: Int64(maximumByteCount),
+                        countStyle: .file
+                    )
+                    importError = "That backup is larger than the \(limit) safety limit. No data was changed."
                 case .failure:
                     importError = "That file couldn’t be opened."
                 }
@@ -4058,6 +4098,12 @@ private struct CollectionDataTransferView: View {
                     data: selection.data,
                     filename: selection.filename
                 )
+            } catch CollectionRepositoryError.importTooLarge(let maximumByteCount) {
+                let limit = ByteCountFormatter.string(
+                    fromByteCount: Int64(maximumByteCount),
+                    countStyle: .file
+                )
+                importError = "That backup is larger than the \(limit) safety limit. No data was changed."
             } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
                 importError = "This backup uses schema version \(version), which this version of TallyDex can’t import."
             } catch {

@@ -362,5 +362,6 @@ enum CollectionRepositoryError: Error, Equatable {
     case invalidCustomFolder
     case invalidBackup
     case invalidImport
+    case importTooLarge(maximumByteCount: Int)
     case unsupportedImportVersion(Int)
 }

@@ -171,6 +171,8 @@ struct TCGdexClient: CatalogProvider, Sendable {
             let response: HTTPResponse
             do {
                 response = try await httpClient.send(request)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 guard attempt < retryPolicy.maximumAttempts else {
                     throw TCGdexError.transport(String(describing: error))
@@ -214,7 +216,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
         guard let header, let seconds = Double(header), seconds >= 0 else {
             return retryPolicy.baseDelay
         }
-        return .milliseconds(Int64(seconds * 1_000))
+        return .milliseconds(Int64(min(seconds, 30) * 1_000))
     }
 }
 

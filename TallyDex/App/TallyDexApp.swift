@@ -34,13 +34,16 @@ struct TallyDexApp: App {
                     await collectionStore.start()
                 }
                 .onChange(of: scenePhase) { _, newPhase in
-                    guard newPhase != .active, localCollectionSharing.isRunning else { return }
-                    localCollectionSharing.stop()
-                }
-                .task(id: scenePhase) {
-                    guard scenePhase == .active else { return }
-                    await catalogStore.refreshIfNeeded()
-                    await artworkCacheStore.prefetch(groups: catalogStore.groups)
+                    if newPhase != .active {
+                        if localCollectionSharing.isRunning {
+                            localCollectionSharing.stop()
+                        }
+                        return
+                    }
+                    Task {
+                        await catalogStore.refreshIfNeeded()
+                        await artworkCacheStore.prefetch(groups: catalogStore.groups)
+                    }
                 }
                 .onOpenURL { url in
                     Task { await collectionStore.openExternalBackup(at: url) }

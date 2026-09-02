@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ImageIO
 import Observation
 
 enum CatalogArtworkCategory: String, CaseIterable, Identifiable, Sendable {
@@ -92,6 +93,7 @@ enum CatalogOfflineSetEstimator {
 enum CatalogArtworkCacheError: Error {
     case invalidResponse
     case emptyData
+    case invalidImageData
 }
 
 actor CatalogArtworkCache {
@@ -102,15 +104,18 @@ actor CatalogArtworkCache {
     private let rootDirectory: URL
     private let offlineRootDirectory: URL
     private let maximumByteCount: Int64
+    private let httpClient: any HTTPClient
 
     init(
         rootDirectory: URL? = nil,
         offlineRootDirectory: URL? = nil,
         fileManager: FileManager = .default,
-        maximumByteCount: Int64 = CatalogArtworkCache.maximumByteCount
+        maximumByteCount: Int64 = CatalogArtworkCache.maximumByteCount,
+        httpClient: any HTTPClient = URLSessionHTTPClient()
     ) {
         self.fileManager = fileManager
         self.maximumByteCount = maximumByteCount
+        self.httpClient = httpClient
         let resolvedRootDirectory = rootDirectory
             ?? fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("TallyDexArtwork", isDirectory: true)
@@ -139,16 +144,25 @@ actor CatalogArtworkCache {
         resolvedAssetURL(url, category: .setLogos)
     }
 
+    static func isValidImageData(_ data: Data) -> Bool {
+        guard !data.isEmpty,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0 else {
+            return false
+        }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
+    }
+
     func data(for reference: CatalogArtworkReference) async throws -> Data {
         if let offlineSetID = reference.offlineSetID {
             let offlineURL = offlineFileURL(for: reference, setID: offlineSetID)
-            if let offline = try? Data(contentsOf: offlineURL), !offline.isEmpty {
+            if let offline = validCachedData(at: offlineURL) {
                 return offline
             }
         }
 
         let fileURL = cachedFileURL(for: reference)
-        if let cached = try? Data(contentsOf: fileURL), !cached.isEmpty {
+        if let cached = validCachedData(at: fileURL) {
             try? fileManager.setAttributes(
                 [.modificationDate: Date()],
                 ofItemAtPath: fileURL.path
@@ -157,18 +171,23 @@ actor CatalogArtworkCache {
         }
 
         let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
-        let (data, response) = try await URLSession.shared.data(from: sourceURL)
-        guard let response = response as? HTTPURLResponse,
-              (200..<300).contains(response.statusCode) else {
+        var request = URLRequest(url: sourceURL)
+        request.timeoutInterval = 20
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        let response = try await httpClient.send(request)
+        guard (200..<300).contains(response.statusCode) else {
             throw CatalogArtworkCacheError.invalidResponse
         }
-        guard !data.isEmpty else { throw CatalogArtworkCacheError.emptyData }
+        guard !response.data.isEmpty else { throw CatalogArtworkCacheError.emptyData }
+        guard Self.isValidImageData(response.data) else {
+            throw CatalogArtworkCacheError.invalidImageData
+        }
 
         let directory = directory(for: reference.category)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        try data.write(to: fileURL, options: .atomic)
+        try response.data.write(to: fileURL, options: .atomic)
         try trimIfNeeded()
-        return data
+        return response.data
     }
 
     @discardableResult
@@ -178,6 +197,9 @@ actor CatalogArtworkCache {
         setID: String
     ) throws -> Int64 {
         guard !data.isEmpty else { throw CatalogArtworkCacheError.emptyData }
+        guard Self.isValidImageData(data) else {
+            throw CatalogArtworkCacheError.invalidImageData
+        }
         let directory = offlineDirectory(for: setID)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         var values = URLResourceValues()
@@ -195,23 +217,24 @@ actor CatalogArtworkCache {
         setID: String
     ) async throws -> Int64 {
         let offlineURL = offlineFileURL(for: reference, setID: setID)
-        if let values = try? offlineURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-           values.isRegularFile == true {
-            return Int64(values.fileSize ?? 0)
+        if let offline = validCachedData(at: offlineURL) {
+            return Int64(offline.count)
         }
 
         let cachedURL = cachedFileURL(for: reference)
-        if let cached = try? Data(contentsOf: cachedURL), !cached.isEmpty {
+        if let cached = validCachedData(at: cachedURL) {
             return try storeOffline(cached, for: reference, setID: setID)
         }
 
         let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
-        let (data, response) = try await URLSession.shared.data(from: sourceURL)
-        guard let response = response as? HTTPURLResponse,
-              (200..<300).contains(response.statusCode) else {
+        var request = URLRequest(url: sourceURL)
+        request.timeoutInterval = 20
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        let response = try await httpClient.send(request)
+        guard (200..<300).contains(response.statusCode) else {
             throw CatalogArtworkCacheError.invalidResponse
         }
-        return try storeOffline(data, for: reference, setID: setID)
+        return try storeOffline(response.data, for: reference, setID: setID)
     }
 
     func offlineStatistics(setID: String) -> CatalogOfflineSetStatistics {
@@ -316,6 +339,15 @@ actor CatalogArtworkCache {
 
     private func cachedFileURL(for reference: CatalogArtworkReference) -> URL {
         directory(for: reference.category).appendingPathComponent(cacheFileName(for: reference))
+    }
+
+    private func validCachedData(at url: URL) -> Data? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard Self.isValidImageData(data) else {
+            try? fileManager.removeItem(at: url)
+            return nil
+        }
+        return data
     }
 
     private func cacheFileName(for reference: CatalogArtworkReference) -> String {
