@@ -3,8 +3,9 @@ import UniformTypeIdentifiers
 @testable import TallyDex
 
 final class TallyDexSmokeTests: XCTestCase {
-    func testPrimaryNavigationHasFourTabs() {
-        XCTAssertEqual(AppTab.allCases.count, 4)
+    func testPrimaryNavigationIncludesCameraTab() {
+        XCTAssertEqual(AppTab.allCases.count, 5)
+        XCTAssertTrue(AppTab.allCases.contains(.camera))
     }
 
     func testSetsScopeOffersAllExpectedViews() {
@@ -29,6 +30,14 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertEqual(UTType.tallyDexCollection.identifier, PortableCollectionDocument.formatIdentifier)
         XCTAssertTrue(UTType.tallyDexCollection.conforms(to: .json))
         XCTAssertEqual(UTType.tallyDexCollection.preferredFilenameExtension, "pokecollection")
+    }
+
+    func testSharedCardDeepLinkRoundTripsCardIdentifier() {
+        let url = CardDeepLink.url(cardID: "me02.5-076")
+
+        XCTAssertEqual(url.absoluteString, "tallydex://card/me02.5-076")
+        XCTAssertEqual(CardDeepLink.cardID(from: url), "me02.5-076")
+        XCTAssertNil(CardDeepLink.cardID(from: URL(string: "https://example.com/card")!))
     }
 
     func testFutureCardmarketCurrenciesRemainExplicit() {

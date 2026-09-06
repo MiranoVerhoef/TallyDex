@@ -831,6 +831,65 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(downloadedSetIDs, ["sv01"])
     }
 
+    func testRepositorySearchesCollectorNumberWithOfficialSetCount() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil)
+        let ascendedHeroes = CatalogSet(
+            id: "me02.5",
+            seriesID: "me",
+            name: "Ascended Heroes",
+            abbreviation: "ASC",
+            logoURL: nil,
+            symbolURL: nil,
+            officialCardCount: 217,
+            totalCardCount: 295,
+            releaseDate: nil,
+            rarityCounts: nil
+        )
+        let card = CatalogCard(
+            id: "me02.5-076",
+            setID: "me02.5",
+            localID: "076",
+            name: "Lillie's Clefairy ex",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [ascendedHeroes]),
+        ])
+        try await repository.replaceSearchIndex([card])
+
+        let results = try await repository.searchCards(query: "076/217")
+
+        XCTAssertEqual(results.map(\.card.id), [card.id])
+    }
+
+    func testRepositoryRecognizesVanGoghSearchAlias() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let promos = set(id: "svp", seriesID: "sv", name: "SVP Black Star Promos")
+        let card = CatalogCard(
+            id: "svp-085",
+            setID: "svp",
+            localID: "085",
+            name: "Pikachu with Grey Felt Hat",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [promos]),
+        ])
+        try await repository.replaceSearchIndex([card])
+
+        let results = try await repository.searchCards(query: "Van Gogh")
+
+        XCTAssertEqual(results.map(\.card.id), [card.id])
+    }
+
     func testRepositoryCanReturnMoreThanOneHundredVariantSearchCandidates() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)

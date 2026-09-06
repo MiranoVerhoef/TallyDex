@@ -230,12 +230,38 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         return try await database.queue.read { database in
-            let tokens = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
-            let tokenClause = "(search.name LIKE ? COLLATE NOCASE OR search.localID LIKE ? COLLATE NOCASE OR catalogSet.name LIKE ? COLLATE NOCASE)"
+            if let collectorNumber = Self.collectorNumberQuery(trimmed) {
+                let resolvedLimit = limit.map { max(1, $0) } ?? -1
+                return try Row.fetchAll(
+                    database,
+                    sql: """
+                    SELECT search.*, catalogSet.name AS setName,
+                           catalogSet.releaseDate AS setReleaseDate
+                    FROM catalogSearchCard AS search
+                    JOIN catalogSet ON catalogSet.id = search.setID
+                    WHERE CAST(search.localID AS INTEGER) = ?
+                      AND (catalogSet.officialCardCount = ? OR catalogSet.totalCardCount = ?)
+                    ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE
+                    LIMIT \(resolvedLimit)
+                    """,
+                    arguments: [collectorNumber.localID, collectorNumber.setCount, collectorNumber.setCount]
+                ).map(Self.searchResult)
+            }
+
+            let expandedQuery = Self.searchAlias(for: trimmed) ?? trimmed
+            let tokens = expandedQuery.split(whereSeparator: \.isWhitespace).map(String.init)
+            let tokenClause = """
+            (search.name LIKE ? COLLATE NOCASE
+             OR search.localID LIKE ? COLLATE NOCASE
+             OR catalogSet.name LIKE ? COLLATE NOCASE
+             OR detail.illustrator LIKE ? COLLATE NOCASE
+             OR detail.rarity LIKE ? COLLATE NOCASE
+             OR detail.category LIKE ? COLLATE NOCASE)
+            """
             let whereClause = Array(repeating: tokenClause, count: tokens.count).joined(separator: " AND ")
             let arguments = tokens.flatMap { token in
                 let pattern = "%\(token)%"
-                return [pattern, pattern, pattern]
+                return [pattern, pattern, pattern, pattern, pattern, pattern]
             }
             let resolvedLimit = limit.map { max(1, $0) } ?? -1
             return try Row.fetchAll(
@@ -245,28 +271,52 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                        catalogSet.releaseDate AS setReleaseDate
                 FROM catalogSearchCard AS search
                 JOIN catalogSet ON catalogSet.id = search.setID
+                LEFT JOIN catalogCard AS detail ON detail.id = search.id
                 WHERE \(whereClause)
                 ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
                 LIMIT \(resolvedLimit)
                 """,
                 arguments: StatementArguments(arguments)
-            ).map { row in
-                CatalogCardSearchResult(
-                    card: CatalogCard(
-                        id: row["id"],
-                        setID: row["setID"],
-                        localID: row["localID"],
-                        name: row["name"],
-                        imageURL: Self.url(row["imageURL"]),
-                        category: nil,
-                        illustrator: nil,
-                        rarity: nil
-                    ),
-                    setName: row["setName"],
-                    setReleaseDate: row["setReleaseDate"]
-                )
-            }
+            ).map(Self.searchResult)
         }
+    }
+
+    private static func collectorNumberQuery(_ query: String) -> (localID: Int, setCount: Int)? {
+        let components = query
+            .replacingOccurrences(of: " ", with: "")
+            .split(separator: "/", omittingEmptySubsequences: false)
+        guard components.count == 2,
+              let localID = Int(components[0]),
+              let setCount = Int(components[1]),
+              localID >= 0,
+              setCount > 0 else { return nil }
+        return (localID, setCount)
+    }
+
+    private static func searchAlias(for query: String) -> String? {
+        switch query.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) {
+        case "van gogh", "vangogh", "van gogh pikachu", "pikachu van gogh":
+            return "Pikachu with Grey Felt Hat"
+        default:
+            return nil
+        }
+    }
+
+    private static func searchResult(_ row: Row) -> CatalogCardSearchResult {
+        CatalogCardSearchResult(
+            card: CatalogCard(
+                id: row["id"],
+                setID: row["setID"],
+                localID: row["localID"],
+                name: row["name"],
+                imageURL: Self.url(row["imageURL"]),
+                category: nil,
+                illustrator: nil,
+                rarity: nil
+            ),
+            setName: row["setName"],
+            setReleaseDate: row["setReleaseDate"]
+        )
     }
 
     func fetchCards(matchingName query: String) async throws -> [CatalogCardSearchResult] {

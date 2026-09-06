@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.0/TallyDex-v0.9.0-photo-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.8.1/TallyDex-v0.8.1-reliable-search.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.8.0/TallyDex-v0.8.0-cardmarket-reserved.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.7.2/TallyDex-v0.7.2-browser-grid.png",
@@ -60,6 +61,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.0",
+          "buildVersion": "36",
+          "date": "2026-09-06",
+          "localizedDescription": "Adds a Camera tab for on-device photo-assisted search using Apple Vision, with a card guide and confirmation before opening a match. Search now understands collector notation such as 076/217 and the Van Gogh nickname, card artwork can be saved to Photos, card details can be shared through TallyDex deep links, single-printing checkmarks act immediately, and backup import previews list every exact change.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.0/TallyDex-v0.9.0.ipa",
+          "size": 7703423,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.8.1",
           "buildVersion": "35",

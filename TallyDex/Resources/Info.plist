@@ -16,6 +16,17 @@
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.miranoverhoef.tallydex.card</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tallydex</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -24,6 +35,10 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TallyDex uses your local network only when you start Browser Editing, so a computer on the same Wi-Fi network can update your collection.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TallyDex uses the camera only when you choose to scan a card for search.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>TallyDex saves card artwork to Photos only when you choose Save Image.</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

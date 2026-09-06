@@ -2,6 +2,9 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import Charts
+import Photos
+import PhotosUI
+import Vision
 
 private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> String {
     amount.formatted(
@@ -1156,7 +1159,7 @@ private struct CatalogSetDetailView: View {
     private func handleCheckmarkTap(for card: CatalogCard) {
         collectionMessage = nil
         if collectionGoal == .master || collectionGoal == .custom {
-            selectedVariantCard = card
+            handlePrintingAwareTap(for: card)
             return
         }
 
@@ -1181,6 +1184,72 @@ private struct CatalogSetDetailView: View {
                 )
             } catch {
                 collectionMessage = "TallyDex couldn’t update \(card.name). Check your connection and try again."
+            }
+        }
+    }
+
+    private func handlePrintingAwareTap(for card: CatalogCard) {
+        guard !updatingCardIDs.contains(card.id) else { return }
+
+        if let knownVariants = availableVariantsByCardID[card.id] {
+            applyPrintingTap(for: card, knownVariants: knownVariants)
+            return
+        }
+
+        updatingCardIDs.insert(card.id)
+        Task {
+            defer { updatingCardIDs.remove(card.id) }
+            do {
+                let snapshot = try await catalogStore.details(for: card)
+                availableVariantsByCardID[card.id] = snapshot.variants
+                let visible = collectionStore.preference(for: set.id)
+                    .visibleVariants(in: snapshot.variants)
+                guard !visible.isEmpty else {
+                    collectionMessage = "No printings are selected for \(card.name) in this set goal."
+                    return
+                }
+                guard visible.count == 1, let variant = visible.first else {
+                    selectedVariantCard = card
+                    return
+                }
+                let quantity = collectionStore.quantity(cardID: card.id, variant: variant)
+                try await collectionStore.setQuantity(
+                    quantity > 0 ? 0 : 1,
+                    cardID: card.id,
+                    variant: variant
+                )
+            } catch {
+                collectionMessage = "TallyDex couldn’t load \(card.name)’s printings. Please try again."
+            }
+        }
+    }
+
+    private func applyPrintingTap(
+        for card: CatalogCard,
+        knownVariants: Set<CatalogVariantKind>
+    ) {
+        let visible = collectionStore.preference(for: set.id).visibleVariants(in: knownVariants)
+        guard !visible.isEmpty else {
+            collectionMessage = "No printings are selected for \(card.name) in this set goal."
+            return
+        }
+        guard visible.count == 1, let variant = visible.first else {
+            selectedVariantCard = card
+            return
+        }
+
+        updatingCardIDs.insert(card.id)
+        Task {
+            defer { updatingCardIDs.remove(card.id) }
+            do {
+                let quantity = collectionStore.quantity(cardID: card.id, variant: variant)
+                try await collectionStore.setQuantity(
+                    quantity > 0 ? 0 : 1,
+                    cardID: card.id,
+                    variant: variant
+                )
+            } catch {
+                collectionMessage = "TallyDex couldn’t update \(card.name). Please try again."
             }
         }
     }
@@ -1361,6 +1430,9 @@ private struct CatalogVariantPickerView: View {
                 .disabled(isUpdating)
             }
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 
     private func priceText(for variant: CatalogVariantKind) -> String {
@@ -1395,10 +1467,14 @@ private struct CatalogVariantPickerView: View {
             defer { updatingVariants.remove(variant) }
             do {
                 try await collectionStore.setQuantity(quantity, cardID: card.id, variant: variant)
-                if quantity == 0 {
-                    quantities.removeValue(forKey: variant)
-                } else {
-                    quantities[variant] = quantity
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    if quantity == 0 {
+                        quantities.removeValue(forKey: variant)
+                    } else {
+                        quantities[variant] = quantity
+                    }
                 }
             } catch {
                 message = "That quantity couldn’t be saved. Please try again."
@@ -1478,7 +1554,83 @@ private struct CachedCardImage: View {
     }
 }
 
-private struct CatalogCardDetailView: View {
+private struct CardDetailArtworkView: View {
+    let card: CatalogCard
+    @State private var imageData: Data?
+    @State private var saveResult: String?
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+
+            if let imageData, let image = UIImage(data: imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+            } else {
+                ProgressView()
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contextMenu {
+            Button("Save Image to Photos", systemImage: "square.and.arrow.down") {
+                saveToPhotos()
+            }
+            .disabled(imageData == nil)
+
+            ShareLink(
+                item: CardDeepLink.url(cardID: card.id),
+                subject: Text(card.name),
+                message: Text("Open \(card.name) in TallyDex")
+            ) {
+                Label("Share Card", systemImage: "square.and.arrow.up")
+            }
+        }
+        .task(id: card.fullArtworkReference) {
+            guard let reference = card.fullArtworkReference else { return }
+            imageData = try? await CatalogArtworkCache.shared.data(for: reference)
+        }
+        .alert(
+            "Card Image",
+            isPresented: Binding(
+                get: { saveResult != nil },
+                set: { if !$0 { saveResult = nil } }
+            )
+        ) {
+            Button("OK") { saveResult = nil }
+        } message: {
+            Text(saveResult ?? "")
+        }
+        .accessibilityHint("Touch and hold to save or share this card")
+    }
+
+    private func saveToPhotos() {
+        guard let imageData, let image = UIImage(data: imageData) else {
+            saveResult = "The full card image has not finished loading yet."
+            return
+        }
+        Task {
+            let authorization = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard authorization == .authorized || authorization == .limited else {
+                saveResult = "Allow TallyDex to add photos in iPhone Settings, then try again."
+                return
+            }
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }
+                saveResult = "Saved \(card.name) to Photos."
+            } catch {
+                saveResult = "The image couldn’t be saved to Photos."
+            }
+        }
+    }
+}
+
+struct CatalogCardDetailView: View {
     let card: CatalogCard
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
@@ -1523,7 +1675,7 @@ private struct CatalogCardDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                CachedCardImage(reference: displayedCard.fullArtworkReference)
+                CardDetailArtworkView(card: displayedCard)
                     .aspectRatio(245 / 337, contentMode: .fit)
                     .frame(maxWidth: 360)
                     .frame(maxWidth: .infinity)
@@ -1594,6 +1746,17 @@ private struct CatalogCardDetailView: View {
         }
         .navigationTitle(card.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(
+                    item: CardDeepLink.url(cardID: card.id),
+                    subject: Text(card.name),
+                    message: Text("Open \(card.name) in TallyDex")
+                ) {
+                    Label("Share Card", systemImage: "square.and.arrow.up")
+                }
+            }
+        }
         .task(id: card.id) {
             await loadDetails()
         }
@@ -4017,11 +4180,16 @@ private struct CollectionDataTransferView: View {
             contentType: exportType,
             defaultFilename: exportFilename
         ) { result in
-            if case .failure = result {
+            switch result {
+            case .success:
+                message = exportType == .commaSeparatedText
+                    ? "Readable CSV exported successfully."
+                    : "Full backup exported successfully."
+            case .failure:
                 message = "The export wasn’t saved. Your collection was not changed."
             }
         }
-        .sheet(isPresented: $isImporting) {
+        .sheet(isPresented: $isImporting, onDismiss: beginStagedImport) {
             CollectionBackupDocumentPicker { result in
                 switch result {
                 case .success(let selection):
@@ -4039,12 +4207,6 @@ private struct CollectionDataTransferView: View {
             } onCancel: {
                 isImporting = false
             }
-        }
-        .onChange(of: isImporting) { _, isPresented in
-            if !isPresented { beginStagedImport() }
-        }
-        .onChange(of: stagedImportSelection?.id) { _, selectionID in
-            if selectionID != nil, !isImporting { beginStagedImport() }
         }
         .sheet(item: $pendingImport) { prepared in
             CollectionImportPreviewView(prepared: prepared) { resultMessage in
@@ -4156,6 +4318,14 @@ struct CollectionImportPreviewView: View {
                     if mode == .replace {
                         previewRow("Removals", count: preview.removals, color: .red)
                     }
+
+                    if !preview.items.isEmpty {
+                        NavigationLink {
+                            CollectionImportChangeListView(items: preview.items)
+                        } label: {
+                            Label("Review exact changes", systemImage: "list.bullet.rectangle")
+                        }
+                    }
                 }
 
                 if let errorMessage {
@@ -4218,6 +4388,62 @@ struct CollectionImportPreviewView: View {
                 isApplying = false
                 errorMessage = "The import failed. Your collection was not changed."
             }
+        }
+    }
+}
+
+private struct CollectionImportChangeListView: View {
+    let items: [CollectionImportPreviewItem]
+
+    private let actions: [CollectionImportPreviewItem.Action] = [
+        .addition, .change, .conflict, .removal,
+    ]
+
+    var body: some View {
+        List {
+            ForEach(actions, id: \.rawValue) { action in
+                let matches = items.filter { $0.action == action }
+                if !matches.isEmpty {
+                    Section(actionTitle(action)) {
+                        ForEach(matches) { item in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(item.title)
+                                        .font(.body.weight(.medium))
+                                    Spacer()
+                                    Text(item.category)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(item.detail)
+                                    .font(.subheadline)
+                                    .foregroundStyle(actionColor(action))
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Backup Changes")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func actionTitle(_ action: CollectionImportPreviewItem.Action) -> String {
+        switch action {
+        case .addition: "Additions"
+        case .change: "Changes"
+        case .conflict: "Kept on This iPhone"
+        case .removal: "Removals"
+        }
+    }
+
+    private func actionColor(_ action: CollectionImportPreviewItem.Action) -> Color {
+        switch action {
+        case .addition: .green
+        case .change: .blue
+        case .conflict: .orange
+        case .removal: .red
         }
     }
 }
@@ -4774,5 +5000,341 @@ private struct AboutTallyDexView: View {
         }
         .navigationTitle("About TallyDex")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct CardScannerView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var scannedImage: UIImage?
+    @State private var recognizedLines: [String] = []
+    @State private var results: [CatalogCardSearchResult] = []
+    @State private var isShowingCamera = false
+    @State private var isScanning = false
+    @State private var message: String?
+
+    private var cameraIsAvailable: Bool {
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    scannerPreview
+
+                    HStack(spacing: 12) {
+                        Button {
+                            isShowingCamera = true
+                        } label: {
+                            Label("Take Photo", systemImage: "camera")
+                                .frame(maxWidth: .infinity)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(!cameraIsAvailable || isScanning)
+
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label("Choose Photo", systemImage: "photo")
+                                .frame(maxWidth: .infinity)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .disabled(isScanning)
+                    }
+
+                    if !cameraIsAvailable {
+                        Text("Camera capture is unavailable on this device. You can still choose a photo.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if isScanning {
+                        ProgressView("Reading card text…")
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    if let message {
+                        Label(message, systemImage: "viewfinder")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+                    }
+
+                    if !results.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(results.count == 1 ? "Card found" : "Choose the matching card")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            ForEach(results) { result in
+                                NavigationLink {
+                                    CatalogCardDetailView(card: result.card)
+                                } label: {
+                                    HStack(spacing: 14) {
+                                        CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                                            .aspectRatio(245 / 337, contentMode: .fit)
+                                            .frame(width: 58)
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(result.card.name)
+                                                .font(.body.weight(.semibold))
+                                                .foregroundStyle(.primary)
+                                            Text("\(result.setName) · #\(result.card.localID)")
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .padding(12)
+                                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    if !recognizedLines.isEmpty {
+                        DisclosureGroup("Recognized text") {
+                            Text(recognizedLines.joined(separator: "\n"))
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 8)
+                        }
+                        .padding(14)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+                    }
+                }
+                .padding()
+                .safeAreaPadding(.bottom, 86)
+            }
+            .navigationTitle("Photo Search")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .sheet(isPresented: $isShowingCamera) {
+            CameraCaptureView { image in
+                isShowingCamera = false
+                scan(image)
+            } onCancel: {
+                isShowingCamera = false
+            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: selectedPhoto) { _, item in
+            guard let item else { return }
+            Task {
+                defer { selectedPhoto = nil }
+                guard let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else {
+                    message = "That photo couldn’t be opened."
+                    return
+                }
+                scan(image)
+            }
+        }
+    }
+
+    private var scannerPreview: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+
+                if let scannedImage {
+                    Image(uiImage: scannedImage)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                } else {
+                    Image(systemName: "rectangle.portrait.on.rectangle.portrait")
+                        .font(.system(size: 46))
+                        .foregroundStyle(Color.accentColor)
+                }
+
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 7]))
+                    .aspectRatio(245 / 337, contentMode: .fit)
+                    .padding(26)
+                    .allowsHitTesting(false)
+            }
+            .frame(height: 420)
+
+            Text("Place one card inside the guide")
+                .font(.headline)
+            Text("TallyDex reads the card name and collector number, then asks you to confirm the match.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: 380)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func scan(_ image: UIImage) {
+        scannedImage = image
+        recognizedLines = []
+        results = []
+        message = nil
+        isScanning = true
+        Task {
+            defer { isScanning = false }
+            do {
+                let lines = try await CardTextRecognizer.recognize(image)
+                recognizedLines = lines
+                results = try await searchRecognizedText(lines)
+                if results.isEmpty {
+                    message = "No exact card match was found. Try a sharper photo with the name and collector number visible."
+                } else if results.count == 1 {
+                    message = "Check the match below before opening or marking the card."
+                } else {
+                    message = "Several cards match the visible text. Choose the correct printing below."
+                }
+            } catch {
+                message = "TallyDex couldn’t read that photo. Try again in brighter, even light."
+            }
+        }
+    }
+
+    private func searchRecognizedText(_ lines: [String]) async throws -> [CatalogCardSearchResult] {
+        if let collectorNumber = CardTextRecognizer.collectorNumber(in: lines) {
+            let exact = try await catalogStore.searchCards(query: collectorNumber)
+            if !exact.isEmpty { return exact }
+        }
+
+        for candidate in CardTextRecognizer.nameCandidates(in: lines).prefix(8) {
+            let matches = try await catalogStore.searchCards(query: candidate)
+            if !matches.isEmpty { return Array(matches.prefix(20)) }
+        }
+        return []
+    }
+}
+
+private enum CardTextRecognizer {
+    static func recognize(_ image: UIImage) async throws -> [String] {
+        guard let cgImage = image.cgImage else { return [] }
+        return try await Task.detached(priority: .userInitiated) {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["en-US"]
+            try VNImageRequestHandler(cgImage: cgImage).perform([request])
+            return (request.results ?? [])
+                .compactMap { $0.topCandidates(1).first?.string }
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }.value
+    }
+
+    static func collectorNumber(in lines: [String]) -> String? {
+        let joined = lines.joined(separator: " ")
+            .uppercased()
+            .replacingOccurrences(of: "O", with: "0")
+        guard let match = joined.range(of: #"\b\d{1,3}\s*/\s*\d{1,3}\b"#, options: .regularExpression) else {
+            return nil
+        }
+        return String(joined[match]).replacingOccurrences(of: " ", with: "")
+    }
+
+    static func nameCandidates(in lines: [String]) -> [String] {
+        let ignored = [
+            "basic", "stage", "trainer", "supporter", "energy", "pokemon",
+            "weakness", "resistance", "retreat", "illus", "hp",
+        ]
+        return lines.compactMap { line in
+            let candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lowercased = candidate.lowercased()
+            guard candidate.count >= 3,
+                  candidate.count <= 45,
+                  candidate.rangeOfCharacter(from: .letters) != nil,
+                  !ignored.contains(where: { lowercased == $0 || lowercased.hasPrefix("\($0) ") }) else {
+                return nil
+            }
+            return candidate
+        }
+    }
+}
+
+private struct CameraCaptureView: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onCapture: onCapture, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        picker.loadViewIfNeeded()
+        picker.cameraOverlayView = CardCameraGuideView(frame: picker.view.bounds)
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let onCapture: (UIImage) -> Void
+        let onCancel: () -> Void
+
+        init(onCapture: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+            self.onCapture = onCapture
+            self.onCancel = onCancel
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            guard let image = info[.originalImage] as? UIImage else {
+                onCancel()
+                return
+            }
+            onCapture(image)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            onCancel()
+        }
+    }
+}
+
+private final class CardCameraGuideView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ rect: CGRect) {
+        let width = min(rect.width * 0.72, 310)
+        let height = width * 337 / 245
+        let guide = CGRect(
+            x: (rect.width - width) / 2,
+            y: max(90, (rect.height - height) / 2 - 20),
+            width: width,
+            height: height
+        )
+        let path = UIBezierPath(roundedRect: guide, cornerRadius: 18)
+        UIColor.systemBlue.setStroke()
+        path.lineWidth = 4
+        path.setLineDash([12, 8], count: 2, phase: 0)
+        path.stroke()
     }
 }
