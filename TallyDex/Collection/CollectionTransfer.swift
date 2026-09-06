@@ -74,9 +74,25 @@ struct CollectionImportPreview: Equatable, Sendable {
     let conflicts: Int
     let skipped: Int
     let removals: Int
+    let items: [CollectionImportPreviewItem]
 
     var importedCount: Int { additions + changes }
     var hasChanges: Bool { importedCount + removals > 0 }
+}
+
+struct CollectionImportPreviewItem: Identifiable, Equatable, Sendable {
+    enum Action: String, Equatable, Sendable {
+        case addition
+        case change
+        case conflict
+        case removal
+    }
+
+    let id: String
+    let action: Action
+    let category: String
+    let title: String
+    let detail: String
 }
 
 struct PreparedCollectionImport: Identifiable, Sendable {

@@ -8,6 +8,7 @@ struct TallyDexApp: App {
     @State private var collectionStore = CollectionStore()
     @State private var artworkCacheStore = ArtworkCacheStore()
     @State private var localCollectionSharing = LocalCollectionSharingController()
+    @State private var appNavigation = AppNavigationStore()
 
     var body: some Scene {
         WindowGroup {
@@ -16,6 +17,7 @@ struct TallyDexApp: App {
                 .environment(collectionStore)
                 .environment(artworkCacheStore)
                 .environment(localCollectionSharing)
+                .environment(appNavigation)
                 .preferredColorScheme(AppAppearance.resolve(appearance).colorScheme)
                 .task {
                     await catalogStore.start()
@@ -46,7 +48,11 @@ struct TallyDexApp: App {
                     }
                 }
                 .onOpenURL { url in
-                    Task { await collectionStore.openExternalBackup(at: url) }
+                    if let cardID = CardDeepLink.cardID(from: url) {
+                        appNavigation.open(cardID: cardID)
+                    } else if url.isFileURL {
+                        Task { await collectionStore.openExternalBackup(at: url) }
+                    }
                 }
         }
     }

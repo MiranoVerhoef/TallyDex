@@ -145,6 +145,15 @@ downloaded again automatically. Backup imports are preflighted with a 25 MB safe
 limit before their contents are loaded, and foreground activation no longer starts
 duplicate artwork work.
 
+v0.9.0 adds photo-assisted card search on device. The Camera tab can capture a
+card inside a guide or use an existing photo, reads its visible name and collector
+number with Apple Vision on the iPhone, and presents catalog matches for confirmation.
+No card is marked automatically. Search now understands collector notation such as
+`076/217`, searches cached card metadata, and recognizes “Van Gogh” as the TCGdex
+card named Pikachu with Grey Felt Hat. Card details can be shared through a TallyDex
+deep link, and touching and holding the full artwork offers Save to Photos and Share.
+Printing selection opens a chooser only when more than one relevant printing exists.
+
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
 values, but not 30 individual daily price points; TallyDex therefore builds its
@@ -180,7 +189,7 @@ missing or incorrect data, and a reliable source or clear photo.
 backup or a human-readable CSV export. Full backups preserve owned quantities
 and printings, set goals and visibility, custom folders, wishlist, and notes.
 Imports show additions, changes, conflicts, skipped records, and removals before
-anything is applied. Merge is idempotent and keeps newer local conflicts;
+anything is applied, with a drill-down listing every record that will change. Merge is idempotent and keeps newer local conflicts;
 Replace requires confirmation. TallyDex saves a local rollback snapshot before
 either mode changes collection data.
 

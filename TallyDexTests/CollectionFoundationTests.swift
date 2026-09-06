@@ -677,6 +677,8 @@ final class CollectionFoundationTests: XCTestCase {
         let preview = try await repository.previewImport(document, mode: .merge)
         XCTAssertEqual(preview.additions, 1)
         XCTAssertEqual(preview.conflicts, 1)
+        XCTAssertEqual(preview.items.filter { $0.action == .addition }.count, 1)
+        XCTAssertEqual(preview.items.filter { $0.action == .conflict }.count, 1)
         try await repository.importCollection(document, mode: .merge, importedAt: newer.addingTimeInterval(1))
         try await repository.importCollection(document, mode: .merge, importedAt: newer.addingTimeInterval(2))
 
@@ -703,6 +705,7 @@ final class CollectionFoundationTests: XCTestCase {
 
         let preview = try await repository.previewImport(empty, mode: .replace)
         XCTAssertEqual(preview.removals, 1)
+        XCTAssertEqual(preview.items.first?.title, "old-card · Normal")
         try await repository.importCollection(empty, mode: .replace, importedAt: importedAt)
         let emptyEntries = try await repository.fetchOwnedEntries()
         XCTAssertTrue(emptyEntries.isEmpty)

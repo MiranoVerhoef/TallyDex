@@ -705,47 +705,123 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         var conflicts = 0
         var skipped = 0
         var removals = 0
+        var items: [CollectionImportPreviewItem] = []
 
         func compare<Key: Hashable, Value: Equatable>(
             incoming: [Key: Value],
             current: [Key: Value],
-            date: (Value) -> Date
+            date: (Value) -> Date,
+            category: String,
+            keyText: (Key) -> String,
+            title: (Value) -> String,
+            changeDetail: (Value, Value) -> String
         ) {
             for (key, item) in incoming {
-                guard let saved = current[key] else { additions += 1; continue }
+                guard let saved = current[key] else {
+                    additions += 1
+                    items.append(.init(
+                        id: "addition|\(category)|\(keyText(key))",
+                        action: .addition,
+                        category: category,
+                        title: title(item),
+                        detail: "Will be added"
+                    ))
+                    continue
+                }
                 if saved == item { skipped += 1; continue }
                 if mode == .replace || date(item) > date(saved) {
                     changes += 1
+                    items.append(.init(
+                        id: "change|\(category)|\(keyText(key))",
+                        action: .change,
+                        category: category,
+                        title: title(item),
+                        detail: changeDetail(saved, item)
+                    ))
                 } else {
                     conflicts += 1
+                    items.append(.init(
+                        id: "conflict|\(category)|\(keyText(key))",
+                        action: .conflict,
+                        category: category,
+                        title: title(item),
+                        detail: "A newer version on this iPhone will be kept"
+                    ))
                 }
             }
             if mode == .replace {
-                removals += current.keys.filter { incoming[$0] == nil }.count
+                for (key, saved) in current where incoming[key] == nil {
+                    removals += 1
+                    items.append(.init(
+                        id: "removal|\(category)|\(keyText(key))",
+                        action: .removal,
+                        category: category,
+                        title: title(saved),
+                        detail: "Will be removed from this iPhone"
+                    ))
+                }
             }
         }
 
         compare(
             incoming: Dictionary(uniqueKeysWithValues: incoming.ownership.map { ("\($0.cardID)|\($0.variant.rawValue)", $0) }),
             current: Dictionary(uniqueKeysWithValues: current.ownership.map { ("\($0.cardID)|\($0.variant.rawValue)", $0) }),
-            date: \.updatedAt
+            date: \.updatedAt,
+            category: "Owned printing",
+            keyText: { $0 },
+            title: { "\($0.cardID) · \($0.variant.displayName)" },
+            changeDetail: { "Quantity \($0.quantity) → \($1.quantity)" }
         )
         compare(
             incoming: Dictionary(uniqueKeysWithValues: incoming.setPreferences.map { ($0.setID, $0) }),
             current: Dictionary(uniqueKeysWithValues: current.setPreferences.map { ($0.setID, $0) }),
-            date: \.updatedAt
+            date: \.updatedAt,
+            category: "Set settings",
+            keyText: { $0 },
+            title: { $0.setID },
+            changeDetail: {
+                "\($0.status.displayName), \($0.goal.displayName) → \($1.status.displayName), \($1.goal.displayName)"
+            }
         )
         compare(
             incoming: Dictionary(uniqueKeysWithValues: incoming.folders.map { ($0.id, $0) }),
             current: Dictionary(uniqueKeysWithValues: current.folders.map { ($0.id, $0) }),
-            date: \.updatedAt
+            date: \.updatedAt,
+            category: "Custom collection",
+            keyText: { $0.uuidString },
+            title: { $0.name },
+            changeDetail: { previous, replacement in
+                previous.name == replacement.name
+                    ? "Search or display settings will change"
+                    : "\(previous.name) → \(replacement.name)"
+            }
         )
         compare(
             incoming: Dictionary(uniqueKeysWithValues: incoming.cardMetadata.map { ($0.cardID, $0) }),
             current: Dictionary(uniqueKeysWithValues: current.cardMetadata.map { ($0.cardID, $0) }),
-            date: \.updatedAt
+            date: \.updatedAt,
+            category: "Wishlist & notes",
+            keyText: { $0 },
+            title: { $0.cardID },
+            changeDetail: { previous, replacement in
+                var changed: [String] = []
+                if previous.isWishlisted != replacement.isWishlisted { changed.append("wishlist") }
+                if previous.notes != replacement.notes { changed.append("notes") }
+                return changed.isEmpty ? "Saved details will change" : "Changes: \(changed.joined(separator: ", "))"
+            }
         )
-        return .init(additions: additions, changes: changes, conflicts: conflicts, skipped: skipped, removals: removals)
+        return .init(
+            additions: additions,
+            changes: changes,
+            conflicts: conflicts,
+            skipped: skipped,
+            removals: removals,
+            items: items.sorted {
+                if $0.action.rawValue != $1.action.rawValue { return $0.action.rawValue < $1.action.rawValue }
+                if $0.category != $1.category { return $0.category < $1.category }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+        )
     }
 
     private static func merge(
