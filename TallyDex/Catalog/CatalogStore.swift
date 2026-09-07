@@ -146,6 +146,13 @@ final class CatalogStore {
         }
     }
 
+    /// Refreshes the provider's lightweight complete-card index in one request.
+    /// Full card artwork and per-printing details remain on demand.
+    func preindexCompleteCatalog() async {
+        guard hasStarted, let repository = try? resolveRepository() else { return }
+        await refreshSearchIndex(in: repository)
+    }
+
     func cards(for set: CatalogSet, forceRefresh: Bool = false) async throws -> [CatalogCard] {
         let repository = try resolveRepository()
         let cachedCards = try await repository.fetchCards(setID: set.id)

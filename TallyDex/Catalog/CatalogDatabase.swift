@@ -253,7 +253,10 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             let tokenClause = """
             (search.name LIKE ? COLLATE NOCASE
              OR search.localID LIKE ? COLLATE NOCASE
+             OR search.id LIKE ? COLLATE NOCASE
+             OR search.setID LIKE ? COLLATE NOCASE
              OR catalogSet.name LIKE ? COLLATE NOCASE
+             OR catalogSet.abbreviation LIKE ? COLLATE NOCASE
              OR detail.illustrator LIKE ? COLLATE NOCASE
              OR detail.rarity LIKE ? COLLATE NOCASE
              OR detail.category LIKE ? COLLATE NOCASE)
@@ -261,7 +264,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             let whereClause = Array(repeating: tokenClause, count: tokens.count).joined(separator: " AND ")
             let arguments = tokens.flatMap { token in
                 let pattern = "%\(token)%"
-                return [pattern, pattern, pattern, pattern, pattern, pattern]
+                return Array(repeating: pattern, count: 9)
             }
             let resolvedLimit = limit.map { max(1, $0) } ?? -1
             return try Row.fetchAll(

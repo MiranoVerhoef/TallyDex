@@ -42,8 +42,27 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         let name: String
         let cardNameQuery: String
         let displayMode: CustomCollectionFolderDisplayMode
+        let iconName: String?
         let createdAt: Date
         let updatedAt: Date
+
+        init(
+            id: UUID,
+            name: String,
+            cardNameQuery: String,
+            displayMode: CustomCollectionFolderDisplayMode,
+            iconName: String? = nil,
+            createdAt: Date,
+            updatedAt: Date
+        ) {
+            self.id = id
+            self.name = name
+            self.cardNameQuery = cardNameQuery
+            self.displayMode = displayMode
+            self.iconName = iconName
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
     }
 
     struct CardMetadataRecord: Codable, Equatable, Sendable {

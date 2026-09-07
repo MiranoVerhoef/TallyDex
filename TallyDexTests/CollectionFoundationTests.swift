@@ -224,6 +224,7 @@ final class CollectionFoundationTests: XCTestCase {
             name: "All Lucario",
             cardNameQuery: "Lucario",
             displayMode: .allMatching,
+            iconName: CollectionFolderIcon.heart.rawValue,
             createdAt: createdAt,
             updatedAt: createdAt
         )
@@ -234,6 +235,7 @@ final class CollectionFoundationTests: XCTestCase {
             name: "Owned Lucario",
             cardNameQuery: "Lucario",
             displayMode: .ownedOnly,
+            iconName: CollectionFolderIcon.crown.rawValue,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -241,6 +243,7 @@ final class CollectionFoundationTests: XCTestCase {
 
         let savedFolders = try await repository.fetchCustomFolders()
         XCTAssertEqual(savedFolders, [edited])
+        XCTAssertEqual(savedFolders.first?.iconName, CollectionFolderIcon.crown.rawValue)
     }
 
     func testDeletingCustomFolderDoesNotDeleteOwnedCards() async throws {
@@ -409,8 +412,10 @@ final class CollectionFoundationTests: XCTestCase {
         try await repository.saveCardMetadata(metadata)
 
         let saved = try await repository.fetchCardMetadata(cardID: metadata.cardID)
+        let allMetadata = try await repository.fetchAllCardMetadata()
         let missing = try await repository.fetchCardMetadata(cardID: "missing")
         XCTAssertEqual(saved, metadata)
+        XCTAssertEqual(allMetadata[metadata.cardID], metadata)
         XCTAssertEqual(missing, .empty(cardID: "missing"))
     }
 
@@ -486,6 +491,15 @@ final class CollectionFoundationTests: XCTestCase {
             CollectionProgress(completedSlots: 0, requiredSlots: 2)
         )
         XCTAssertEqual(CollectionProgressCalculator.combined(perCard), master)
+
+        XCTAssertEqual(
+            CollectionProgressCalculator.printingProgress(
+                cardID: cards[0].id,
+                availableVariants: [.normal, .reverseHolo, .holo],
+                ownedEntries: [owned[0]]
+            ),
+            CollectionProgress(completedSlots: 1, requiredSlots: 3)
+        )
     }
 
     func testGoalAwareProgressAppliesCustomRules() {
@@ -618,6 +632,7 @@ final class CollectionFoundationTests: XCTestCase {
         ))
         try await source.saveCustomFolder(.init(
             id: folderID, name: "Lucario", cardNameQuery: "Lucario", displayMode: .ownedOnly,
+            iconName: CollectionFolderIcon.star.rawValue,
             createdAt: update, updatedAt: update
         ))
         try await source.saveCardMetadata(.init(
@@ -637,6 +652,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(entries.first?.quantity, 2)
         XCTAssertEqual(preferences["me01"]?.includedVariants, [.holo, .reverseHolo])
         XCTAssertEqual(folders.first?.id, folderID)
+        XCTAssertEqual(folders.first?.iconName, CollectionFolderIcon.star.rawValue)
         XCTAssertEqual(metadata.notes, "Binder page 3")
     }
 

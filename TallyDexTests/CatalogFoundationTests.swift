@@ -440,11 +440,11 @@ final class CatalogFoundationTests: XCTestCase {
         )
         XCTAssertEqual(
             CatalogVariantOverrides.apply(to: [.normal], cardID: "smp-SM95"),
-            [.prerelease, .prereleaseStaff]
+            [.normal, .prerelease, .prereleaseStaff]
         )
         XCTAssertEqual(
             CatalogVariantOverrides.apply(to: [.normal], cardID: "swshp-SWSH186"),
-            [.prerelease, .prereleaseStaff]
+            [.normal, .prerelease, .prereleaseStaff]
         )
         XCTAssertEqual(
             CatalogVariantOverrides.apply(to: [.normal], cardID: "sv01-001"),
@@ -864,6 +864,49 @@ final class CatalogFoundationTests: XCTestCase {
         let results = try await repository.searchCards(query: "076/217")
 
         XCTAssertEqual(results.map(\.card.id), [card.id])
+    }
+
+    func testRepositorySearchesBySetCodeAndCollectorNumber() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let energySet = CatalogSet(
+            id: "sve",
+            seriesID: "sv",
+            name: "Scarlet & Violet Energies",
+            abbreviation: "SVE",
+            logoURL: nil,
+            symbolURL: nil,
+            officialCardCount: 16,
+            totalCardCount: 16,
+            releaseDate: nil,
+            rarityCounts: nil
+        )
+        let card = CatalogCard(
+            id: "sve-012",
+            setID: "sve",
+            localID: "012",
+            name: "Lightning Energy",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [energySet]),
+        ])
+        try await repository.replaceSearchIndex([card])
+
+        let results = try await repository.searchCards(query: "SVE 012")
+
+        XCTAssertEqual(results.map(\.card.id), [card.id])
+    }
+
+    func testScannerExtractsSetCodeAndCollectorNumber() {
+        let candidates = CardTextRecognizer.setAndCollectorCandidates(
+            in: ["Basic Lightning Energy", "SVEEN", "/ 012", "2024 Pokémon"]
+        )
+
+        XCTAssertTrue(candidates.contains("SVE 012"))
     }
 
     func testRepositoryRecognizesVanGoghSearchAlias() async throws {

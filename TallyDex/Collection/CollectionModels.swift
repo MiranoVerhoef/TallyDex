@@ -179,6 +179,23 @@ struct CollectionProgress: Equatable, Sendable {
 }
 
 enum CollectionProgressCalculator {
+    static func printingProgress(
+        cardID: String,
+        availableVariants: Set<CatalogVariantKind>,
+        ownedEntries: [CollectionVariantEntry]
+    ) -> CollectionProgress {
+        let required = availableVariants.isEmpty ? Set([CatalogVariantKind.normal]) : availableVariants
+        let owned = Set(
+            ownedEntries.lazy
+                .filter { $0.cardID == cardID && $0.quantity > 0 }
+                .map(\.variant)
+        )
+        return CollectionProgress(
+            completedSlots: required.intersection(owned).count,
+            requiredSlots: required.count
+        )
+    }
+
     static func progress(
         cards: [CatalogCard],
         set: CatalogSet,
@@ -309,8 +326,47 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
     let name: String
     let cardNameQuery: String
     let displayMode: CustomCollectionFolderDisplayMode
+    let iconName: String
     let createdAt: Date
     let updatedAt: Date
+
+    init(
+        id: UUID,
+        name: String,
+        cardNameQuery: String,
+        displayMode: CustomCollectionFolderDisplayMode,
+        iconName: String = CollectionFolderIcon.defaultIcon.rawValue,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.cardNameQuery = cardNameQuery
+        self.displayMode = displayMode
+        self.iconName = CollectionFolderIcon.validated(iconName).rawValue
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+enum CollectionFolderIcon: String, CaseIterable, Identifiable, Sendable {
+    case stack = "rectangle.stack.fill"
+    case folder = "folder.fill"
+    case star = "star.fill"
+    case heart = "heart.fill"
+    case sparkles = "sparkles"
+    case bolt = "bolt.fill"
+    case flame = "flame.fill"
+    case crown = "crown.fill"
+    case trophy = "trophy.fill"
+    case paw = "pawprint.fill"
+
+    static let defaultIcon: CollectionFolderIcon = .stack
+    var id: String { rawValue }
+
+    static func validated(_ value: String?) -> CollectionFolderIcon {
+        value.flatMap(CollectionFolderIcon.init(rawValue:)) ?? defaultIcon
+    }
 }
 
 struct CollectionBackup: Equatable, Identifiable, Sendable {
@@ -326,6 +382,7 @@ protocol CollectionRepository: Sendable {
     func fetchSetPreferences() async throws -> [String: SetCollectionPreference]
     func fetchCustomFolders() async throws -> [CustomCollectionFolder]
     func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata
+    func fetchAllCardMetadata() async throws -> [String: CardCollectionMetadata]
     func fetchBackups() async throws -> [CollectionBackup]
     func exportCollection(exportedAt: Date, appVersion: String) async throws -> PortableCollectionDocument
     func previewImport(

@@ -154,6 +154,38 @@ card named Pikachu with Grey Felt Hat. Card details can be shared through a Tall
 deep link, and touching and holding the full artwork offers Save to Photos and Share.
 Printing selection opens a chooser only when more than one relevant printing exists.
 
+v0.9.1 makes scanning feel like a native camera: opening the Camera tab immediately
+starts an embedded live preview, with an aligned card guide, a single shutter, and a
+round Photos shortcut. Captured-image orientation is preserved for Vision, and OCR
+can combine a printed set code and collector number such as `SVE EN 012`, including
+language marks that Vision joins to the code. Results appear in a compact card sheet
+without the previous confirmation copy. Shared cards now use a clickable HTTPS link,
+include the cached card artwork as the system share preview, and open a small TallyDex
+bridge page that launches the exact card in the installed app.
+
+Photos from the library can be dragged and zoomed inside the card guide before
+recognition. The smaller shutter stays clear of the guide. Shared artwork is also
+attached for receiving apps that do not use the system link preview.
+Save Image to Photos converts artwork to PNG and uses a queue-safe PhotoKit
+callback, with duplicate save taps disabled while a save is in progress.
+
+The Collection tab now calls custom folders **Collections**, offers ten selectable
+icons, and opens with Owned cards collapsed. Collection icons are included in
+exports and rollback backups; older backups still import with a default icon.
+Progress circles follow the same set goal in Sets, Search, and Collections, so one
+of two required printings shows a half circle. An orange dot marks cards with notes,
+including after restarting the app. SM95 and SWSH186 retain TCGdex's Normal entry
+alongside the existing stamped-printing choices; saved ownership is preserved.
+
+**Settings → Catalogue Speed → Pre-index Complete Catalogue** refreshes the full
+lightweight search index. Detailed card records and images continue to load as
+needed. **Browser Editor → Allow access while app is minimized** is off by default.
+When enabled, the server remains available while iOS permits background execution;
+return to TallyDex if iOS suspends it.
+
+Next-version backlog: audit missing artwork and bundle suitable replacements;
+add introductory setup with collection preferences and an option to repeat it.
+
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
 values, but not 30 individual daily price points; TallyDex therefore builds its

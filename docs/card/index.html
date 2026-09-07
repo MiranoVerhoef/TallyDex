@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#087ff5">
+  <title>Open card in TallyDex</title>
+  <style>
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: #f2f2f7; color: #111; padding: 24px; }
+    main { width: min(100%, 430px); text-align: center; background: white; border-radius: 28px; padding: 28px; box-shadow: 0 18px 55px #00152b22; }
+    img { width: min(72vw, 280px); aspect-ratio: 245 / 337; object-fit: contain; border-radius: 14px; background: #ececf1; }
+    h1 { margin: 20px 0 6px; font-size: 1.55rem; }
+    p { margin: 0 0 22px; color: #6c6c70; }
+    a { display: block; padding: 15px 20px; border-radius: 14px; background: #087ff5; color: white; font-weight: 700; text-decoration: none; }
+    small { display: block; margin-top: 18px; color: #8e8e93; }
+    @media (prefers-color-scheme: dark) { body { background: #000; color: white; } main { background: #1c1c1e; } img { background: #2c2c2e; } }
+  </style>
+</head>
+<body>
+  <main>
+    <img id="art" alt="Shared Pokémon card" hidden>
+    <h1 id="title">Open card in TallyDex</h1>
+    <p id="details">Loading card…</p>
+    <a id="open" href="#">Open in TallyDex</a>
+    <small>If TallyDex is not installed, install it first and open this link again.</small>
+  </main>
+  <script>
+    const id = new URLSearchParams(location.search).get('id') || '';
+    const appURL = `tallydex://card/${encodeURIComponent(id)}`;
+    const open = document.querySelector('#open');
+    open.href = appURL;
+    if (!id) {
+      document.querySelector('#details').textContent = 'This card link is incomplete.';
+      open.hidden = true;
+    } else {
+      fetch(`https://api.tcgdex.net/v2/en/cards/${encodeURIComponent(id)}`)
+        .then(response => response.ok ? response.json() : Promise.reject())
+        .then(card => {
+          document.querySelector('#title').textContent = card.name;
+          document.querySelector('#details').textContent = `${card.set?.name || 'Pokémon card'} · #${card.localId}`;
+          if (card.image) {
+            const art = document.querySelector('#art');
+            art.src = `${card.image}/high.webp`;
+            art.hidden = false;
+          }
+          document.title = `${card.name} – TallyDex`;
+        })
+        .catch(() => { document.querySelector('#details').textContent = `Card ${id}`; });
+      setTimeout(() => { location.href = appURL; }, 350);
+    }
+  </script>
+</body>
+</html>

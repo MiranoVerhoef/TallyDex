@@ -289,15 +289,16 @@ final class CollectionStore {
         async let entries = repository.fetchOwnedEntries()
         async let preferences = repository.fetchSetPreferences()
         async let folders = repository.fetchCustomFolders()
+        async let metadata = repository.fetchAllCardMetadata()
         async let savedBackups = repository.fetchBackups()
         ownedEntries = try await entries
         rebuildOwnershipIndexes()
         setPreferencesByID = try await preferences
         goalsBySetID = setPreferencesByID.mapValues(\.goal)
         customFolders = try await folders
+        cardMetadataByID = try await metadata
         backups = try await savedBackups
         quantitiesByCardID.removeAll()
-        cardMetadataByID.removeAll()
     }
 
     private func rebuildOwnershipIndexes() {

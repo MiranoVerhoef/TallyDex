@@ -625,10 +625,11 @@ enum CatalogVariantOverrides {
             additions: [.normal, .reverseHolo, .prerelease, .prereleaseStaff],
             removals: []
         ),
-        // SM95 and SWSH186 are themselves Prerelease promos; their other
-        // English printing is the Staff-stamped version, not an unstamped Normal.
-        "smp-SM95": Override(additions: [.prerelease, .prereleaseStaff], removals: [.normal]),
-        "swshp-SWSH186": Override(additions: [.prerelease, .prereleaseStaff], removals: [.normal]),
+        // Keep TCGdex's regular printing visible and add the two stamped versions.
+        // A collector can therefore record regular, Prerelease, and Staff copies
+        // independently without one printing hiding another.
+        "smp-SM95": Override(additions: [.normal, .prerelease, .prereleaseStaff], removals: []),
+        "swshp-SWSH186": Override(additions: [.normal, .prerelease, .prereleaseStaff], removals: []),
     ]
 
     static func apply(to variants: Set<CatalogVariantKind>, cardID: String) -> Set<CatalogVariantKind> {

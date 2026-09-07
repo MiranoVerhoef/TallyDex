@@ -5,6 +5,9 @@ import Charts
 import Photos
 import PhotosUI
 import Vision
+import LinkPresentation
+@preconcurrency import AVFoundation
+@preconcurrency import ImageIO
 
 private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> String {
     amount.formatted(
@@ -47,6 +50,42 @@ private struct CardCompletionIndicator: View {
                 ? (progress.completedSlots == 1 ? "Owned" : "Missing")
                 : "\(progress.completedSlots) of \(progress.requiredSlots) required printings owned"
         )
+    }
+}
+
+@MainActor
+private func cardProgress(
+    for card: CatalogCard,
+    variants: Set<CatalogVariantKind>,
+    catalog: CatalogStore,
+    collection: CollectionStore
+) -> CollectionProgress {
+    guard let set = catalog.groups.lazy.flatMap(\.sets).first(where: { $0.id == card.setID }) else {
+        return CollectionProgressCalculator.printingProgress(
+            cardID: card.id, availableVariants: variants, ownedEntries: collection.entries(for: card.id)
+        )
+    }
+    return CollectionProgressCalculator.progress(
+        cards: [card], set: set, preference: collection.preference(for: card.setID),
+        availableVariants: [card.id: variants], ownedEntries: collection.entries(for: card.id)
+    )
+}
+
+private struct OwnedCardProgressBadge: View {
+    let card: CatalogCard
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var variants: Set<CatalogVariantKind> = []
+
+    var body: some View {
+        CardCompletionIndicator(
+            progress: cardProgress(for: card, variants: variants, catalog: catalogStore, collection: collectionStore),
+            size: 26
+        )
+        .task(id: card.id) {
+            let known = await catalogStore.prepareVariants(for: [card], refreshCachedDetails: false)
+            variants = known[card.id] ?? []
+        }
     }
 }
 
@@ -1041,7 +1080,11 @@ private struct CatalogSetDetailView: View {
                                 NavigationLink {
                                     CatalogCardDetailView(card: card)
                                 } label: {
-                                    CatalogCardTile(card: card)
+                                    CatalogCardTile(
+                                        card: card,
+                                        hasNotes: !(collectionStore.cardMetadataByID[card.id]?.notes
+                                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                                    )
                                 }
                                 .buttonStyle(.plain)
 
@@ -1485,6 +1528,7 @@ private struct CatalogVariantPickerView: View {
 
 private struct CatalogCardTile: View {
     let card: CatalogCard
+    var hasNotes = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -1493,6 +1537,7 @@ private struct CatalogCardTile: View {
                 HStack(alignment: .top, spacing: 14) {
                     cardImage
                         .frame(width: 82, height: 113)
+                        .overlay(alignment: .topLeading) { noteMarker }
                     VStack(alignment: .leading, spacing: 6) {
                         Text(card.name)
                             .font(.body.weight(.semibold))
@@ -1507,6 +1552,7 @@ private struct CatalogCardTile: View {
                 VStack(alignment: .leading, spacing: 7) {
                     cardImage
                         .aspectRatio(245 / 337, contentMode: .fit)
+                        .overlay(alignment: .topLeading) { noteMarker }
                     Text(card.name)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
@@ -1518,6 +1564,18 @@ private struct CatalogCardTile: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var noteMarker: some View {
+        if hasNotes {
+            Circle()
+                .fill(.orange)
+                .frame(width: 11, height: 11)
+                .overlay(Circle().stroke(.white, lineWidth: 2))
+                .padding(6)
+                .accessibilityLabel("Personal note added")
+        }
     }
 
     private var cardImage: some View {
@@ -1558,6 +1616,8 @@ private struct CardDetailArtworkView: View {
     let card: CatalogCard
     @State private var imageData: Data?
     @State private var saveResult: String?
+    @State private var isSharing = false
+    @State private var isSavingPhoto = false
 
     var body: some View {
         ZStack {
@@ -1579,13 +1639,11 @@ private struct CardDetailArtworkView: View {
             Button("Save Image to Photos", systemImage: "square.and.arrow.down") {
                 saveToPhotos()
             }
-            .disabled(imageData == nil)
+            .disabled(imageData == nil || isSavingPhoto)
 
-            ShareLink(
-                item: CardDeepLink.url(cardID: card.id),
-                subject: Text(card.name),
-                message: Text("Open \(card.name) in TallyDex")
-            ) {
+            Button {
+                isSharing = true
+            } label: {
                 Label("Share Card", systemImage: "square.and.arrow.up")
             }
         }
@@ -1604,29 +1662,57 @@ private struct CardDetailArtworkView: View {
         } message: {
             Text(saveResult ?? "")
         }
+        .sheet(isPresented: $isSharing) {
+            CardShareSheet(
+                card: card,
+                image: imageData.flatMap(UIImage.init(data:))
+            )
+            .presentationDetents([.medium, .large])
+        }
         .accessibilityHint("Touch and hold to save or share this card")
     }
 
     private func saveToPhotos() {
-        guard let imageData, let image = UIImage(data: imageData) else {
+        guard !isSavingPhoto else { return }
+        guard let imageData, let pngData = CardPhotoExport.pngData(from: imageData) else {
             saveResult = "The full card image has not finished loading yet."
             return
         }
+        isSavingPhoto = true
         Task {
+            defer { isSavingPhoto = false }
             let authorization = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
             guard authorization == .authorized || authorization == .limited else {
                 saveResult = "Allow TallyDex to add photos in iPhone Settings, then try again."
                 return
             }
             do {
-                try await PHPhotoLibrary.shared().performChanges {
-                    PHAssetChangeRequest.creationRequestForAsset(from: image)
-                }
+                try await CardPhotoExport.save(pngData: pngData)
                 saveResult = "Saved \(card.name) to Photos."
             } catch {
                 saveResult = "The image couldn’t be saved to Photos."
             }
         }
+    }
+}
+
+enum CardPhotoExport {
+    @MainActor
+    static func pngData(from data: Data) -> Data? {
+        UIImage(data: data)?.pngData()
+    }
+
+    nonisolated static func save(pngData: Data) async throws {
+        // PhotoKit executes this block on its own queue. Do not inherit the
+        // SwiftUI caller's MainActor isolation or capture UI state here.
+        let changes: @Sendable () -> Void = {
+            let options = PHAssetResourceCreationOptions()
+            options.uniformTypeIdentifier = UTType.png.identifier
+            PHAssetCreationRequest.forAsset().addResource(
+                with: .photo, data: pngData, options: options
+            )
+        }
+        try await PHPhotoLibrary.shared().performChanges(changes)
     }
 }
 
@@ -1748,13 +1834,7 @@ struct CatalogCardDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(
-                    item: CardDeepLink.url(cardID: card.id),
-                    subject: Text(card.name),
-                    message: Text("Open \(card.name) in TallyDex")
-                ) {
-                    Label("Share Card", systemImage: "square.and.arrow.up")
-                }
+                CardShareToolbarButton(card: displayedCard)
             }
         }
         .task(id: card.id) {
@@ -2030,6 +2110,108 @@ struct CatalogCardDetailView: View {
                 collectionMessage = "Your wishlist or notes couldn’t be saved. Please try again."
             }
         }
+    }
+}
+
+private struct CardShareToolbarButton: View {
+    let card: CatalogCard
+    @State private var imageData: Data?
+    @State private var isSharing = false
+    @State private var isPreparing = false
+
+    var body: some View {
+        Button {
+            prepareShare()
+        } label: {
+            if isPreparing {
+                ProgressView()
+            } else {
+                Label("Share Card", systemImage: "square.and.arrow.up")
+            }
+        }
+        .disabled(isPreparing)
+        .sheet(isPresented: $isSharing) {
+            CardShareSheet(
+                card: card,
+                image: imageData.flatMap(UIImage.init(data:))
+            )
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private func prepareShare() {
+        isPreparing = true
+        Task {
+            if let reference = card.fullArtworkReference {
+                imageData = try? await CatalogArtworkCache.shared.data(for: reference)
+            }
+            isPreparing = false
+            isSharing = true
+        }
+    }
+}
+
+private struct CardShareSheet: UIViewControllerRepresentable {
+    let card: CatalogCard
+    let image: UIImage?
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(
+            activityItems: [
+                CardShareItemSource(
+                    title: card.name,
+                    subtitle: "Open #\(card.localID) in TallyDex",
+                    url: CardDeepLink.url(cardID: card.id),
+                    image: image
+                ),
+            ] + (image.map { [$0 as Any] } ?? []),
+            applicationActivities: nil
+        )
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private final class CardShareItemSource: NSObject, UIActivityItemSource {
+    let title: String
+    let subtitle: String
+    let url: URL
+    let image: UIImage?
+
+    init(title: String, subtitle: String, url: URL, image: UIImage?) {
+        self.title = title
+        self.subtitle = subtitle
+        self.url = url
+        self.image = image
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        url
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        url
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        title
+    }
+
+    func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = title
+        metadata.originalURL = url
+        metadata.url = url
+        if let image {
+            metadata.imageProvider = NSItemProvider(object: image)
+        }
+        return metadata
     }
 }
 
@@ -2631,6 +2813,7 @@ struct SearchView: View {
     @AppStorage("search.resultLayout") private var resultLayout = SearchResultLayout.list.rawValue
     @State private var query = ""
     @State private var results: [CatalogCardSearchResult] = []
+    @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var isSearching = false
     @State private var searchMessage: String?
     @State private var searchFailureMessage: String?
@@ -2661,10 +2844,14 @@ struct SearchView: View {
     private var visibleResults: [CatalogCardSearchResult] {
         results.filter { result in
             let isOwned = collectionStore.owns(cardID: result.card.id)
+            let progress = cardProgress(
+                for: result.card, variants: variantsByCardID[result.card.id] ?? [],
+                catalog: catalogStore, collection: collectionStore
+            )
             let ownershipMatches: Bool = switch ownershipFilter {
             case .all: true
             case .owned: isOwned
-            case .missing: !isOwned
+            case .missing: progress.completedSlots < progress.requiredSlots
             }
             return ownershipMatches
                 && (selectedSetName.isEmpty || result.setName == selectedSetName)
@@ -2754,6 +2941,7 @@ struct SearchView: View {
                 guard !Task.isCancelled else { return }
                 do {
                     results = try await catalogStore.searchCards(query: query)
+                    variantsByCardID = try await catalogStore.variants(cardIDs: results.map(\.id))
                 } catch CatalogSearchError.variantQueryTooBroad(let candidateCount) {
                     results = []
                     searchMessage = "That term matches \(candidateCount) cards. Add a full Pokémon name, set, or collector number before prerelease or staff so TallyDex does not download hundreds of unrelated records."
@@ -2777,7 +2965,18 @@ struct SearchView: View {
                             CatalogCardDetailView(card: result.card)
                         } label: {
                             VStack(alignment: .leading, spacing: 5) {
-                                CatalogCardTile(card: result.card)
+                                CatalogCardTile(
+                                    card: result.card,
+                                    hasNotes: !(collectionStore.cardMetadataByID[result.card.id]?.notes
+                                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                                )
+                                .overlay(alignment: .topTrailing) {
+                                    if collectionStore.owns(cardID: result.card.id) {
+                                        OwnedCardProgressBadge(card: result.card)
+                                            .padding(5)
+                                            .background(.regularMaterial, in: Circle())
+                                    }
+                                }
                                 Text(result.setName)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -2803,6 +3002,15 @@ struct SearchView: View {
                     HStack(spacing: 12) {
                         CachedCardImage(reference: result.card.thumbnailArtworkReference)
                             .frame(width: 52, height: 72)
+                            .overlay(alignment: .topLeading) {
+                                if !(collectionStore.cardMetadataByID[result.card.id]?.notes
+                                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                                    Circle()
+                                        .fill(.orange)
+                                        .frame(width: 10, height: 10)
+                                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                                }
+                            }
                         VStack(alignment: .leading, spacing: 3) {
                             Text(result.card.name)
                                 .font(.body.weight(.semibold))
@@ -2817,9 +3025,7 @@ struct SearchView: View {
                         }
                         Spacer()
                         if collectionStore.owns(cardID: result.card.id) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.tint)
-                                .accessibilityLabel("Owned")
+                            OwnedCardProgressBadge(card: result.card)
                         }
                     }
                 }
@@ -2949,6 +3155,8 @@ struct CollectionView: View {
     @State private var message: String?
     @State private var isCreatingFolder = false
     @State private var editingFolder: CustomCollectionFolder?
+    @State private var isOwnedCardsExpanded = false
+    @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
 
     private var ownedCardIDs: [String] {
         collectionStore.ownedCardIDs.sorted()
@@ -2982,7 +3190,7 @@ struct CollectionView: View {
                         Button {
                             isCreatingFolder = true
                         } label: {
-                            Label("Create your first folder", systemImage: "folder.badge.plus")
+                            Label("Create your first collection", systemImage: "rectangle.stack.badge.plus")
                         }
                     } else {
                         ForEach(collectionStore.customFolders) { folder in
@@ -2999,47 +3207,68 @@ struct CollectionView: View {
                         }
                     }
                 } header: {
-                    Text("Custom folders")
+                    Text("Collections")
                 } footer: {
-                    Text("Folders find cards by name. Ownership is shared with Sets and the rest of your collection.")
+                    Text("Collections find cards by name. Ownership is shared with Sets and the rest of your collection.")
                 }
 
-                Section("Owned cards") {
-                    if collectionStore.isInitialLoading || isLoadingCards && cards.isEmpty {
-                        ProgressView("Loading your collection…")
-                    } else if ownedCardIDs.isEmpty {
-                        Text("No cards owned yet. Open a set or an All folder to start checking cards off.")
+                Section {
+                    DisclosureGroup(isExpanded: $isOwnedCardsExpanded) {
+                        if collectionStore.isInitialLoading || isLoadingCards && cards.isEmpty {
+                            ProgressView("Loading your collection…")
+                        } else if ownedCardIDs.isEmpty {
+                            Text("No cards owned yet. Open a set or an All collection to start checking cards off.")
+                                .foregroundStyle(.secondary)
+                        } else if cards.isEmpty {
+                            Label(
+                                message
+                                    ?? collectionStore.loadMessage
+                                    ?? "Your quantities are safe and will appear after the catalog is available.",
+                                systemImage: "externaldrive.badge.exclamationmark"
+                            )
                             .foregroundStyle(.secondary)
-                    } else if cards.isEmpty {
-                        Label(
-                            message
-                                ?? collectionStore.loadMessage
-                                ?? "Your quantities are safe and will appear after the catalog is available.",
-                            systemImage: "externaldrive.badge.exclamationmark"
-                        )
-                        .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(cards) { result in
-                        NavigationLink {
-                            CatalogCardDetailView(card: result.card)
-                        } label: {
-                            HStack(spacing: 12) {
-                                CachedCardImage(reference: result.card.thumbnailArtworkReference)
-                                    .frame(width: 52, height: 72)
+                        } else {
+                            ForEach(cards) { result in
+                                NavigationLink {
+                                    CatalogCardDetailView(card: result.card)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                                            .frame(width: 52, height: 72)
+                                            .overlay(alignment: .topLeading) {
+                                                if hasNotes(cardID: result.card.id) {
+                                                    Circle()
+                                                        .fill(.orange)
+                                                        .frame(width: 10, height: 10)
+                                                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                                                }
+                                            }
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(result.card.name)
-                                        .font(.body.weight(.semibold))
-                                    Text("\(result.setName) · #\(result.card.localID)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                    Text(collectionSummary(cardID: result.card.id))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(result.card.name)
+                                                .font(.body.weight(.semibold))
+                                            Text("\(result.setName) · #\(result.card.localID)")
+                                                .font(.caption.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                            Text(collectionSummary(cardID: result.card.id))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        CardCompletionIndicator(
+                                            progress: cardProgress(
+                                                for: result.card,
+                                                variants: variantsByCardID[result.card.id] ?? [],
+                                                catalog: catalogStore, collection: collectionStore
+                                            ),
+                                            size: 30
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
+                    } label: {
+                        Label("Owned cards", systemImage: "checkmark.circle")
                     }
                 }
             }
@@ -3047,7 +3276,7 @@ struct CollectionView: View {
             .navigationTitle("Collection")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("New folder", systemImage: "folder.badge.plus") {
+                    Button("New collection", systemImage: "rectangle.stack.badge.plus") {
                         isCreatingFolder = true
                     }
                 }
@@ -3062,8 +3291,9 @@ struct CollectionView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
-            .task(id: ownedCardIDsKey) {
-                await loadCards()
+            .task(id: "\(ownedCardIDsKey)|\(isOwnedCardsExpanded)") {
+                if isOwnedCardsExpanded { await loadCards() }
+                else { await loadPrices() }
             }
         }
     }
@@ -3079,6 +3309,15 @@ struct CollectionView: View {
         return variants.isEmpty ? copies : "\(copies) · \(variants)"
     }
 
+    private func hasNotes(cardID: String) -> Bool {
+        !(collectionStore.cardMetadataByID[cardID]?.notes
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    private func loadPrices() async {
+        pricesByCardID = (try? await catalogStore.prices(cardIDs: ownedCardIDs)) ?? [:]
+    }
+
     private func loadCards() async {
         guard !ownedCardIDs.isEmpty else {
             cards = []
@@ -3091,7 +3330,7 @@ struct CollectionView: View {
         do {
             let loadedCards = try await catalogStore.searchResults(cardIDs: ownedCardIDs)
             cards = loadedCards
-            _ = await catalogStore.prepareVariants(for: loadedCards.map(\.card))
+            variantsByCardID = await catalogStore.prepareVariants(for: loadedCards.map(\.card))
             pricesByCardID = (try? await catalogStore.prices(cardIDs: ownedCardIDs)) ?? [:]
         } catch {
             cards = []
@@ -3105,7 +3344,7 @@ private struct CustomCollectionFolderRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "folder.fill")
+            Image(systemName: CollectionFolderIcon.validated(folder.iconName).rawValue)
                 .font(.title2)
                 .foregroundStyle(.tint)
                 .frame(width: 34)
@@ -3130,6 +3369,7 @@ private struct CustomCollectionFolderEditorView: View {
     @State private var name: String
     @State private var cardNameQuery: String
     @State private var displayMode: CustomCollectionFolderDisplayMode
+    @State private var icon: CollectionFolderIcon
     @State private var isSaving = false
     @State private var isConfirmingDelete = false
     @State private var message: String?
@@ -3147,17 +3387,40 @@ private struct CustomCollectionFolderEditorView: View {
         _name = State(initialValue: folder?.name ?? "")
         _cardNameQuery = State(initialValue: folder?.cardNameQuery ?? "")
         _displayMode = State(initialValue: folder?.displayMode ?? .allMatching)
+        _icon = State(initialValue: CollectionFolderIcon.validated(folder?.iconName))
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Folder") {
+                Section("Collection") {
                     TextField("Name, e.g. All Lucario", text: $name)
                         .textInputAutocapitalization(.words)
                     TextField("Card name, e.g. Lucario", text: $cardNameQuery)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
+                }
+
+                Section("Icon") {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 14) {
+                        ForEach(CollectionFolderIcon.allCases) { option in
+                            Button {
+                                icon = option
+                            } label: {
+                                Image(systemName: option.rawValue)
+                                    .font(.title2)
+                                    .frame(width: 44, height: 44)
+                                    .foregroundStyle(icon == option ? Color.white : Color.accentColor)
+                                    .background(
+                                        icon == option ? Color.accentColor : Color.accentColor.opacity(0.1),
+                                        in: RoundedRectangle(cornerRadius: 11)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(option.rawValue)
+                            .accessibilityAddTraits(icon == option ? .isSelected : [])
+                        }
+                    }
                 }
 
                 Section("Show cards") {
@@ -3174,18 +3437,18 @@ private struct CustomCollectionFolderEditorView: View {
                 }
 
                 Section {
-                    Text("The folder updates automatically as the catalog and your ownership change.")
+                    Text("The collection updates automatically as the catalog and your ownership change.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
                 if folder != nil {
                     Section {
-                        Button("Delete Folder", role: .destructive) {
+                        Button("Delete Collection", role: .destructive) {
                             isConfirmingDelete = true
                         }
                     } footer: {
-                        Text("Deleting a folder never removes cards or quantities from your collection.")
+                        Text("Deleting a collection never removes cards or quantities from TallyDex.")
                     }
                 }
 
@@ -3196,7 +3459,7 @@ private struct CustomCollectionFolderEditorView: View {
                     }
                 }
             }
-            .navigationTitle(folder == nil ? "New folder" : "Edit folder")
+            .navigationTitle(folder == nil ? "New Collection" : "Edit Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -3208,7 +3471,7 @@ private struct CustomCollectionFolderEditorView: View {
                         .disabled(trimmedName.isEmpty || trimmedQuery.isEmpty || isSaving)
                 }
             }
-            .alert("Delete \(folder?.name ?? "folder")?", isPresented: $isConfirmingDelete) {
+            .alert("Delete \(folder?.name ?? "collection")?", isPresented: $isConfirmingDelete) {
                 Button("Delete", role: .destructive) { deleteFolder() }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -3227,6 +3490,7 @@ private struct CustomCollectionFolderEditorView: View {
             name: trimmedName,
             cardNameQuery: trimmedQuery,
             displayMode: displayMode,
+            iconName: icon.rawValue,
             createdAt: folder?.createdAt ?? timestamp,
             updatedAt: timestamp
         )
@@ -3235,7 +3499,7 @@ private struct CustomCollectionFolderEditorView: View {
                 try await collectionStore.saveCustomFolder(savedFolder)
                 dismiss()
             } catch {
-                message = "That folder couldn’t be saved. Please try again."
+                message = "That collection couldn’t be saved. Please try again."
                 isSaving = false
             }
         }
@@ -3250,7 +3514,7 @@ private struct CustomCollectionFolderEditorView: View {
                 try await collectionStore.deleteCustomFolder(id: folder.id)
                 dismiss()
             } catch {
-                message = "That folder couldn’t be deleted. Please try again."
+                message = "That collection couldn’t be deleted. Please try again."
                 isSaving = false
             }
         }
@@ -3294,6 +3558,7 @@ private struct CustomCollectionFolderDetailView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var matches: [CatalogCardSearchResult] = []
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
+    @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var isLoading = true
     @State private var message: String?
     @State private var selectedVariantCard: CatalogCard?
@@ -3331,10 +3596,14 @@ private struct CustomCollectionFolderDetailView: View {
         let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return matches.filter { result in
             let isOwned = collectionStore.owns(cardID: result.card.id)
+            let progress = cardProgress(
+                for: result.card, variants: variantsByCardID[result.card.id] ?? [],
+                catalog: catalogStore, collection: collectionStore
+            )
             let ownershipMatches: Bool = switch ownershipFilter {
             case .all: true
             case .owned: isOwned
-            case .missing: !isOwned
+            case .missing: progress.completedSlots < progress.requiredSlots
             }
             let searchMatches = trimmedSearch.isEmpty
                 || result.card.name.localizedCaseInsensitiveContains(trimmedSearch)
@@ -3420,7 +3689,7 @@ private struct CustomCollectionFolderDetailView: View {
                     }
 
                     if !ownedMatchIDs.isEmpty {
-                        CollectionValueSummaryView(summary: valueSummary, title: "Folder value")
+                        CollectionValueSummaryView(summary: valueSummary, title: "Collection value")
                             .padding(.top, 4)
                     }
                 }
@@ -3438,7 +3707,7 @@ private struct CustomCollectionFolderDetailView: View {
                     ContentUnavailableView(
                         "No Matching Cards",
                         systemImage: "rectangle.stack.badge.questionmark",
-                        description: Text("Long-press this folder from Collection and edit its card-name rule.")
+                        description: Text("Long-press this collection and edit its card-name rule.")
                     )
                 } else if visibleMatches.isEmpty {
                     ContentUnavailableView(
@@ -3463,7 +3732,11 @@ private struct CustomCollectionFolderDetailView: View {
                                     NavigationLink {
                                         CatalogCardDetailView(card: result.card)
                                     } label: {
-                                        CatalogCardTile(card: result.card)
+                                        CatalogCardTile(
+                                            card: result.card,
+                                            hasNotes: !(collectionStore.cardMetadataByID[result.card.id]?.notes
+                                                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                                        )
                                     }
                                     .buttonStyle(.plain)
 
@@ -3475,16 +3748,12 @@ private struct CustomCollectionFolderDetailView: View {
                                                 .controlSize(.small)
                                                 .frame(width: 44, height: 44)
                                         } else {
-                                            Image(
-                                                systemName: collectionStore.owns(cardID: result.card.id)
-                                                    ? "checkmark.circle.fill"
-                                                    : "circle"
-                                            )
-                                            .font(.title2.weight(.semibold))
-                                            .foregroundStyle(
-                                                collectionStore.owns(cardID: result.card.id)
-                                                    ? Color.accentColor
-                                                    : Color.secondary
+                                            CardCompletionIndicator(
+                                                progress: cardProgress(
+                                                    for: result.card,
+                                                    variants: variantsByCardID[result.card.id] ?? [],
+                                                    catalog: catalogStore, collection: collectionStore
+                                                )
                                             )
                                             .frame(width: 44, height: 44)
                                         }
@@ -3628,12 +3897,19 @@ private struct CustomCollectionFolderDetailView: View {
         Task {
             defer { updatingCardIDs.remove(card.id) }
             do {
+                let snapshot = try await catalogStore.details(for: card)
+                variantsByCardID[card.id] = snapshot.variants
+                let preference = collectionStore.preference(for: card.setID)
+                let visible = preference.visibleVariants(in: snapshot.variants)
+                if preference.goal != .normal, visible.count > 1 {
+                    selectedVariantCard = card
+                    return
+                }
                 if collectionStore.owns(cardID: card.id) {
                     try await collectionStore.removeAllOwnership(cardID: card.id)
                     return
                 }
-                let snapshot = try await catalogStore.details(for: card)
-                let preference: [CatalogVariantKind] = [
+                let variantOrder: [CatalogVariantKind] = [
                     .normal,
                     .holo,
                     .reverseHolo,
@@ -3642,7 +3918,7 @@ private struct CustomCollectionFolderDetailView: View {
                     .prerelease,
                     .prereleaseStaff,
                 ]
-                guard let standardVariant = preference.first(where: snapshot.variants.contains) else {
+                guard let standardVariant = variantOrder.first(where: visible.contains) else {
                     message = "Printing information isn’t available for \(card.name) yet."
                     return
                 }
@@ -3663,9 +3939,12 @@ private struct CustomCollectionFolderDetailView: View {
         defer { isLoading = false }
         do {
             matches = try await catalogStore.cards(matchingName: folder.cardNameQuery)
+            variantsByCardID = await catalogStore.prepareVariants(
+                for: matches.map(\.card), refreshCachedDetails: false
+            )
             await loadPricesForOwnedMatches()
             if matches.isEmpty, catalogStore.isPreparingSearchIndex {
-                message = "TallyDex is preparing the complete card catalog. This folder will refresh automatically."
+                message = "TallyDex is preparing the complete card catalogue. This collection will refresh automatically."
             }
         } catch {
             matches = []
@@ -3688,6 +3967,7 @@ private struct CustomCollectionFolderDetailView: View {
 }
 
 struct SettingsView: View {
+    @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(LocalCollectionSharingController.self) private var localCollectionSharing
@@ -3862,6 +4142,38 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    Button {
+                        Task { await catalogStore.preindexCompleteCatalog() }
+                    } label: {
+                        if catalogStore.isPreparingSearchIndex {
+                            HStack {
+                                ProgressView()
+                                Text("Pre-indexing catalogue…")
+                            }
+                        } else {
+                            Label("Pre-index Complete Catalogue", systemImage: "bolt.horizontal.circle")
+                        }
+                    }
+                    .disabled(catalogStore.isPreparingSearchIndex || catalogStore.isInitialLoading)
+
+                    if let updated = catalogStore.searchIndexUpdated {
+                        LabeledContent("Last indexed") {
+                            Text(updated, format: .dateTime.day().month().year().hour().minute())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let message = catalogStore.searchIndexMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Catalogue Speed")
+                } footer: {
+                    Text("Downloads the lightweight complete TCGdex card index in one request so names, sets, and collector numbers search locally. Full card details and artwork stay on demand to control storage use.")
+                }
+
                 Section("Privacy") {
                     LabeledContent("Storage", value: "On this iPhone")
                     LabeledContent("Analytics", value: "None")
@@ -3931,6 +4243,8 @@ private struct LocalCollectionSharingView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(LocalCollectionSharingController.self) private var sharing
     @State private var copied = false
+    @AppStorage(BrowserSharingSettings.allowWhileBackgroundedKey)
+    private var allowWhileBackgrounded = BrowserSharingSettings.allowWhileBackgroundedDefault
 
     var body: some View {
         Form {
@@ -3986,7 +4300,18 @@ private struct LocalCollectionSharingView: View {
             } header: {
                 Text("Local Session")
             } footer: {
-                Text("Starting creates a collection backup first. The six-digit code and browser session are replaced each time sharing starts. Sharing stops automatically whenever TallyDex is no longer active.")
+                Text(allowWhileBackgrounded
+                    ? "Starting creates a backup first. Access can continue while iOS keeps TallyDex running in the background, but iOS may suspend it at any time."
+                    : "Starting creates a backup first. The six-digit code and browser session are replaced each time sharing starts, and sharing stops when TallyDex is minimized."
+                )
+            }
+
+            Section {
+                Toggle("Allow access while app is minimized", isOn: $allowWhileBackgrounded)
+            } header: {
+                Text("Background Access")
+            } footer: {
+                Text("Best effort only: iOS can suspend or close background apps, so prolonged browser access still requires keeping TallyDex visible.")
             }
 
             if let message = sharing.statusMessage {
@@ -4000,7 +4325,10 @@ private struct LocalCollectionSharingView: View {
                 Label("Keep this iPhone and the computer on the same Wi-Fi network.", systemImage: "wifi")
                 Label("Open the shown address in a modern browser.", systemImage: "safari")
                 Label("Enter the six-digit code from this screen.", systemImage: "number")
-                Label("Keep TallyDex open while editing, then tap Stop.", systemImage: "iphone")
+                Label(
+                    allowWhileBackgrounded ? "Keep TallyDex running, then tap Stop when finished." : "Keep TallyDex open while editing, then tap Stop.",
+                    systemImage: "iphone"
+                )
             }
 
             Section("Available in the Browser") {
@@ -4011,7 +4339,10 @@ private struct LocalCollectionSharingView: View {
             }
 
             Section("Privacy & Safety") {
-                Text("The server runs only inside TallyDex and stops when you tap Stop, leave the app, or fully close it. Pairing is protected by a temporary code, a private browser cookie, and a per-session editing token. Requests do not enable cross-origin access.")
+                Text(allowWhileBackgrounded
+                    ? "The server runs only inside TallyDex and stops when you tap Stop, fully close the app, or iOS suspends it. Pairing is protected by a temporary code, a private browser cookie, and a per-session editing token."
+                    : "The server runs only inside TallyDex and stops when you tap Stop, minimize the app, or fully close it. Pairing is protected by a temporary code, a private browser cookie, and a per-session editing token."
+                )
             }
         }
         .navigationTitle("Browser Editor")
@@ -4140,7 +4471,7 @@ private struct CollectionDataTransferView: View {
             } header: {
                 Text("Export")
             } footer: {
-                Text("The .pokecollection backup preserves ownership quantities and printings, set goals and visibility, custom folders, wishlist, and notes. CSV is intended for reading or spreadsheets; restore uses the full backup file.")
+                Text("The .pokecollection backup preserves ownership quantities and printings, set goals and visibility, collections, wishlist, and notes. CSV is intended for reading or spreadsheets; restore uses the full backup file.")
             }
 
             Section {
@@ -4545,7 +4876,7 @@ private struct CollectionBackupsView: View {
                 selectedBackup = nil
             }
         } message: {
-            Text("This replaces current ownership, set goals, folders, wishlist, and notes with the saved snapshot. TallyDex will back up the current collection before restoring.")
+            Text("This replaces current ownership, set goals, collections, wishlist, and notes with the saved snapshot. TallyDex will back up the current collection before restoring.")
         }
     }
 
@@ -4651,7 +4982,7 @@ private struct PriceDataSettingsView: View {
             } header: {
                 Text("Remove")
             } footer: {
-                Text("Clear Price History keeps the latest prices. Clear All Market Data removes latest and historical prices; exact prices download again when their cards need refreshing. Neither action changes ownership, goals, folders, wishlist, or notes.")
+                Text("Clear Price History keeps the latest prices. Clear All Market Data removes latest and historical prices; exact prices download again when their cards need refreshing. Neither action changes ownership, goals, collections, wishlist, or notes.")
             }
 
             if isWorking {
@@ -5005,130 +5336,82 @@ private struct AboutTallyDexView: View {
 
 struct CardScannerView: View {
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isVisible = false
+    @StateObject private var camera = CardCameraController()
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var photoToAlign: CardPhotoForAlignment?
+    @State private var alignedPhotoToScan: UIImage?
     @State private var scannedImage: UIImage?
     @State private var recognizedLines: [String] = []
     @State private var results: [CatalogCardSearchResult] = []
-    @State private var isShowingCamera = false
+    @State private var isShowingResults = false
     @State private var isScanning = false
-    @State private var message: String?
-
-    private var cameraIsAvailable: Bool {
-        UIImagePickerController.isSourceTypeAvailable(.camera)
-    }
+    @State private var scanError: String?
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    scannerPreview
+            ZStack {
+                Color.black.ignoresSafeArea()
 
-                    HStack(spacing: 12) {
-                        Button {
-                            isShowingCamera = true
-                        } label: {
-                            Label("Take Photo", systemImage: "camera")
-                                .frame(maxWidth: .infinity)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(!cameraIsAvailable || isScanning)
+                cameraPreview
 
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Label("Choose Photo", systemImage: "photo")
-                                .frame(maxWidth: .infinity)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .disabled(isScanning)
-                    }
+                VStack(spacing: 0) {
+                    Text("Place one card inside the guide")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(.black.opacity(0.55), in: Capsule())
+                        .padding(.top, 12)
 
-                    if !cameraIsAvailable {
-                        Text("Camera capture is unavailable on this device. You can still choose a photo.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    Spacer()
 
-                    if isScanning {
-                        ProgressView("Reading card text…")
-                            .frame(maxWidth: .infinity)
-                    }
-
-                    if let message {
-                        Label(message, systemImage: "viewfinder")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
-                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-                    }
-
-                    if !results.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(results.count == 1 ? "Card found" : "Choose the matching card")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            ForEach(results) { result in
-                                NavigationLink {
-                                    CatalogCardDetailView(card: result.card)
-                                } label: {
-                                    HStack(spacing: 14) {
-                                        CachedCardImage(reference: result.card.thumbnailArtworkReference)
-                                            .aspectRatio(245 / 337, contentMode: .fit)
-                                            .frame(width: 58)
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(result.card.name)
-                                                .font(.body.weight(.semibold))
-                                                .foregroundStyle(.primary)
-                                            Text("\(result.setName) · #\(result.card.localID)")
-                                                .font(.subheadline)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    .padding(12)
-                                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    if !recognizedLines.isEmpty {
-                        DisclosureGroup("Recognized text") {
-                            Text(recognizedLines.joined(separator: "\n"))
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 8)
-                        }
-                        .padding(14)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-                    }
+                    cameraControls
+                        .padding(.horizontal, 34)
+                        .padding(.bottom, 104)
                 }
-                .padding()
-                .safeAreaPadding(.bottom, 86)
+
+                if isScanning {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(.white)
+                        Text("Reading card…")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                    }
+                    .padding(24)
+                    .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 20))
+                }
             }
-            .navigationTitle("Photo Search")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                isVisible = true
+                if !isShowingResults && photoToAlign == nil && !isScanning { camera.start() }
+            }
+            .onDisappear {
+                isVisible = false
+                camera.stop()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active && isVisible && !isShowingResults && photoToAlign == nil && !isScanning {
+                    camera.start()
+                } else {
+                    camera.stop()
+                }
+            }
         }
-        .sheet(isPresented: $isShowingCamera) {
-            CameraCaptureView { image in
-                isShowingCamera = false
-                scan(image)
+        .sheet(isPresented: $isShowingResults, onDismiss: resetScanner) {
+            scanResultsView
+        }
+        .fullScreenCover(item: $photoToAlign, onDismiss: finishPhotoAlignment) { selection in
+            CardPhotoAlignmentView(image: selection.image) { alignedImage in
+                alignedPhotoToScan = alignedImage
+                photoToAlign = nil
             } onCancel: {
-                isShowingCamera = false
+                photoToAlign = nil
             }
-            .ignoresSafeArea()
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
@@ -5136,55 +5419,185 @@ struct CardScannerView: View {
                 defer { selectedPhoto = nil }
                 guard let data = try? await item.loadTransferable(type: Data.self),
                       let image = UIImage(data: data) else {
-                    message = "That photo couldn’t be opened."
+                    scanError = "That photo couldn’t be opened."
                     return
                 }
-                scan(image)
+                camera.stop()
+                photoToAlign = CardPhotoForAlignment(image: image)
             }
+        }
+        .alert(
+            "Photo Search",
+            isPresented: Binding(
+                get: { scanError != nil },
+                set: { if !$0 { scanError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(scanError ?? "")
         }
     }
 
-    private var scannerPreview: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+    private func finishPhotoAlignment() {
+        if let image = alignedPhotoToScan {
+            alignedPhotoToScan = nil
+            scan(image)
+        } else {
+            camera.start()
+        }
+    }
 
-                if let scannedImage {
-                    Image(uiImage: scannedImage)
-                        .resizable()
-                        .scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    @ViewBuilder
+    private var cameraPreview: some View {
+        if let scannedImage {
+            Image(uiImage: scannedImage)
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+                .clipped()
+        } else if camera.isAvailable {
+            LiveCardCameraPreview(session: camera.session)
+                .ignoresSafeArea()
+        } else {
+            ContentUnavailableView {
+                Label(
+                    camera.permissionDenied ? "Camera Access Needed" : "Camera Unavailable",
+                    systemImage: "camera.fill"
+                )
+            } description: {
+                Text(
+                    camera.permissionDenied
+                        ? "Allow camera access in Settings, or choose a card photo below."
+                        : "Choose an existing card photo below."
+                )
+            }
+            .foregroundStyle(.white)
+        }
+
+        GeometryReader { geometry in
+            let availableHeight = max(100, geometry.size.height - 270)
+            let guideWidth = min(300, geometry.size.width - 72, availableHeight * 245 / 337)
+            let guideHeight = guideWidth * 337 / 245
+            let centerY = 60 + availableHeight / 2
+
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, dash: [12, 8]))
+                .frame(width: guideWidth, height: guideHeight)
+                .position(x: geometry.size.width / 2, y: centerY)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var cameraControls: some View {
+        HStack {
+            PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 23, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 1))
+            }
+            .disabled(isScanning)
+            .accessibilityLabel("Choose a card photo")
+
+            Spacer()
+
+            Button(action: takePhoto) {
+                ZStack {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 58, height: 58)
+                    Circle()
+                        .stroke(.white.opacity(0.7), lineWidth: 4)
+                        .frame(width: 68, height: 68)
+                }
+            }
+            .disabled(!camera.isReady || isScanning)
+            .opacity(camera.isReady ? 1 : 0.45)
+            .accessibilityLabel("Take photo")
+
+            Spacer()
+
+            Color.clear
+                .frame(width: 52, height: 52)
+        }
+    }
+
+    private var scanResultsView: some View {
+        NavigationStack {
+            List {
+                if results.isEmpty {
+                    ContentUnavailableView(
+                        "No Card Found",
+                        systemImage: "rectangle.and.text.magnifyingglass",
+                        description: Text("Try again in brighter, even light with the complete card inside the guide.")
+                    )
+                    .listRowBackground(Color.clear)
                 } else {
-                    Image(systemName: "rectangle.portrait.on.rectangle.portrait")
-                        .font(.system(size: 46))
-                        .foregroundStyle(Color.accentColor)
+                    Section(results.count == 1 ? "Card found" : "Choose a card") {
+                        ForEach(results) { result in
+                            NavigationLink {
+                                CatalogCardDetailView(card: result.card)
+                            } label: {
+                                HStack(spacing: 14) {
+                                    CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                                        .aspectRatio(245 / 337, contentMode: .fit)
+                                        .frame(width: 58)
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(result.card.name)
+                                            .font(.body.weight(.semibold))
+                                        Text("\(result.setName) · #\(result.card.localID)")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [10, 7]))
-                    .aspectRatio(245 / 337, contentMode: .fit)
-                    .padding(26)
-                    .allowsHitTesting(false)
+                if !recognizedLines.isEmpty {
+                    Section {
+                        DisclosureGroup("Recognized text") {
+                            Text(recognizedLines.joined(separator: "\n"))
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
             }
-            .frame(height: 420)
-
-            Text("Place one card inside the guide")
-                .font(.headline)
-            Text("TallyDex reads the card name and collector number, then asks you to confirm the match.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            .navigationTitle("Photo Search")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Scan Again") { isShowingResults = false }
+                }
+            }
         }
-        .frame(maxWidth: 380)
-        .frame(maxWidth: .infinity)
+        .presentationDetents([.medium, .large])
+    }
+
+    private func takePhoto() {
+        guard camera.isReady else { return }
+        camera.capture { image in
+            guard let image else {
+                scanError = "The camera couldn’t capture that photo. Please try again."
+                return
+            }
+            scan(image)
+        }
     }
 
     private func scan(_ image: UIImage) {
+        camera.stop()
         scannedImage = image
         recognizedLines = []
         results = []
-        message = nil
+        scanError = nil
         isScanning = true
         Task {
             defer { isScanning = false }
@@ -5192,15 +5605,10 @@ struct CardScannerView: View {
                 let lines = try await CardTextRecognizer.recognize(image)
                 recognizedLines = lines
                 results = try await searchRecognizedText(lines)
-                if results.isEmpty {
-                    message = "No exact card match was found. Try a sharper photo with the name and collector number visible."
-                } else if results.count == 1 {
-                    message = "Check the match below before opening or marking the card."
-                } else {
-                    message = "Several cards match the visible text. Choose the correct printing below."
-                }
+                isShowingResults = true
             } catch {
-                message = "TallyDex couldn’t read that photo. Try again in brighter, even light."
+                scanError = "TallyDex couldn’t read that photo. Try again in brighter, even light."
+                resetScanner()
             }
         }
     }
@@ -5211,23 +5619,176 @@ struct CardScannerView: View {
             if !exact.isEmpty { return exact }
         }
 
+        for identifier in CardTextRecognizer.setAndCollectorCandidates(in: lines) {
+            let matches = try await catalogStore.searchCards(query: identifier)
+            if !matches.isEmpty { return Array(matches.prefix(20)) }
+        }
+
         for candidate in CardTextRecognizer.nameCandidates(in: lines).prefix(8) {
             let matches = try await catalogStore.searchCards(query: candidate)
             if !matches.isEmpty { return Array(matches.prefix(20)) }
         }
         return []
     }
+
+    private func resetScanner() {
+        scannedImage = nil
+        recognizedLines = []
+        results = []
+        if scanError == nil {
+            camera.start()
+        }
+    }
 }
 
-private enum CardTextRecognizer {
+private struct CardPhotoForAlignment: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
+private struct CardPhotoAlignmentView: View {
+    let image: UIImage
+    let onUse: (UIImage) -> Void
+    let onCancel: () -> Void
+
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { geometry in
+            let cropWidth = min(
+                340, geometry.size.width - 48,
+                max(120, geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 250) * 245 / 337
+            )
+            let cropSize = CGSize(width: cropWidth, height: cropWidth * 337 / 245)
+
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 20) {
+                    VStack(spacing: 6) {
+                        Text("Fit the card inside the guide")
+                            .font(.headline)
+                        Text("Drag to move · Pinch to zoom")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.top, max(80, geometry.safeAreaInsets.top + 24))
+
+                    Spacer(minLength: 8)
+
+                    positionedImage(size: cropSize)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(
+                                    Color.accentColor,
+                                    style: StrokeStyle(lineWidth: 4, dash: [12, 8])
+                                )
+                                .allowsHitTesting(false)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .contentShape(Rectangle())
+                        .gesture(dragGesture)
+                        .simultaneousGesture(zoomGesture)
+
+                    HStack {
+                        Image(systemName: "minus.magnifyingglass")
+                        Slider(value: $scale, in: 1...8) { editing in
+                            if !editing { lastScale = scale }
+                        }
+                        .accessibilityLabel("Photo zoom")
+                        .tint(.blue)
+                        Image(systemName: "plus.magnifyingglass")
+                        Button("Reset") {
+                            scale = 1
+                            lastScale = 1
+                            offset = .zero
+                            lastOffset = .zero
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 32)
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 14) {
+                        Button("Cancel", role: .cancel, action: onCancel)
+                            .buttonStyle(.bordered)
+                            .tint(.white)
+                            .frame(maxWidth: .infinity)
+
+                        Button("Use Photo") {
+                            if let cropped = renderedCrop(size: cropSize) {
+                                onUse(cropped)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .controlSize(.large)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, max(24, geometry.safeAreaInsets.bottom + 12))
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+            }
+        }
+    }
+
+    private func positionedImage(size: CGSize) -> some View {
+        ZStack {
+            Color.black
+            Image(uiImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: size.width, height: size.height)
+                .scaleEffect(scale)
+                .offset(offset)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                offset = CGSize(
+                    width: lastOffset.width + value.translation.width,
+                    height: lastOffset.height + value.translation.height
+                )
+            }
+            .onEnded { _ in lastOffset = offset }
+    }
+
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { value in
+                scale = min(8, max(1, lastScale * value))
+            }
+            .onEnded { _ in lastScale = scale }
+    }
+
+    @MainActor
+    private func renderedCrop(size: CGSize) -> UIImage? {
+        let renderer = ImageRenderer(content: positionedImage(size: size))
+        renderer.scale = 2
+        return renderer.uiImage
+    }
+}
+
+enum CardTextRecognizer {
     static func recognize(_ image: UIImage) async throws -> [String] {
         guard let cgImage = image.cgImage else { return [] }
+        let orientation = CGImagePropertyOrientation(image.imageOrientation)
         return try await Task.detached(priority: .userInitiated) {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
             request.recognitionLanguages = ["en-US"]
-            try VNImageRequestHandler(cgImage: cgImage).perform([request])
+            try VNImageRequestHandler(cgImage: cgImage, orientation: orientation).perform([request])
             return (request.results ?? [])
                 .compactMap { $0.topCandidates(1).first?.string }
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -5243,6 +5804,34 @@ private enum CardTextRecognizer {
             return nil
         }
         return String(joined[match]).replacingOccurrences(of: " ", with: "")
+    }
+
+    static func setAndCollectorCandidates(in lines: [String]) -> [String] {
+        let text = lines.joined(separator: " ")
+            .uppercased()
+            .replacingOccurrences(of: #"[^A-Z0-9.]+"#, with: " ", options: .regularExpression)
+        let pattern = #"\b([A-Z][A-Z0-9.]{1,7})\s+(?:EN\s+|US\s+)?(\d{1,3})\b"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        var candidates: [String] = []
+        for match in expression.matches(in: text, range: range) {
+            guard let codeRange = Range(match.range(at: 1), in: text),
+                  let numberRange = Range(match.range(at: 2), in: text) else { continue }
+            var code = String(text[codeRange])
+            let number = String(text[numberRange])
+            // Set marks often print the language directly beside the code, such
+            // as "SVE EN". Vision can collapse that to "SVEEN".
+            if code.count > 4, code.hasSuffix("EN") || code.hasSuffix("US") {
+                code.removeLast(2)
+            }
+            guard code.filter(\.isLetter).count >= 2,
+                  !["BASIC", "STAGE", "TRAINER", "ENERGY", "POKEMON", "ILLUS"].contains(code) else {
+                continue
+            }
+            let candidate = "\(code) \(number)"
+            if !candidates.contains(candidate) { candidates.append(candidate) }
+        }
+        return candidates
     }
 
     static func nameCandidates(in lines: [String]) -> [String] {
@@ -5264,77 +5853,168 @@ private enum CardTextRecognizer {
     }
 }
 
-private struct CameraCaptureView: UIViewControllerRepresentable {
-    let onCapture: (UIImage) -> Void
-    let onCancel: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onCapture: onCapture, onCancel: onCancel)
-    }
-
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.cameraCaptureMode = .photo
-        picker.delegate = context.coordinator
-        picker.loadViewIfNeeded()
-        picker.cameraOverlayView = CardCameraGuideView(frame: picker.view.bounds)
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-
-    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
-        let onCapture: (UIImage) -> Void
-        let onCancel: () -> Void
-
-        init(onCapture: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
-            self.onCapture = onCapture
-            self.onCancel = onCancel
-        }
-
-        func imagePickerController(
-            _ picker: UIImagePickerController,
-            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
-        ) {
-            guard let image = info[.originalImage] as? UIImage else {
-                onCancel()
-                return
-            }
-            onCapture(image)
-        }
-
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            onCancel()
+private extension CGImagePropertyOrientation {
+    init(_ orientation: UIImage.Orientation) {
+        switch orientation {
+        case .up: self = .up
+        case .upMirrored: self = .upMirrored
+        case .down: self = .down
+        case .downMirrored: self = .downMirrored
+        case .left: self = .left
+        case .leftMirrored: self = .leftMirrored
+        case .right: self = .right
+        case .rightMirrored: self = .rightMirrored
+        @unknown default: self = .up
         }
     }
 }
 
-private final class CardCameraGuideView: UIView {
+private final class CardCameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+    @Published private(set) var isReady = false
+    @Published private(set) var isAvailable = AVCaptureDevice.default(for: .video) != nil
+    @Published private(set) var permissionDenied = false
+
+    let session = AVCaptureSession()
+    private let photoOutput = AVCapturePhotoOutput()
+    private let sessionQueue = DispatchQueue(label: "com.tallydex.camera.session", qos: .userInitiated)
+    private var isConfigured = false
+    private var wantsRunning = false
+    private var captureHandler: (@MainActor @Sendable (UIImage?) -> Void)?
+
+    func start() {
+        sessionQueue.async { self.wantsRunning = true }
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            configureAndStart()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                guard let self else { return }
+                if granted {
+                    self.configureAndStart()
+                } else {
+                    self.publishUnavailable(permissionDenied: true)
+                }
+            }
+        case .denied, .restricted:
+            publishUnavailable(permissionDenied: true)
+        @unknown default:
+            publishUnavailable(permissionDenied: false)
+        }
+    }
+
+    func stop() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.wantsRunning = false
+            if self.session.isRunning { self.session.stopRunning() }
+            DispatchQueue.main.async { self.isReady = false }
+        }
+    }
+
+    func capture(completion: @escaping @MainActor @Sendable (UIImage?) -> Void) {
+        sessionQueue.async { [weak self] in
+            guard let self, self.isConfigured, self.session.isRunning else {
+                Task { @MainActor in completion(nil) }
+                return
+            }
+            self.captureHandler = completion
+            let settings = AVCapturePhotoSettings()
+            settings.photoQualityPrioritization = .quality
+            if let connection = self.photoOutput.connection(with: .video),
+               connection.isVideoRotationAngleSupported(90) {
+                connection.videoRotationAngle = 90
+            }
+            self.photoOutput.capturePhoto(with: settings, delegate: self)
+        }
+    }
+
+    func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishProcessingPhoto photo: AVCapturePhoto,
+        error: (any Error)?
+    ) {
+        let image = error == nil
+            ? photo.fileDataRepresentation().flatMap(UIImage.init(data:))
+            : nil
+        let handler = captureHandler
+        captureHandler = nil
+        Task { @MainActor in handler?(image) }
+    }
+
+    private func configureAndStart() {
+        sessionQueue.async { [weak self] in
+            guard let self, self.wantsRunning else { return }
+            if !self.isConfigured {
+                self.session.beginConfiguration()
+                defer { self.session.commitConfiguration() }
+                self.session.sessionPreset = .photo
+                guard let device = AVCaptureDevice.default(
+                    .builtInWideAngleCamera,
+                    for: .video,
+                    position: .back
+                ), let input = try? AVCaptureDeviceInput(device: device),
+                   self.session.canAddInput(input),
+                   self.session.canAddOutput(self.photoOutput) else {
+                    self.publishUnavailable(permissionDenied: false)
+                    return
+                }
+                self.session.addInput(input)
+                self.session.addOutput(self.photoOutput)
+                self.isConfigured = true
+            }
+            if !self.session.isRunning { self.session.startRunning() }
+            DispatchQueue.main.async {
+                self.isAvailable = true
+                self.permissionDenied = false
+                self.isReady = true
+            }
+        }
+    }
+
+    private func publishUnavailable(permissionDenied: Bool) {
+        DispatchQueue.main.async {
+            self.isAvailable = false
+            self.permissionDenied = permissionDenied
+            self.isReady = false
+        }
+    }
+}
+
+private struct LiveCardCameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeUIView(context: Context) -> CardCameraPreviewUIView {
+        let view = CardCameraPreviewUIView()
+        view.previewLayer.session = session
+        return view
+    }
+
+    func updateUIView(_ uiView: CardCameraPreviewUIView, context: Context) {
+        uiView.previewLayer.session = session
+    }
+}
+
+private final class CardCameraPreviewUIView: UIView {
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+
+    var previewLayer: AVCaptureVideoPreviewLayer {
+        layer as! AVCaptureVideoPreviewLayer
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .clear
-        isUserInteractionEnabled = false
-        autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        previewLayer.videoGravity = .resizeAspectFill
+        backgroundColor = .black
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func draw(_ rect: CGRect) {
-        let width = min(rect.width * 0.72, 310)
-        let height = width * 337 / 245
-        let guide = CGRect(
-            x: (rect.width - width) / 2,
-            y: max(90, (rect.height - height) / 2 - 20),
-            width: width,
-            height: height
-        )
-        let path = UIBezierPath(roundedRect: guide, cornerRadius: 18)
-        UIColor.systemBlue.setStroke()
-        path.lineWidth = 4
-        path.setLineDash([12, 8], count: 2, phase: 0)
-        path.stroke()
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let connection = previewLayer.connection,
+              connection.isVideoRotationAngleSupported(90) else { return }
+        connection.videoRotationAngle = 90
     }
 }
