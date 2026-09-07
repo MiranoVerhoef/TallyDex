@@ -1,9 +1,16 @@
 import SwiftUI
 
+enum BrowserSharingSettings {
+    static let allowWhileBackgroundedKey = "browserSharing.allowWhileBackgrounded"
+    static let allowWhileBackgroundedDefault = false
+}
+
 @main
 struct TallyDexApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(BrowserSharingSettings.allowWhileBackgroundedKey)
+    private var allowBrowserSharingWhileBackgrounded = BrowserSharingSettings.allowWhileBackgroundedDefault
     @State private var catalogStore = CatalogStore()
     @State private var collectionStore = CollectionStore()
     @State private var artworkCacheStore = ArtworkCacheStore()
@@ -37,7 +44,7 @@ struct TallyDexApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase != .active {
-                        if localCollectionSharing.isRunning {
+                        if !allowBrowserSharingWhileBackgrounded, localCollectionSharing.isRunning {
                             localCollectionSharing.stop()
                         }
                         return

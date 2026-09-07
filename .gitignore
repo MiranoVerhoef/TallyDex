@@ -4,4 +4,4 @@ DerivedData/
 xcuserdata/
 *.xcuserstate
 .swiftpm/
-
+artifacts/

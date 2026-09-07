@@ -23,7 +23,18 @@ final class AppNavigationStore {
 }
 
 enum CardDeepLink {
+    static let shareHost = "miranoverhoef.github.io"
+
     static func url(cardID: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = shareHost
+        components.path = "/TallyDex/card/"
+        components.queryItems = [URLQueryItem(name: "id", value: cardID)]
+        return components.url!
+    }
+
+    static func appURL(cardID: String) -> URL {
         var components = URLComponents()
         components.scheme = "tallydex"
         components.host = "card"
@@ -32,9 +43,17 @@ enum CardDeepLink {
     }
 
     static func cardID(from url: URL) -> String? {
-        guard url.scheme?.lowercased() == "tallydex",
-              url.host?.lowercased() == "card" else { return nil }
-        let value = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if url.scheme?.lowercased() == "tallydex", url.host?.lowercased() == "card" {
+            let value = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return value.isEmpty ? nil : value.removingPercentEncoding ?? value
+        }
+        guard url.scheme?.lowercased() == "https",
+              url.host?.lowercased() == shareHost,
+              url.path.lowercased().hasPrefix("/tallydex/card") else { return nil }
+        let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "id" })?
+            .value ?? ""
         return value.isEmpty ? nil : value.removingPercentEncoding ?? value
     }
 }
