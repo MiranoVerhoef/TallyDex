@@ -100,10 +100,11 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertEqual(tracker.consecutiveStableFrames, 0)
     }
 
-    func testCameraCaptureModeDefaultsToAutomaticAndCanResolveManual() {
-        XCTAssertEqual(CardScannerCaptureMode.defaultMode, .automatic)
+    func testCameraCaptureModeDefaultsToManualWhileAutomaticRemainsAvailable() {
+        XCTAssertEqual(CardScannerCaptureMode.defaultMode, .manual)
+        XCTAssertEqual(CardScannerCaptureMode.resolve("automatic"), .automatic)
         XCTAssertEqual(CardScannerCaptureMode.resolve("manual"), .manual)
-        XCTAssertEqual(CardScannerCaptureMode.resolve("unsupported"), .automatic)
+        XCTAssertEqual(CardScannerCaptureMode.resolve("unsupported"), .manual)
     }
 
     func testPrimaryNavigationIncludesCameraTab() {

@@ -109,9 +109,14 @@ Completed in v0.9.4:
 3. OCR matching tolerates small spelling damage across a complete card title and
    ranks the full local catalogue name, fixing scans such as Pikachu with Grey Felt
    Hat without weakening the unrelated-name safeguard.
-4. Shared cards now include a registered `.tallydexcard` attachment. It opens the
-   exact card locally in TallyDex when tapped, while the separately shared artwork
-   provides the visual preview; no website or hosted redirect is required.
+4. Added a registered `.tallydexcard` document for passing an exact card locally
+   through Files or AirDrop. Messaging apps do not consistently open custom file
+   types or custom URL schemes, so this is not treated as a universal-link replacement.
+
+Camera follow-up: live automatic capture remains experimental and Manual is the
+default while catalogue, collection, and metadata work continues. Regular sharing
+is being split into one clean card-image share and a separate TallyDex document
+export so messaging apps never receive two unrelated-looking attachments.
 
 Research and later builds:
 
@@ -143,9 +148,13 @@ Research and later builds:
    without weakening TCGdex correctness.
 12. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, and
-   an optional StoreKit Tip Jar.
+13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
+    optional StoreKit Tip Jar, and—only with an independently controlled HTTPS
+    domain—true universal card links with rich previews.
 14. Binder planner.
+15. Finish automatic live card scanning after the remaining catalogue and
+    collection work: improve live-frame OCR, confidence ranking, glare handling,
+    top-loader detection, and real-device validation before making Auto the default.
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
 calculates every card’s goal progress in a single pass per set. Card grids,
