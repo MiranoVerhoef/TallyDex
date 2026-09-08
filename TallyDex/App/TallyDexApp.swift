@@ -57,6 +57,8 @@ struct TallyDexApp: App {
                 .onOpenURL { url in
                     if let cardID = CardDeepLink.cardID(from: url) {
                         appNavigation.open(cardID: cardID)
+                    } else if let cardID = SharedCardDocument.cardID(from: url) {
+                        appNavigation.open(cardID: cardID)
                     } else if url.isFileURL {
                         Task { await collectionStore.openExternalBackup(at: url) }
                     }

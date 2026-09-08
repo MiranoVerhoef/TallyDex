@@ -66,6 +66,18 @@
 				<string>com.miranoverhoef.tallydex.collection</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>TallyDex Card</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.miranoverhoef.tallydex.card-link</string>
+			</array>
+		</dict>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
@@ -87,6 +99,26 @@
 				</array>
 				<key>public.mime-type</key>
 				<string>application/vnd.tallydex.pokecollection+json</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>TallyDex Card</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.miranoverhoef.tallydex.card-link</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tallydexcard</string>
+				</array>
+				<key>public.mime-type</key>
+				<string>application/vnd.tallydex.card+json</string>
 			</dict>
 		</dict>
 	</array>

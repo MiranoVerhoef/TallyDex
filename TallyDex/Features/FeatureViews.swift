@@ -2117,6 +2117,7 @@ struct CatalogCardDetailView: View {
 private struct CardShareToolbarButton: View {
     let card: CatalogCard
     @State private var imageData: Data?
+    @State private var cardDocumentURL: URL?
     @State private var isSharing = false
     @State private var isPreparing = false
 
@@ -2134,7 +2135,8 @@ private struct CardShareToolbarButton: View {
         .sheet(isPresented: $isSharing) {
             CardShareSheet(
                 card: card,
-                image: imageData.flatMap(UIImage.init(data:))
+                image: imageData.flatMap(UIImage.init(data:)),
+                documentURL: cardDocumentURL
             )
             .presentationDetents([.medium, .large])
         }
@@ -2146,6 +2148,10 @@ private struct CardShareToolbarButton: View {
             if let reference = card.fullArtworkReference {
                 imageData = try? await CatalogArtworkCache.shared.data(for: reference)
             }
+            cardDocumentURL = try? SharedCardDocument(
+                cardID: card.id,
+                cardName: card.name
+            ).temporaryURL()
             isPreparing = false
             isSharing = true
         }
@@ -2155,14 +2161,19 @@ private struct CardShareToolbarButton: View {
 private struct CardShareSheet: UIViewControllerRepresentable {
     let card: CatalogCard
     let image: UIImage?
+    var documentURL: URL? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(
+        let shareURL = documentURL ?? (try? SharedCardDocument(
+            cardID: card.id,
+            cardName: card.name
+        ).temporaryURL()) ?? CardDeepLink.url(cardID: card.id)
+        return UIActivityViewController(
             activityItems: [
                 CardShareItemSource(
                     title: card.name,
                     subtitle: "Open #\(card.localID) in TallyDex",
-                    url: CardDeepLink.url(cardID: card.id),
+                    itemURL: shareURL,
                     image: image
                 ),
             ] + (image.map { [$0 as Any] } ?? []),
@@ -2176,25 +2187,25 @@ private struct CardShareSheet: UIViewControllerRepresentable {
 private final class CardShareItemSource: NSObject, UIActivityItemSource {
     let title: String
     let subtitle: String
-    let url: URL
+    let itemURL: URL
     let image: UIImage?
 
-    init(title: String, subtitle: String, url: URL, image: UIImage?) {
+    init(title: String, subtitle: String, itemURL: URL, image: UIImage?) {
         self.title = title
         self.subtitle = subtitle
-        self.url = url
+        self.itemURL = itemURL
         self.image = image
     }
 
     func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
-        url
+        itemURL
     }
 
     func activityViewController(
         _ activityViewController: UIActivityViewController,
         itemForActivityType activityType: UIActivity.ActivityType?
     ) -> Any? {
-        url
+        itemURL
     }
 
     func activityViewController(
@@ -2207,12 +2218,29 @@ private final class CardShareItemSource: NSObject, UIActivityItemSource {
     func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
         let metadata = LPLinkMetadata()
         metadata.title = title
-        metadata.originalURL = url
-        metadata.url = url
+        metadata.originalURL = itemURL
+        metadata.url = itemURL
         if let image {
             metadata.imageProvider = NSItemProvider(object: image)
         }
         return metadata
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        itemURL.pathExtension.lowercased() == "tallydexcard"
+            ? UTType.tallyDexCard.identifier
+            : UTType.url.identifier
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        thumbnailImageForActivityType activityType: UIActivity.ActivityType?,
+        suggestedSize size: CGSize
+    ) -> UIImage? {
+        image
     }
 }
 
@@ -5329,6 +5357,24 @@ private struct AboutTallyDexView: View {
     }
 }
 
+enum CardScannerCaptureMode: String, CaseIterable, Identifiable {
+    case automatic
+    case manual
+
+    static let storageKey = "camera.captureMode"
+    static let defaultMode = CardScannerCaptureMode.automatic
+
+    var id: String { rawValue }
+    var title: String { self == .automatic ? "Auto" : "Manual" }
+    var systemImage: String {
+        self == .automatic ? "viewfinder.circle.fill" : "camera.circle.fill"
+    }
+
+    static func resolve(_ rawValue: String) -> CardScannerCaptureMode {
+        CardScannerCaptureMode(rawValue: rawValue) ?? defaultMode
+    }
+}
+
 struct CardScannerView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(\.scenePhase) private var scenePhase
@@ -5346,6 +5392,20 @@ struct CardScannerView: View {
     @State private var detectedCardCorners: CardRectangleCorners?
     @State private var scanStartedAt = Date()
     @State private var scanError: String?
+    @AppStorage(CardScannerCaptureMode.storageKey)
+    private var captureMode = CardScannerCaptureMode.defaultMode.rawValue
+
+    private var resolvedCaptureMode: CardScannerCaptureMode {
+        CardScannerCaptureMode.resolve(captureMode)
+    }
+
+    private var cameraPrompt: String {
+        if isScanning { return scanStatus }
+        if resolvedCaptureMode == .manual { return "Place one card inside the guide" }
+        return camera.liveCardCorners == nil
+            ? "Point at one complete card"
+            : "Card found — hold steady"
+    }
 
     var body: some View {
         NavigationStack {
@@ -5355,19 +5415,38 @@ struct CardScannerView: View {
                 cameraPreview
 
                 VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        if isScanning {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
+                    HStack(spacing: 10) {
+                        HStack(spacing: 8) {
+                            if isScanning {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
+                            }
+                            Text(cameraPrompt)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
                         }
-                        Text(isScanning ? scanStatus : "Place one card inside the guide")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(.black.opacity(0.55), in: Capsule())
+
+                        Spacer(minLength: 0)
+
+                        Button(action: toggleCaptureMode) {
+                            Label(resolvedCaptureMode.title, systemImage: resolvedCaptureMode.systemImage)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .background(.black.opacity(0.55), in: Capsule())
+                        }
+                        .disabled(isScanning)
+                        .accessibilityLabel("Camera mode: \(resolvedCaptureMode.title)")
+                        .accessibilityHint("Double-tap to switch between automatic and manual scanning")
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(.black.opacity(0.55), in: Capsule())
                     .padding(.top, 12)
 
                     Spacer()
@@ -5381,6 +5460,7 @@ struct CardScannerView: View {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 isVisible = true
+                camera.setAutomaticScanEnabled(resolvedCaptureMode == .automatic)
                 if !isShowingResults && photoToAlign == nil && !isScanning { camera.start() }
             }
             .onDisappear {
@@ -5393,6 +5473,16 @@ struct CardScannerView: View {
                 } else {
                     camera.stop()
                 }
+            }
+            .onChange(of: captureMode) { _, _ in
+                camera.setAutomaticScanEnabled(resolvedCaptureMode == .automatic)
+            }
+            .onChange(of: camera.automaticCaptureRequest) { _, _ in
+                guard resolvedCaptureMode == .automatic,
+                      camera.isReady,
+                      !isScanning, !isShowingResults, scannedImage == nil,
+                      photoToAlign == nil else { return }
+                takePhoto()
             }
         }
         .sheet(isPresented: $isShowingResults, onDismiss: resetScanner) {
@@ -5423,7 +5513,12 @@ struct CardScannerView: View {
             "Photo Search",
             isPresented: Binding(
                 get: { scanError != nil },
-                set: { if !$0 { scanError = nil } }
+                set: {
+                    if !$0 {
+                        scanError = nil
+                        resetScanner()
+                    }
+                }
             )
         ) {
             Button("OK", role: .cancel) {}
@@ -5480,7 +5575,19 @@ struct CardScannerView: View {
                 detectedCardScanOverlay(
                     corners: detectedCardCorners,
                     imageSize: scannedImage.size,
-                    viewportSize: geometry.size
+                    viewportSize: geometry.size,
+                    animated: true
+                )
+            } else if resolvedCaptureMode == .automatic,
+                      scannedImage == nil,
+                      let liveCorners = camera.liveCardCorners,
+                      camera.liveFrameSize.width > 0,
+                      camera.liveFrameSize.height > 0 {
+                detectedCardScanOverlay(
+                    corners: liveCorners,
+                    imageSize: camera.liveFrameSize,
+                    viewportSize: geometry.size,
+                    animated: true
                 )
             } else {
                 ZStack {
@@ -5522,7 +5629,8 @@ struct CardScannerView: View {
     private func detectedCardScanOverlay(
         corners: CardRectangleCorners,
         imageSize: CGSize,
-        viewportSize: CGSize
+        viewportSize: CGSize,
+        animated: Bool
     ) -> some View {
         let mapped = corners.points(inAspectFill: viewportSize, imageSize: imageSize)
         let bounds = mapped.boundingBox.intersection(CGRect(origin: .zero, size: viewportSize))
@@ -5537,7 +5645,7 @@ struct CardScannerView: View {
             .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             .shadow(color: Color.accentColor.opacity(0.95), radius: 8)
 
-            if isScanning, !bounds.isNull, bounds.height > 8, bounds.width > 8 {
+            if animated, !bounds.isNull, bounds.height > 8, bounds.width > 8 {
                 TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
                     let elapsed = timeline.date.timeIntervalSince(scanStartedAt)
                     let progress = elapsed.truncatingRemainder(dividingBy: 1.15) / 1.15
@@ -5675,6 +5783,13 @@ struct CardScannerView: View {
         }
     }
 
+    private func toggleCaptureMode() {
+        captureMode = resolvedCaptureMode == .automatic
+            ? CardScannerCaptureMode.manual.rawValue
+            : CardScannerCaptureMode.automatic.rawValue
+        camera.rearmAutomaticCapture()
+    }
+
     private func scan(_ image: UIImage) {
         camera.stop()
         scannedImage = image
@@ -5743,6 +5858,29 @@ struct CardScannerView: View {
             let matches = try await catalogStore.searchCards(query: candidate)
             if !matches.isEmpty { return Array(matches.prefix(20)) }
         }
+
+        // OCR frequently reads a distinctive multi-word title with one or two
+        // damaged words (for example “Pikachu utth Grey Fat Hat”). Search the
+        // complete local name index by the most trustworthy leading name token,
+        // then rank the results against the entire recognized title. This stays
+        // universal and does not hard-code an individual promotional card.
+        for query in CardTextRecognizer.fallbackNameQueries(in: lines) {
+            let candidates = try await catalogStore.cards(matchingName: query)
+            let ranked = candidates.compactMap { result -> (CatalogCardSearchResult, Double)? in
+                let score = CardTextRecognizer.nameMatchScore(
+                    result.card.name,
+                    candidates: recognizedNames
+                )
+                return score >= 0.72 ? (result, score) : nil
+            }
+            .sorted { left, right in
+                if left.1 != right.1 { return left.1 > right.1 }
+                return left.0.card.name.localizedCaseInsensitiveCompare(right.0.card.name) == .orderedAscending
+            }
+            guard let bestScore = ranked.first?.1 else { continue }
+            let credible = ranked.prefix { bestScore - $0.1 <= 0.06 }.map(\.0)
+            if !credible.isEmpty { return Array(credible.prefix(20)) }
+        }
         return []
     }
 
@@ -5753,6 +5891,7 @@ struct CardScannerView: View {
         recognizedLines = []
         results = []
         if scanError == nil {
+            camera.rearmAutomaticCapture()
             camera.start()
         }
     }
@@ -6009,15 +6148,75 @@ enum CardTextRecognizer {
     }
 
     static func nameLooksLikeCard(_ cardName: String, candidates: [String]) -> Bool {
+        nameMatchScore(cardName, candidates: candidates) >= 0.72
+    }
+
+    static func nameMatchScore(_ cardName: String, candidates: [String]) -> Double {
         let expected = searchableName(cardName)
-        guard expected.count >= 3 else { return false }
-        return candidates.contains { candidate in
+        guard expected.count >= 3 else { return 0 }
+        return candidates.reduce(0) { best, candidate in
             let recognized = searchableName(candidate)
-            return recognized == expected
+            guard recognized.count >= 3 else { return best }
+            if recognized == expected
                 || recognized.hasPrefix(expected + " ")
                 || recognized.hasSuffix(" " + expected)
-                || recognized.contains(" " + expected + " ")
+                || recognized.contains(" " + expected + " ") {
+                return 1
+            }
+            let distance = levenshteinDistance(Array(expected), Array(recognized))
+            let length = max(expected.count, recognized.count)
+            let characterScore = length == 0 ? 0 : 1 - Double(distance) / Double(length)
+
+            let expectedWords = expected.split(separator: " ").map(String.init)
+            let recognizedWords = recognized.split(separator: " ").map(String.init)
+            let matchedWords = expectedWords.filter { expectedWord in
+                recognizedWords.contains { recognizedWord in
+                    let wordDistance = levenshteinDistance(Array(expectedWord), Array(recognizedWord))
+                    let wordLength = max(expectedWord.count, recognizedWord.count)
+                    return wordLength > 0 && 1 - Double(wordDistance) / Double(wordLength) >= 0.67
+                }
+            }.count
+            let wordScore = Double(matchedWords) / Double(max(1, expectedWords.count))
+            return max(best, characterScore * 0.72 + wordScore * 0.28)
         }
+    }
+
+    static func fallbackNameQueries(in lines: [String]) -> [String] {
+        let ignoredWords: Set<String> = [
+            "ability", "attack", "basic", "during", "energy", "evolves", "flip",
+            "heads", "illus", "once", "pokemon", "resistance", "retreat", "search",
+            "stage", "trainer", "weakness", "your",
+        ]
+        var queries: [String] = []
+        for candidate in nameCandidates(in: lines).prefix(8) {
+            guard let word = candidate.split(whereSeparator: \Character.isWhitespace).first else { continue }
+            let cleaned = String(word)
+                .replacingOccurrences(of: #"[^A-Za-z0-9'’-]+"#, with: "", options: .regularExpression)
+            let normalized = searchableName(cleaned)
+            guard normalized.count >= 4, !ignoredWords.contains(normalized),
+                  !queries.contains(where: { searchableName($0) == normalized }) else { continue }
+            queries.append(cleaned)
+        }
+        return queries
+    }
+
+    private static func levenshteinDistance(_ left: [Character], _ right: [Character]) -> Int {
+        guard !left.isEmpty else { return right.count }
+        guard !right.isEmpty else { return left.count }
+        var previous = Array(0...right.count)
+        for (leftIndex, leftCharacter) in left.enumerated() {
+            var current = Array(repeating: 0, count: right.count + 1)
+            current[0] = leftIndex + 1
+            for (rightIndex, rightCharacter) in right.enumerated() {
+                current[rightIndex + 1] = min(
+                    current[rightIndex] + 1,
+                    previous[rightIndex + 1] + 1,
+                    previous[rightIndex] + (leftCharacter == rightCharacter ? 0 : 1)
+                )
+            }
+            previous = current
+        }
+        return previous[right.count]
     }
 
     private static func searchableName(_ value: String) -> String {
@@ -6072,11 +6271,50 @@ struct CardRectangleCorners: Sendable, Equatable {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    private init(topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint) {
+    func maximumCornerDistance(to other: CardRectangleCorners) -> CGFloat {
+        zip(
+            [topLeft, topRight, bottomRight, bottomLeft],
+            [other.topLeft, other.topRight, other.bottomRight, other.bottomLeft]
+        ).map { hypot($0.0.x - $0.1.x, $0.0.y - $0.1.y) }.max() ?? .greatestFiniteMagnitude
+    }
+
+    init(topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint) {
         self.topLeft = topLeft
         self.topRight = topRight
         self.bottomRight = bottomRight
         self.bottomLeft = bottomLeft
+    }
+}
+
+struct CardRectangleStabilityTracker {
+    private(set) var consecutiveStableFrames = 0
+    private var previous: CardRectangleCorners?
+    let requiredStableFrames: Int
+    let maximumCornerMovement: CGFloat
+
+    init(requiredStableFrames: Int = 4, maximumCornerMovement: CGFloat = 0.035) {
+        self.requiredStableFrames = requiredStableFrames
+        self.maximumCornerMovement = maximumCornerMovement
+    }
+
+    mutating func observe(_ corners: CardRectangleCorners?) -> Bool {
+        guard let corners else {
+            consecutiveStableFrames = 0
+            previous = nil
+            return false
+        }
+        if let previous, corners.maximumCornerDistance(to: previous) <= maximumCornerMovement {
+            consecutiveStableFrames += 1
+        } else {
+            consecutiveStableFrames = 1
+        }
+        previous = corners
+        return consecutiveStableFrames >= requiredStableFrames
+    }
+
+    mutating func reset() {
+        consecutiveStableFrames = 0
+        previous = nil
     }
 }
 
@@ -6093,13 +6331,7 @@ enum CardRectangleDetector {
         }
 
         let corners = await Task.detached(priority: .userInitiated) {
-            let request = VNDetectRectanglesRequest()
-            request.maximumObservations = 8
-            request.minimumConfidence = 0.22
-            request.minimumAspectRatio = 0.42
-            request.maximumAspectRatio = 0.95
-            request.minimumSize = 0.08
-            request.quadratureTolerance = 45
+            let request = rectangleRequest()
             let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
             try? handler.perform([request])
             return bestCardObservation(
@@ -6113,6 +6345,34 @@ enum CardRectangleDetector {
             return CardRectangleDetectionResult(cardImage: uprightImage, corners: nil)
         }
         return CardRectangleDetectionResult(cardImage: corrected, corners: corners)
+    }
+
+    static func detectLiveCorners(
+        in pixelBuffer: CVPixelBuffer
+    ) -> (corners: CardRectangleCorners?, imageSize: CGSize) {
+        let rawWidth = CVPixelBufferGetWidth(pixelBuffer)
+        let rawHeight = CVPixelBufferGetHeight(pixelBuffer)
+        let usesLandscapeBuffer = rawWidth > rawHeight
+        let orientation: CGImagePropertyOrientation = usesLandscapeBuffer ? .right : .up
+        let imageSize = usesLandscapeBuffer
+            ? CGSize(width: rawHeight, height: rawWidth)
+            : CGSize(width: rawWidth, height: rawHeight)
+        let request = rectangleRequest()
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+        try? handler.perform([request])
+        let observation = bestCardObservation(request.results ?? [], imageSize: imageSize)
+        return (observation.map(CardRectangleCorners.init(observation:)), imageSize)
+    }
+
+    private static func rectangleRequest() -> VNDetectRectanglesRequest {
+        let request = VNDetectRectanglesRequest()
+        request.maximumObservations = 10
+        request.minimumConfidence = 0.45
+        request.minimumAspectRatio = 0.5
+        request.maximumAspectRatio = 0.9
+        request.minimumSize = 0.14
+        request.quadratureTolerance = 32
+        return request
     }
 
     private static func bestCardObservation(
@@ -6132,13 +6392,34 @@ enum CardRectangleDetector {
         _ observation: VNRectangleObservation,
         imageSize: CGSize
     ) -> Bool {
-        guard observation.boundingBox.width * observation.boundingBox.height >= 0.08 else {
-            return false
+        let corners = CardRectangleCorners(observation: observation)
+        let box = corners.boundingBox
+        guard box.width * box.height >= 0.15,
+              abs(box.midX - 0.5) <= 0.3,
+              abs(box.midY - 0.53) <= 0.36 else { return false }
+
+        func pixelDistance(_ left: CGPoint, _ right: CGPoint) -> CGFloat {
+            hypot(
+                (left.x - right.x) * imageSize.width,
+                (left.y - right.y) * imageSize.height
+            )
         }
+        let meanWidth = (
+            pixelDistance(corners.topLeft, corners.topRight)
+                + pixelDistance(corners.bottomLeft, corners.bottomRight)
+        ) / 2
+        let meanHeight = (
+            pixelDistance(corners.topLeft, corners.bottomLeft)
+                + pixelDistance(corners.topRight, corners.bottomRight)
+        ) / 2
+        guard meanHeight > meanWidth,
+              meanWidth / max(1, meanHeight) >= 0.58,
+              meanWidth / max(1, meanHeight) <= 0.84 else { return false }
+
         let deltaX = (observation.topRight.x - observation.topLeft.x) * imageSize.width
         let deltaY = (observation.topRight.y - observation.topLeft.y) * imageSize.height
         let rotation = abs(atan2(deltaY, deltaX))
-        return rotation <= 18 * .pi / 180
+        return rotation <= 35 * .pi / 180
     }
 
     private static func score(
@@ -6152,10 +6433,10 @@ enum CardRectangleDetector {
         let aspect = min(observedWidth, observedHeight) / max(1, max(observedWidth, observedHeight))
         let aspectPenalty = abs(aspect - expectedAspect) * 8
         let centerPenalty = hypot(box.midX - 0.5, box.midY - 0.56)
-        let areaPenalty: CGFloat = box.width * box.height < 0.06 ? 2 : 0
+        let areaReward = box.width * box.height * 3
         let edgePenalty: CGFloat = box.minX < 0.015 || box.maxX > 0.985
             || box.minY < 0.015 || box.maxY > 0.985 ? 1.5 : 0
-        return aspectPenalty + centerPenalty + areaPenalty + edgePenalty
+        return aspectPenalty + centerPenalty + edgePenalty - areaReward
     }
 
     private static func uprightBitmap(from image: UIImage) -> UIImage? {
@@ -6210,20 +6491,33 @@ private extension CGImagePropertyOrientation {
     }
 }
 
-private final class CardCameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+private final class CardCameraController: NSObject, ObservableObject,
+    AVCapturePhotoCaptureDelegate, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     @Published private(set) var isReady = false
     @Published private(set) var isAvailable = AVCaptureDevice.default(for: .video) != nil
     @Published private(set) var permissionDenied = false
     @Published private(set) var isTorchAvailable = false
     @Published private(set) var isTorchEnabled = false
+    @Published private(set) var liveCardCorners: CardRectangleCorners?
+    @Published private(set) var liveFrameSize = CGSize.zero
+    @Published private(set) var automaticCaptureRequest = 0
 
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "com.tallydex.camera.session", qos: .userInitiated)
+    private let videoProcessingQueue = DispatchQueue(
+        label: "com.tallydex.camera.live-detection",
+        qos: .userInitiated
+    )
     private var isConfigured = false
     private var wantsRunning = false
     private var videoDevice: AVCaptureDevice?
     private var captureHandler: (@MainActor @Sendable (UIImage?) -> Void)?
+    private var automaticScanEnabled = false
+    private var automaticCaptureArmed = true
+    private var lastLiveDetectionTime: CFTimeInterval = 0
+    private var stabilityTracker = CardRectangleStabilityTracker()
 
     func start() {
         sessionQueue.async { self.wantsRunning = true }
@@ -6252,7 +6546,30 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
             self.wantsRunning = false
             self.setTorch(enabled: false)
             if self.session.isRunning { self.session.stopRunning() }
-            DispatchQueue.main.async { self.isReady = false }
+            DispatchQueue.main.async {
+                self.isReady = false
+                self.liveCardCorners = nil
+            }
+        }
+    }
+
+    func setAutomaticScanEnabled(_ enabled: Bool) {
+        videoProcessingQueue.async { [weak self] in
+            guard let self else { return }
+            self.automaticScanEnabled = enabled
+            self.stabilityTracker.reset()
+            self.automaticCaptureArmed = true
+            self.lastLiveDetectionTime = 0
+            if !enabled {
+                DispatchQueue.main.async { self.liveCardCorners = nil }
+            }
+        }
+    }
+
+    func rearmAutomaticCapture() {
+        videoProcessingQueue.async { [weak self] in
+            self?.automaticCaptureArmed = true
+            self?.stabilityTracker.reset()
         }
     }
 
@@ -6265,11 +6582,16 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
     }
 
     func capture(completion: @escaping @MainActor @Sendable (UIImage?) -> Void) {
+        videoProcessingQueue.async { [weak self] in
+            self?.automaticCaptureArmed = false
+            self?.stabilityTracker.reset()
+        }
         sessionQueue.async { [weak self] in
             guard let self, self.isConfigured, self.session.isRunning else {
                 Task { @MainActor in completion(nil) }
                 return
             }
+            guard self.captureHandler == nil else { return }
             self.captureHandler = completion
             let settings = AVCapturePhotoSettings()
             // A full-resolution still is unnecessary for OCR and can require
@@ -6297,6 +6619,30 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
         }
     }
 
+    func captureOutput(
+        _ output: AVCaptureOutput,
+        didOutput sampleBuffer: CMSampleBuffer,
+        from connection: AVCaptureConnection
+    ) {
+        guard automaticScanEnabled, automaticCaptureArmed,
+              CACurrentMediaTime() - lastLiveDetectionTime >= 0.24,
+              let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        lastLiveDetectionTime = CACurrentMediaTime()
+
+        let detection = CardRectangleDetector.detectLiveCorners(in: pixelBuffer)
+        let shouldCapture = stabilityTracker.observe(detection.corners)
+        DispatchQueue.main.async { [weak self] in
+            self?.liveCardCorners = detection.corners
+            self?.liveFrameSize = detection.imageSize
+        }
+        guard shouldCapture else { return }
+        automaticCaptureArmed = false
+        stabilityTracker.reset()
+        DispatchQueue.main.async { [weak self] in
+            self?.automaticCaptureRequest += 1
+        }
+    }
+
     private func configureAndStart() {
         sessionQueue.async { [weak self] in
             guard let self, self.wantsRunning else { return }
@@ -6310,12 +6656,23 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
                     position: .back
                 ), let input = try? AVCaptureDeviceInput(device: device),
                    self.session.canAddInput(input),
-                   self.session.canAddOutput(self.photoOutput) else {
+                   self.session.canAddOutput(self.photoOutput),
+                   self.session.canAddOutput(self.videoOutput) else {
                     self.publishUnavailable(permissionDenied: false)
                     return
                 }
                 self.session.addInput(input)
                 self.session.addOutput(self.photoOutput)
+                self.videoOutput.alwaysDiscardsLateVideoFrames = true
+                self.videoOutput.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                ]
+                self.videoOutput.setSampleBufferDelegate(self, queue: self.videoProcessingQueue)
+                self.session.addOutput(self.videoOutput)
+                if let connection = self.videoOutput.connection(with: .video),
+                   connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                }
                 self.videoDevice = device
                 self.isConfigured = true
             }
@@ -6358,6 +6715,7 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
             self.isReady = false
             self.isTorchAvailable = false
             self.isTorchEnabled = false
+            self.liveCardCorners = nil
         }
     }
 }
