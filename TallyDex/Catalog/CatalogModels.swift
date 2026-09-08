@@ -101,6 +101,74 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// One exact printing object supplied by TCGdex's `variants_detailed` field.
+/// `providerID` is only unique within a card, so `id` deliberately includes
+/// the card ID. Broad `CatalogVariantKind` values remain the ownership key in
+/// this release to preserve existing collections losslessly.
+struct CatalogPrinting: Codable, Equatable, Hashable, Identifiable, Sendable {
+    let cardID: String
+    let providerID: String
+    let rawType: String
+    let kind: CatalogVariantKind?
+    let subtype: String?
+    let size: String?
+    let stamps: [String]
+    let foil: String?
+    let languages: [String]
+    let cardmarketProductID: Int?
+    let tcgplayerProductID: Int?
+    let cardtraderProductID: Int?
+
+    var id: String { "\(cardID)|\(providerID)" }
+
+    var displayName: String {
+        var components = [kind?.displayName ?? Self.title(rawType)]
+        if let subtype, !subtype.isEmpty { components.append(Self.title(subtype)) }
+        for stamp in stamps where !Self.isRepresentedByKind(stamp, kind: kind) {
+            components.append(Self.title(stamp))
+        }
+        if let foil, !foil.isEmpty { components.append("\(Self.title(foil)) foil") }
+        if size == "jumbo" { components.append("Jumbo") }
+        return components.joined(separator: " · ")
+    }
+
+    var marketplaceIdentifiersDescription: String? {
+        var values: [String] = []
+        if let cardmarketProductID { values.append("Cardmarket \(cardmarketProductID)") }
+        if let tcgplayerProductID { values.append("TCGplayer \(tcgplayerProductID)") }
+        if let cardtraderProductID { values.append("CardTrader \(cardtraderProductID)") }
+        return values.isEmpty ? nil : values.joined(separator: " · ")
+    }
+
+    private static func title(_ value: String) -> String {
+        value
+            .split(separator: "-")
+            .map { word in
+                switch word.lowercased() {
+                case "1st": "1st"
+                case "hp": "HP"
+                default: word.prefix(1).uppercased() + word.dropFirst().lowercased()
+                }
+            }
+            .joined(separator: " ")
+    }
+
+    private static func isRepresentedByKind(
+        _ stamp: String,
+        kind: CatalogVariantKind?
+    ) -> Bool {
+        switch (stamp, kind) {
+        case ("1st-edition", .firstEdition),
+             ("w-promo", .watermarkedPromo),
+             ("pre-release", .prerelease),
+             ("staff", .prereleaseStaff):
+            true
+        default:
+            false
+        }
+    }
+}
+
 struct CatalogVariantSearchQuery: Equatable, Sendable {
     enum Requirement: Equatable, Sendable {
         case prerelease
@@ -649,15 +717,18 @@ struct CatalogCardSnapshot: Codable, Equatable, Sendable {
     let card: CatalogCard
     let variants: Set<CatalogVariantKind>
     let prices: [CatalogPriceQuote]
+    let printings: [CatalogPrinting]
 
     init(
         card: CatalogCard,
         variants: Set<CatalogVariantKind>,
-        prices: [CatalogPriceQuote] = []
+        prices: [CatalogPriceQuote] = [],
+        printings: [CatalogPrinting] = []
     ) {
         self.card = card
         self.variants = variants
         self.prices = prices
+        self.printings = printings
     }
 }
 
@@ -708,6 +779,7 @@ protocol CatalogRepository: Sendable {
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func fetchVariants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>]
+    func fetchPrintings(cardID: String) async throws -> [CatalogPrinting]
     func fetchPrices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]]
     func fetchPriceHistory(
         cardID: String,

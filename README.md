@@ -118,11 +118,27 @@ default while catalogue, collection, and metadata work continues. Regular sharin
 is being split into one clean card-image share and a separate TallyDex document
 export so messaging apps never receive two unrelated-looking attachments.
 
+Completed in v0.9.5:
+
+1. TallyDex now stores and shows TCGdex's exact detailed printing records when the
+   provider supplies them: stable printing ID, type and subtype, stamps, foil
+   pattern, standard/jumbo size, language availability, and Cardmarket,
+   TCGplayer, or CardTrader product IDs.
+2. Existing installations perform a one-time per-card metadata refresh, and exact
+   printing records are cached locally in a dedicated database table. An older or
+   incomplete response cannot erase already cached detailed records.
+3. Cards without provider-supplied detailed printings keep their honest broad
+   printing fallback. TallyDex does not invent exact printings, and existing
+   ownership remains grouped by broad printing type until it can be migrated
+   without losing quantities or backup compatibility.
+4. Card sharing now explicitly offers either one clean image or one TallyDex card
+   document, preventing messaging apps from displaying two separate attachments.
+
 Research and later builds:
 
-1. Expand TCGdex printing support with stable variant IDs, subtype, stamps, foil
-   pattern, standard/jumbo size, language availability, and per-variant marketplace
-   identifiers. Never infer a printing that TCGdex does not explicitly identify.
+1. Migrate ownership from broad printing types to exact provider printing IDs with
+   a versioned, lossless backup migration. Preserve every existing quantity and
+   keep a broad fallback wherever TCGdex has no detailed printing record.
 2. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
    depending only on names; support cards containing multiple Pokémon IDs.
 3. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.

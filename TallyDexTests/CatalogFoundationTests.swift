@@ -174,6 +174,56 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
     }
 
+    func testTCGdexPreservesExactDetailedPrintingMetadata() async throws {
+        let response = #"""
+        {
+          "id": "base1-4",
+          "localId": "4",
+          "name": "Charizard",
+          "set": { "id": "base1" },
+          "variants": { "holo": true, "firstEdition": true },
+          "variants_detailed": [
+            {
+              "type": "holo",
+              "subtype": "shadowless",
+              "size": "standard",
+              "stamp": ["1st-edition"],
+              "foil": "cosmos",
+              "languages": ["en", "fr"],
+              "variantId": "exact-printing-id",
+              "thirdParty": {
+                "cardmarket": 660224,
+                "tcgplayer": 106999,
+                "cardtrader": 12345
+              }
+            }
+          ]
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "base1-4")
+        let printing = try XCTUnwrap(snapshot.printings.first)
+
+        XCTAssertEqual(printing.id, "base1-4|exact-printing-id")
+        XCTAssertEqual(printing.kind, .firstEdition)
+        XCTAssertEqual(printing.rawType, "holo")
+        XCTAssertEqual(printing.subtype, "shadowless")
+        XCTAssertEqual(printing.size, "standard")
+        XCTAssertEqual(printing.stamps, ["1st-edition"])
+        XCTAssertEqual(printing.foil, "cosmos")
+        XCTAssertEqual(printing.languages, ["en", "fr"])
+        XCTAssertEqual(printing.cardmarketProductID, 660224)
+        XCTAssertEqual(printing.tcgplayerProductID, 106999)
+        XCTAssertEqual(printing.cardtraderProductID, 12345)
+        XCTAssertEqual(printing.displayName, "First edition · Shadowless · Cosmos foil")
+    }
+
     func testTCGdexDecodesExactMarketplacePricesPerPrinting() async throws {
         let response = #"""
         {
@@ -541,6 +591,76 @@ final class CatalogFoundationTests: XCTestCase {
         let storedVariants = try await repository.fetchVariants(cardID: card.id)
         XCTAssertEqual(storedCards, [card])
         XCTAssertEqual(storedVariants, [.normal, .reverseHolo, .holo])
+    }
+
+    func testRepositoryPersistsAndRefreshesExactPrintingsWithoutErasingOnLegacyResponse() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.upsertSeries([
+            CatalogSeries(id: "base", name: "Base", logoURL: nil),
+        ])
+        try await repository.replaceSets(
+            [set(id: "base1", seriesID: "base", name: "Base Set")],
+            forSeriesID: "base"
+        )
+        let card = CatalogCard(
+            id: "base1-4",
+            setID: "base1",
+            localID: "4",
+            name: "Charizard",
+            imageURL: nil,
+            category: "Pokemon",
+            illustrator: nil,
+            rarity: "Rare Holo"
+        )
+        let unlimited = CatalogPrinting(
+            cardID: card.id,
+            providerID: "unlimited-id",
+            rawType: "holo",
+            kind: .holo,
+            subtype: "unlimited",
+            size: "standard",
+            stamps: [],
+            foil: nil,
+            languages: ["en"],
+            cardmarketProductID: 273699,
+            tcgplayerProductID: 42382,
+            cardtraderProductID: nil
+        )
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card,
+            variants: [.holo],
+            printings: [unlimited]
+        ))
+        let firstStoredPrintings = try await repository.fetchPrintings(cardID: card.id)
+        XCTAssertEqual(firstStoredPrintings, [unlimited])
+
+        // A legacy response without detailed records must not destroy cached
+        // exact metadata or affect broad ownership keys.
+        try await repository.replaceCard(CatalogCardSnapshot(card: card, variants: [.holo]))
+        let preservedPrintings = try await repository.fetchPrintings(cardID: card.id)
+        XCTAssertEqual(preservedPrintings, [unlimited])
+
+        let shadowless = CatalogPrinting(
+            cardID: card.id,
+            providerID: "shadowless-id",
+            rawType: "holo",
+            kind: .firstEdition,
+            subtype: "shadowless",
+            size: "standard",
+            stamps: ["1st-edition"],
+            foil: nil,
+            languages: [],
+            cardmarketProductID: 660224,
+            tcgplayerProductID: 106999,
+            cardtraderProductID: nil
+        )
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card,
+            variants: [.holo, .firstEdition],
+            printings: [shadowless]
+        ))
+        let refreshedPrintings = try await repository.fetchPrintings(cardID: card.id)
+        XCTAssertEqual(refreshedPrintings, [shadowless])
     }
 
     func testRepositoryUsesPricedPrintingToRepairCachedVariantAndPersistsProductLink() async throws {
@@ -1264,6 +1384,10 @@ final class CatalogFoundationTests: XCTestCase {
         try await repository.setMetadataDate(
             refreshDate,
             forKey: "catalog.price.\(card.id).rollingAveragesChecked"
+        )
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.card.\(card.id).detailedPrintingsChecked"
         )
         let provider = CatalogProviderSpy(cardSnapshot: snapshot)
         let store = CatalogStore(

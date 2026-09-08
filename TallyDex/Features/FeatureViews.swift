@@ -1445,6 +1445,11 @@ private struct CatalogVariantPickerView: View {
                 Text(priceText(for: variant))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let summary = exactPrintingSummary(for: variant) {
+                    Text(summary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             Spacer()
 
@@ -1487,6 +1492,14 @@ private struct CatalogVariantPickerView: View {
             return "No TCGdex \(source.displayName) price for this printing"
         }
         return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
+    }
+
+    private func exactPrintingSummary(for variant: CatalogVariantKind) -> String? {
+        let names = snapshot?.printings
+            .filter { $0.kind == variant }
+            .map(\.displayName) ?? []
+        guard !names.isEmpty else { return nil }
+        return names.joined(separator: "\n")
     }
 
     private func load() async {
@@ -1781,11 +1794,16 @@ struct CatalogCardDetailView: View {
                     }
                 }
 
-                if let variants = snapshot?.variants, !variants.isEmpty {
+                if let snapshot, !snapshot.printings.isEmpty {
+                    detailedPrintingsSection(snapshot.printings)
+                } else if let variants = snapshot?.variants, !variants.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Available variants")
+                        Text("Available printing types")
                             .font(.headline)
                         Text(variants.map(\.displayName).sorted().joined(separator: " · "))
+                            .foregroundStyle(.secondary)
+                        Text("TCGdex has not supplied exact printing records for this card yet.")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -1908,6 +1926,46 @@ struct CatalogCardDetailView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(notes == savedNotes || isSavingMetadata)
             }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func detailedPrintingsSection(_ printings: [CatalogPrinting]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Exact TCGdex printings")
+                .font(.headline)
+            ForEach(printings) { printing in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(printing.displayName)
+                        .font(.subheadline.weight(.semibold))
+                    Text("Printing ID \(printing.providerID)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    if let size = printing.size {
+                        Text("Size: \(size.capitalized)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !printing.languages.isEmpty {
+                        Text("Languages: \(printing.languages.map { $0.uppercased() }.joined(separator: ", "))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let marketplaceIDs = printing.marketplaceIdentifiersDescription {
+                        Text(marketplaceIDs)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if printing.id != printings.last?.id {
+                    Divider()
+                }
+            }
+            Text("These are provider-supplied records. Collection ownership remains grouped by the printing types shown below until the lossless ownership migration is complete.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
