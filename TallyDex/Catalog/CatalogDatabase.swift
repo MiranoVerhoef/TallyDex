@@ -149,6 +149,25 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v8-detailed-printings") { database in
+            try database.create(table: "catalogPrinting") { table in
+                table.column("cardID", .text).notNull().indexed()
+                    .references("catalogCard", onDelete: .cascade)
+                table.column("providerID", .text).notNull()
+                table.column("rawType", .text).notNull()
+                table.column("kind", .text)
+                table.column("subtype", .text)
+                table.column("size", .text)
+                table.column("stampsJSON", .text).notNull().defaults(to: "[]")
+                table.column("foil", .text)
+                table.column("languagesJSON", .text).notNull().defaults(to: "[]")
+                table.column("cardmarketProductID", .integer)
+                table.column("tcgplayerProductID", .integer)
+                table.column("cardtraderProductID", .integer)
+                table.primaryKey(["cardID", "providerID"])
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -492,6 +511,23 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func fetchPrintings(cardID: String) async throws -> [CatalogPrinting] {
+        try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT cardID, providerID, rawType, kind, subtype, size, stampsJSON,
+                       foil, languagesJSON, cardmarketProductID, tcgplayerProductID,
+                       cardtraderProductID
+                FROM catalogPrinting
+                WHERE cardID = ?
+                ORDER BY COALESCE(kind, rawType), COALESCE(subtype, ''), providerID
+                """,
+                arguments: [cardID]
+            ).compactMap(Self.catalogPrinting)
+        }
+    }
+
     func fetchPrices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]] {
         guard !cardIDs.isEmpty else { return [:] }
         return try await database.queue.read { database in
@@ -790,6 +826,41 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     arguments: [card.id, variant.rawValue]
                 )
             }
+            // Older API responses do not always include `variants_detailed`.
+            // Preserve a previously cached exact list when the provider omits
+            // it; otherwise replace the list atomically so additions and field
+            // updates appear on the next card refresh.
+            if !snapshot.printings.isEmpty {
+                try database.execute(
+                    sql: "DELETE FROM catalogPrinting WHERE cardID = ?",
+                    arguments: [card.id]
+                )
+                for printing in snapshot.printings {
+                    try database.execute(
+                        sql: """
+                        INSERT INTO catalogPrinting
+                            (cardID, providerID, rawType, kind, subtype, size, stampsJSON,
+                             foil, languagesJSON, cardmarketProductID, tcgplayerProductID,
+                             cardtraderProductID)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        arguments: [
+                            printing.cardID,
+                            printing.providerID,
+                            printing.rawType,
+                            printing.kind?.rawValue,
+                            printing.subtype,
+                            printing.size,
+                            Self.encodeStrings(printing.stamps),
+                            printing.foil,
+                            Self.encodeStrings(printing.languages),
+                            printing.cardmarketProductID,
+                            printing.tcgplayerProductID,
+                            printing.cardtraderProductID,
+                        ]
+                    )
+                }
+            }
             let dayFormatter = DateFormatter()
             dayFormatter.calendar = Calendar(identifier: .gregorian)
             dayFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -920,6 +991,24 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         )
     }
 
+    private static func catalogPrinting(_ row: Row) -> CatalogPrinting? {
+        let rawKind: String? = row["kind"]
+        return CatalogPrinting(
+            cardID: row["cardID"],
+            providerID: row["providerID"],
+            rawType: row["rawType"],
+            kind: rawKind.flatMap(CatalogVariantKind.init(rawValue:)),
+            subtype: row["subtype"],
+            size: row["size"],
+            stamps: decodeStrings(row["stampsJSON"]),
+            foil: row["foil"],
+            languages: decodeStrings(row["languagesJSON"]),
+            cardmarketProductID: row["cardmarketProductID"],
+            tcgplayerProductID: row["tcgplayerProductID"],
+            cardtraderProductID: row["cardtraderProductID"]
+        )
+    }
+
     private static func priceHistoryPoint(_ row: Row) -> CatalogPriceHistoryPoint? {
         guard let variant = CatalogVariantKind(rawValue: row["variant"]),
               let source = CatalogPriceSource(rawValue: row["source"]),
@@ -1008,6 +1097,19 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             return nil
         }
         return try? JSONDecoder().decode([CatalogRarityCount].self, from: data)
+    }
+
+    private static func encodeStrings(_ values: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(values),
+              let string = String(data: data, encoding: .utf8) else { return "[]" }
+        return string
+    }
+
+    private static func decodeStrings(_ string: String?) -> [String] {
+        guard let string,
+              let data = string.data(using: .utf8),
+              let values = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return values
     }
 }
 

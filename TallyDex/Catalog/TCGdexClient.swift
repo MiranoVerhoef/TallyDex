@@ -153,7 +153,10 @@ struct TCGdexClient: CatalogProvider, Sendable {
         return CatalogCardSnapshot(
             card: response.catalogCard,
             variants: variants,
-            prices: response.catalogPrices(variants: variants)
+            prices: response.catalogPrices(variants: variants),
+            printings: response.variantsDetailed?.compactMap {
+                $0.catalogPrinting(cardID: response.id)
+            } ?? []
         )
     }
 
@@ -544,8 +547,32 @@ private func tcgdexDate(_ value: String?) -> Date? {
 
 private struct DetailedVariantDTO: Decodable, Sendable {
     let type: String
+    let subtype: String?
+    let size: String?
     let stamp: [String]?
+    let foil: String?
+    let languages: [String]?
+    let thirdParty: ThirdPartyPrintingDTO?
+    let variantId: String?
     let pricing: PricingDTO?
+
+    func catalogPrinting(cardID: String) -> CatalogPrinting? {
+        guard let variantId, !variantId.isEmpty else { return nil }
+        return CatalogPrinting(
+            cardID: cardID,
+            providerID: variantId,
+            rawType: type,
+            kind: primaryKind,
+            subtype: subtype,
+            size: size,
+            stamps: stamp ?? [],
+            foil: foil,
+            languages: languages ?? [],
+            cardmarketProductID: thirdParty?.cardmarket,
+            tcgplayerProductID: thirdParty?.tcgplayer,
+            cardtraderProductID: thirdParty?.cardtrader
+        )
+    }
 
     var primaryKind: CatalogVariantKind? {
         if stamp?.contains("staff") == true { return .prereleaseStaff }
@@ -597,6 +624,12 @@ private struct DetailedVariantDTO: Decodable, Sendable {
         }
         return kinds
     }
+}
+
+private struct ThirdPartyPrintingDTO: Decodable, Sendable {
+    let tcgplayer: Int?
+    let cardmarket: Int?
+    let cardtrader: Int?
 }
 
 private extension Array where Element == DetailedVariantDTO {

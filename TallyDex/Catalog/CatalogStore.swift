@@ -346,9 +346,13 @@ final class CatalogStore {
         let lastRollingAverageRefresh = try await repository.metadataDate(
             forKey: rollingAverageRefreshKey(card.id)
         )
+        let lastDetailedPrintingCheck = try await repository.metadataDate(
+            forKey: detailedPrintingCheckKey(card.id)
+        )
         if !forceRefresh,
            !needsPricingRefresh(lastPriceRefresh),
-           lastRollingAverageRefresh != nil {
+           lastRollingAverageRefresh != nil,
+           lastDetailedPrintingCheck != nil {
             return try await cachedSnapshot(for: card, in: repository)
         }
         do {
@@ -359,6 +363,10 @@ final class CatalogStore {
             try await repository.setMetadataDate(
                 refreshDate,
                 forKey: rollingAverageRefreshKey(card.id)
+            )
+            try await repository.setMetadataDate(
+                refreshDate,
+                forKey: detailedPrintingCheckKey(card.id)
             )
             _ = try? await enforcePriceHistoryLimits(in: repository)
             return try await cachedSnapshot(for: snapshot.card, in: repository)
@@ -381,11 +389,13 @@ final class CatalogStore {
     ) async throws -> CatalogCardSnapshot {
         let cachedCard = try await repository.fetchCard(id: card.id) ?? card
         let variants = try await repository.fetchVariants(cardID: card.id)
+        let printings = try await repository.fetchPrintings(cardID: card.id)
         let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
         return CatalogCardSnapshot(
             card: cachedCard,
             variants: variants,
-            prices: pricesByCardID[card.id] ?? []
+            prices: pricesByCardID[card.id] ?? [],
+            printings: printings
         )
     }
 
@@ -414,6 +424,10 @@ final class CatalogStore {
 
     private func rollingAverageRefreshKey(_ cardID: String) -> String {
         "catalog.price.\(cardID).rollingAveragesChecked"
+    }
+
+    private func detailedPrintingCheckKey(_ cardID: String) -> String {
+        "catalog.card.\(cardID).detailedPrintingsChecked"
     }
 
     private func needsPricingRefresh(_ date: Date?) -> Bool {
