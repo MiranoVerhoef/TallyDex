@@ -2884,12 +2884,6 @@ struct SearchView: View {
                     }
                 } else if isSearching && results.isEmpty {
                     ProgressView("Searching…")
-                } else if variantSearch.requirement != nil && variantSearch.textQuery.isEmpty {
-                    ContentUnavailableView(
-                        "Add a Card, Set, or Number",
-                        systemImage: "seal",
-                        description: Text("Try “Lucario staff” or “SM95 prerelease” so TallyDex can check the right cards without downloading the entire catalog.")
-                    )
                 } else if let searchMessage {
                     ContentUnavailableView(
                         "Narrow the Variant Search",
@@ -5520,8 +5514,19 @@ struct CardScannerView: View {
 
             Spacer()
 
-            Color.clear
-                .frame(width: 52, height: 52)
+            Button {
+                camera.toggleTorch()
+            } label: {
+                Image(systemName: camera.isTorchEnabled ? "flashlight.on.fill" : "flashlight.off.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(camera.isTorchEnabled ? Color.yellow : Color.white)
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 1))
+            }
+            .disabled(!camera.isTorchAvailable || isScanning)
+            .opacity(camera.isTorchAvailable ? 1 : 0.45)
+            .accessibilityLabel(camera.isTorchEnabled ? "Turn flashlight off" : "Turn flashlight on")
         }
     }
 
@@ -5614,14 +5619,16 @@ struct CardScannerView: View {
     }
 
     private func searchRecognizedText(_ lines: [String]) async throws -> [CatalogCardSearchResult] {
-        if let collectorNumber = CardTextRecognizer.collectorNumber(in: lines) {
-            let exact = try await catalogStore.searchCards(query: collectorNumber)
-            if !exact.isEmpty { return exact }
-        }
-
+        // A set mark plus collector number is more specific than 022/086 by
+        // itself: multiple expansions can share the same printed denominator.
         for identifier in CardTextRecognizer.setAndCollectorCandidates(in: lines) {
             let matches = try await catalogStore.searchCards(query: identifier)
             if !matches.isEmpty { return Array(matches.prefix(20)) }
+        }
+
+        if let collectorNumber = CardTextRecognizer.collectorNumber(in: lines) {
+            let exact = try await catalogStore.searchCards(query: collectorNumber)
+            if !exact.isEmpty { return exact }
         }
 
         for candidate in CardTextRecognizer.nameCandidates(in: lines).prefix(8) {
@@ -5721,7 +5728,9 @@ private struct CardPhotoAlignmentView: View {
                             .frame(maxWidth: .infinity)
 
                         Button("Use Photo") {
-                            if let cropped = renderedCrop(size: cropSize) {
+                            if usesUnchangedCardImage {
+                                onUse(image)
+                            } else if let cropped = renderedCrop(size: cropSize) {
                                 onUse(cropped)
                             }
                         }
@@ -5771,6 +5780,13 @@ private struct CardPhotoAlignmentView: View {
             .onEnded { _ in lastScale = scale }
     }
 
+    private var usesUnchangedCardImage: Bool {
+        guard scale == 1, offset == .zero, image.size.height > 0 else { return false }
+        let imageRatio = image.size.width / image.size.height
+        let cardRatio = CGFloat(245.0 / 337.0)
+        return abs(imageRatio - cardRatio) < 0.035
+    }
+
     @MainActor
     private func renderedCrop(size: CGSize) -> UIImage? {
         let renderer = ImageRenderer(content: positionedImage(size: size))
@@ -5807,29 +5823,42 @@ enum CardTextRecognizer {
     }
 
     static func setAndCollectorCandidates(in lines: [String]) -> [String] {
-        let text = lines.joined(separator: " ")
-            .uppercased()
-            .replacingOccurrences(of: #"[^A-Z0-9.]+"#, with: " ", options: .regularExpression)
         let pattern = #"\b([A-Z][A-Z0-9.]{1,7})\s+(?:EN\s+|US\s+)?(\d{1,3})\b"#
         guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let adjacentPairs = zip(lines, lines.dropFirst()).map { "\($0.0) \($0.1)" }
+        let segments = (lines + adjacentPairs)
+            .sorted { left, right in
+                (left.contains("/") ? 0 : 1) < (right.contains("/") ? 0 : 1)
+            }
         var candidates: [String] = []
-        for match in expression.matches(in: text, range: range) {
-            guard let codeRange = Range(match.range(at: 1), in: text),
-                  let numberRange = Range(match.range(at: 2), in: text) else { continue }
-            var code = String(text[codeRange])
-            let number = String(text[numberRange])
-            // Set marks often print the language directly beside the code, such
-            // as "SVE EN". Vision can collapse that to "SVEEN".
-            if code.count > 4, code.hasSuffix("EN") || code.hasSuffix("US") {
-                code.removeLast(2)
+        for segment in segments {
+            let text = segment.uppercased()
+                .replacingOccurrences(of: #"[^A-Z0-9.]+"#, with: " ", options: .regularExpression)
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            for match in expression.matches(in: text, range: range) {
+                guard let codeRange = Range(match.range(at: 1), in: text),
+                      let numberRange = Range(match.range(at: 2), in: text) else { continue }
+                let scannedCode = String(text[codeRange])
+                let number = String(text[numberRange])
+                // Set marks often print the language directly beside the code, such
+                // as "SVE EN". Vision can collapse that to "SVEEN".
+                var possibleCodes = [scannedCode]
+                if scannedCode.count > 4,
+                   scannedCode.hasSuffix("EN") || scannedCode.hasSuffix("US") {
+                    possibleCodes.append(String(scannedCode.dropLast(2)))
+                } else if scannedCode.count == 4 {
+                    // On tiny set marks Vision can turn the adjacent EN language
+                    // mark into one arbitrary letter (for example CRI EN → CRIM).
+                    possibleCodes.append(String(scannedCode.dropLast()))
+                }
+                for code in possibleCodes where code.filter(\.isLetter).count >= 2 {
+                    guard !["BASIC", "STAGE", "TRAINER", "ENERGY", "POKEMON", "ILLUS"].contains(code) else {
+                        continue
+                    }
+                    let candidate = "\(code) \(number)"
+                    if !candidates.contains(candidate) { candidates.append(candidate) }
+                }
             }
-            guard code.filter(\.isLetter).count >= 2,
-                  !["BASIC", "STAGE", "TRAINER", "ENERGY", "POKEMON", "ILLUS"].contains(code) else {
-                continue
-            }
-            let candidate = "\(code) \(number)"
-            if !candidates.contains(candidate) { candidates.append(candidate) }
         }
         return candidates
     }
@@ -5840,10 +5869,22 @@ enum CardTextRecognizer {
             "weakness", "resistance", "retreat", "illus", "hp",
         ]
         return lines.compactMap { line in
-            let candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            var candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            candidate = candidate.replacingOccurrences(
+                of: #"^(?:BASIC|STAGE\s*\d+)\s+"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            candidate = candidate.replacingOccurrences(
+                of: #"\s+HP\s*\d+.*$"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             let lowercased = candidate.lowercased()
             guard candidate.count >= 3,
                   candidate.count <= 45,
+                  candidate.split(whereSeparator: \Character.isWhitespace).count <= 7,
                   candidate.rangeOfCharacter(from: .letters) != nil,
                   !ignored.contains(where: { lowercased == $0 || lowercased.hasPrefix("\($0) ") }) else {
                 return nil
@@ -5873,12 +5914,15 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
     @Published private(set) var isReady = false
     @Published private(set) var isAvailable = AVCaptureDevice.default(for: .video) != nil
     @Published private(set) var permissionDenied = false
+    @Published private(set) var isTorchAvailable = false
+    @Published private(set) var isTorchEnabled = false
 
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "com.tallydex.camera.session", qos: .userInitiated)
     private var isConfigured = false
     private var wantsRunning = false
+    private var videoDevice: AVCaptureDevice?
     private var captureHandler: (@MainActor @Sendable (UIImage?) -> Void)?
 
     func start() {
@@ -5906,8 +5950,17 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
         sessionQueue.async { [weak self] in
             guard let self else { return }
             self.wantsRunning = false
+            self.setTorch(enabled: false)
             if self.session.isRunning { self.session.stopRunning() }
             DispatchQueue.main.async { self.isReady = false }
+        }
+    }
+
+    func toggleTorch() {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoDevice,
+                  device.hasTorch, device.isTorchAvailable else { return }
+            self.setTorch(enabled: device.torchMode != .on)
         }
     }
 
@@ -5919,7 +5972,10 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
             }
             self.captureHandler = completion
             let settings = AVCapturePhotoSettings()
-            settings.photoQualityPrioritization = .quality
+            // A full-resolution still is unnecessary for OCR and can require
+            // substantial memory on recent iPhones. The compressed result is
+            // downsampled again before it reaches SwiftUI or Vision.
+            settings.photoQualityPrioritization = .balanced
             if let connection = self.photoOutput.connection(with: .video),
                connection.isVideoRotationAngleSupported(90) {
                 connection.videoRotationAngle = 90
@@ -5933,12 +5989,12 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
         didFinishProcessingPhoto photo: AVCapturePhoto,
         error: (any Error)?
     ) {
-        let image = error == nil
-            ? photo.fileDataRepresentation().flatMap(UIImage.init(data:))
-            : nil
+        let data = error == nil ? photo.fileDataRepresentation() : nil
         let handler = captureHandler
         captureHandler = nil
-        Task { @MainActor in handler?(image) }
+        Task { @MainActor in
+            handler?(data.flatMap { CardCapturedImageDecoder.image(from: $0) })
+        }
     }
 
     private func configureAndStart() {
@@ -5960,14 +6016,38 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
                 }
                 self.session.addInput(input)
                 self.session.addOutput(self.photoOutput)
+                self.videoDevice = device
                 self.isConfigured = true
             }
             if !self.session.isRunning { self.session.startRunning() }
+            let torchAvailable = self.videoDevice?.hasTorch == true
+                && self.videoDevice?.isTorchAvailable == true
             DispatchQueue.main.async {
                 self.isAvailable = true
                 self.permissionDenied = false
                 self.isReady = true
+                self.isTorchAvailable = torchAvailable
             }
+        }
+    }
+
+    private func setTorch(enabled: Bool) {
+        guard let device = videoDevice, device.hasTorch else {
+            DispatchQueue.main.async { self.isTorchEnabled = false }
+            return
+        }
+        do {
+            try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
+            if enabled, device.isTorchAvailable {
+                try device.setTorchModeOn(level: min(0.5, AVCaptureDevice.maxAvailableTorchLevel))
+            } else {
+                device.torchMode = .off
+            }
+            let active = device.isTorchActive
+            DispatchQueue.main.async { self.isTorchEnabled = active }
+        } catch {
+            DispatchQueue.main.async { self.isTorchEnabled = false }
         }
     }
 
@@ -5976,7 +6056,29 @@ private final class CardCameraController: NSObject, ObservableObject, AVCaptureP
             self.isAvailable = false
             self.permissionDenied = permissionDenied
             self.isReady = false
+            self.isTorchAvailable = false
+            self.isTorchEnabled = false
         }
+    }
+}
+
+enum CardCapturedImageDecoder {
+    /// Produces a correctly oriented OCR-sized bitmap without first decoding a
+    /// full-resolution iPhone photo into memory.
+    @MainActor
+    static func image(from data: Data, maximumPixelSize: Int = 1_800) -> UIImage? {
+        guard maximumPixelSize > 0,
+              let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(
+            source, 0, options as CFDictionary
+        ) else { return nil }
+        return UIImage(cgImage: thumbnail, scale: 1, orientation: .up)
     }
 }
 

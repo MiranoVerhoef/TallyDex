@@ -190,10 +190,33 @@ final class CatalogStore {
             return try await resolveRepository().searchCards(query: query, limit: 100)
         }
 
-        // TCGdex's complete card index does not include printing variants. Requiring
-        // another search term lets us hydrate only a small, relevant candidate set
-        // instead of downloading details for the entire catalog.
-        guard !parsedQuery.textQuery.isEmpty else { return [] }
+        // TCGdex's complete card index does not include printing variants. A bare
+        // stamped query can therefore return only locally indexed details and
+        // documented compatibility corrections; a card/set term lets us hydrate a
+        // small relevant candidate set instead of downloading the entire catalog.
+        guard !parsedQuery.textQuery.isEmpty else {
+            let requiredVariants: Set<CatalogVariantKind> = switch requirement {
+            case .prerelease: [.prerelease, .prereleaseStaff]
+            case .staff: [.prereleaseStaff]
+            }
+            let cached = try await resolveRepository().searchCards(
+                requiredVariants: requiredVariants
+            )
+            let known = try await resolveRepository().fetchSearchResults(
+                cardIDs: CatalogVariantOverrides.cardIDs(matching: requirement)
+            )
+            return Dictionary(
+                (cached + known).map { ($0.card.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            .values
+            .sorted {
+                if $0.card.name != $1.card.name {
+                    return $0.card.name.localizedCaseInsensitiveCompare($1.card.name) == .orderedAscending
+                }
+                return $0.setName.localizedCaseInsensitiveCompare($1.setName) == .orderedAscending
+            }
+        }
         let candidates = try await resolveRepository().searchCards(
             query: parsedQuery.textQuery,
             limit: nil

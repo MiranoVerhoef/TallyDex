@@ -22,6 +22,20 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertEqual(UIImage(data: output)?.cgImage?.height, image.cgImage?.height)
     }
 
+    @MainActor
+    func testCapturedPhotoDecoderDownsamplesForOCR() throws {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 1_200)).image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 800, height: 1_200))
+        }
+        let data = try XCTUnwrap(source.jpegData(compressionQuality: 0.9))
+        let decoded = try XCTUnwrap(
+            CardCapturedImageDecoder.image(from: data, maximumPixelSize: 400)
+        )
+        XCTAssertEqual(max(decoded.size.width, decoded.size.height), 400)
+        XCTAssertEqual(decoded.imageOrientation, .up)
+    }
+
     func testPrimaryNavigationIncludesCameraTab() {
         XCTAssertEqual(AppTab.allCases.count, 5)
         XCTAssertTrue(AppTab.allCases.contains(.camera))
@@ -53,15 +67,9 @@ final class TallyDexSmokeTests: XCTestCase {
 
     func testSharedCardDeepLinkRoundTripsCardIdentifier() {
         let url = CardDeepLink.url(cardID: "me02.5-076")
-        let appURL = CardDeepLink.appURL(cardID: "me02.5-076")
-
-        XCTAssertEqual(
-            url.absoluteString,
-            "https://miranoverhoef.github.io/TallyDex/card/?id=me02.5-076"
-        )
+        XCTAssertEqual(url.absoluteString, "tallydex://card/me02.5-076")
         XCTAssertEqual(CardDeepLink.cardID(from: url), "me02.5-076")
-        XCTAssertEqual(appURL.absoluteString, "tallydex://card/me02.5-076")
-        XCTAssertEqual(CardDeepLink.cardID(from: appURL), "me02.5-076")
+        XCTAssertNil(CardDeepLink.cardID(from: URL(string: "https://miranoverhoef.github.io/TallyDex/card/?id=me02.5-076")!))
         XCTAssertNil(CardDeepLink.cardID(from: URL(string: "https://example.com/card")!))
     }
 

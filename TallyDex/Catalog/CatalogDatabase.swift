@@ -248,6 +248,25 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 ).map(Self.searchResult)
             }
 
+            if let setCardNumber = Self.setCodeCardNumberQuery(trimmed) {
+                let resolvedLimit = limit.map { max(1, $0) } ?? -1
+                return try Row.fetchAll(
+                    database,
+                    sql: """
+                    SELECT search.*, catalogSet.name AS setName,
+                           catalogSet.releaseDate AS setReleaseDate
+                    FROM catalogSearchCard AS search
+                    JOIN catalogSet ON catalogSet.id = search.setID
+                    WHERE (catalogSet.abbreviation = ? COLLATE NOCASE
+                           OR catalogSet.id = ? COLLATE NOCASE)
+                      AND CAST(search.localID AS INTEGER) = ?
+                    ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE
+                    LIMIT \(resolvedLimit)
+                    """,
+                    arguments: [setCardNumber.code, setCardNumber.code, setCardNumber.localID]
+                ).map(Self.searchResult)
+            }
+
             let expandedQuery = Self.searchAlias(for: trimmed) ?? trimmed
             let tokens = expandedQuery.split(whereSeparator: \.isWhitespace).map(String.init)
             let tokenClause = """
@@ -284,6 +303,29 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func searchCards(
+        requiredVariants: Set<CatalogVariantKind>
+    ) async throws -> [CatalogCardSearchResult] {
+        let kinds = requiredVariants.map(\.rawValue).sorted()
+        guard !kinds.isEmpty else { return [] }
+        let placeholders = Array(repeating: "?", count: kinds.count).joined(separator: ", ")
+        return try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT DISTINCT search.*, catalogSet.name AS setName,
+                       catalogSet.releaseDate AS setReleaseDate
+                FROM catalogSearchCard AS search
+                JOIN catalogSet ON catalogSet.id = search.setID
+                JOIN catalogVariant AS variant ON variant.cardID = search.id
+                WHERE variant.kind IN (\(placeholders))
+                ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
+                """,
+                arguments: StatementArguments(kinds)
+            ).map(Self.searchResult)
+        }
+    }
+
     private static func collectorNumberQuery(_ query: String) -> (localID: Int, setCount: Int)? {
         let components = query
             .replacingOccurrences(of: " ", with: "")
@@ -294,6 +336,17 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
               localID >= 0,
               setCount > 0 else { return nil }
         return (localID, setCount)
+    }
+
+    private static func setCodeCardNumberQuery(_ query: String) -> (code: String, localID: Int)? {
+        let components = query.split(whereSeparator: \Character.isWhitespace)
+        guard components.count == 2,
+              components[0].count >= 2,
+              components[0].count <= 8,
+              components[0].allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }),
+              let localID = Int(components[1]),
+              localID >= 0 else { return nil }
+        return (String(components[0]), localID)
     }
 
     private static func searchAlias(for query: String) -> String? {
