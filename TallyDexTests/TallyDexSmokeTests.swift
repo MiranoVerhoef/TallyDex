@@ -36,6 +36,34 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertEqual(decoded.imageOrientation, .up)
     }
 
+    @MainActor
+    func testCardRectangleDetectorFindsAndStraightensPortraitCard() async throws {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 1_200)).image { context in
+            UIColor.darkGray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 900, height: 1_200))
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 245, y: 180, width: 410, height: 565))
+            UIColor.systemYellow.setStroke()
+            context.cgContext.setLineWidth(14)
+            context.cgContext.stroke(CGRect(x: 252, y: 187, width: 396, height: 551))
+            UIColor.black.setFill()
+            context.fill(CGRect(x: 285, y: 230, width: 330, height: 55))
+            context.fill(CGRect(x: 285, y: 630, width: 260, height: 18))
+        }
+
+        let detection = await CardRectangleDetector.detect(in: source)
+
+        XCTAssertNotNil(detection.corners)
+        XCTAssertGreaterThan(detection.cardImage.size.height, detection.cardImage.size.width)
+        XCTAssertGreaterThan(detection.cardImage.size.width, 300)
+    }
+
+    func testScannerNameValidationRejectsUnrelatedNumberMatch() {
+        let candidates = ["Bewear 130", "Split Spiral Punch"]
+        XCTAssertTrue(CardTextRecognizer.nameLooksLikeCard("Bewear", candidates: candidates))
+        XCTAssertFalse(CardTextRecognizer.nameLooksLikeCard("Omastar", candidates: candidates))
+    }
+
     func testPrimaryNavigationIncludesCameraTab() {
         XCTAssertEqual(AppTab.allCases.count, 5)
         XCTAssertTrue(AppTab.allCases.contains(.camera))

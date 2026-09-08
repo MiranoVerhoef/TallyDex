@@ -85,21 +85,18 @@ Completed foundations:
 4. Goal-aware progress in Sets, Search, and Collection, note markers, collection
    icons, collapsed owned cards, and lossless switching between collection goals.
 
-Completed in v0.9.2:
+Completed in v0.9.3:
 
-1. Removed the GitHub Pages runtime bridge. Shared cards use the native local
-   `tallydex://` URL; GitHub remains distribution-only for releases and the
-   optional AltStore-compatible feed.
-2. Reduced live-photo memory use by decoding an orientation-correct OCR-sized
-   bitmap directly from the captured JPEG, and added an on/off flashlight control.
-3. Made photo matching prioritize an exact set code and collector number before
-   weaker fallbacks. It also repairs common OCR damage to an adjacent language mark
-   and keeps a clean card-shaped library photo at its original resolution.
-4. Added standalone `prerelease` and `staff` results for locally indexed TCGdex
-   printing data and the existing documented compatibility corrections.
-5. Rechecked Lucario SM95 pricing. TCGdex still exposes one ordinary printing and
-   one Cardmarket product without separate Prerelease or Staff product IDs, so
-   TallyDex intentionally does not copy that price to either stamped printing.
+1. Live and library scans now use Apple Vision to find the physical card rectangle
+   before reading it. TallyDex perspective-corrects that detected region for OCR.
+2. After capture, the detected card receives a bright edge outline and moving scan
+   line while matching runs. The status changes from finding to matching without a
+   separate blocking dialog.
+3. The captured still is constrained to exactly the same viewport as the camera
+   preview, preventing the image from jumping sideways after the shutter is pressed.
+4. Number-only matches are checked against the recognized card name before they
+   are accepted, preventing an unrelated card such as Omastar from replacing a
+   clearly read Bewear merely because OCR found a similar collector number.
 
 Research and later builds:
 
