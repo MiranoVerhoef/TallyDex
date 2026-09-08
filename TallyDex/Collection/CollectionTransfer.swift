@@ -43,6 +43,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         let cardNameQuery: String
         let displayMode: CustomCollectionFolderDisplayMode
         let iconName: String?
+        let coverCardID: String?
         let createdAt: Date
         let updatedAt: Date
 
@@ -52,6 +53,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
             cardNameQuery: String,
             displayMode: CustomCollectionFolderDisplayMode,
             iconName: String? = nil,
+            coverCardID: String? = nil,
             createdAt: Date,
             updatedAt: Date
         ) {
@@ -60,6 +62,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
             self.cardNameQuery = cardNameQuery
             self.displayMode = displayMode
             self.iconName = iconName
+            self.coverCardID = coverCardID
             self.createdAt = createdAt
             self.updatedAt = updatedAt
         }
@@ -161,29 +164,30 @@ enum CollectionTransferCodec {
         var rows = [[
             "record_type", "card_id", "variant", "quantity", "set_id", "status", "goal",
             "included_variants", "includes_secret_cards", "folder_id", "folder_name",
-            "card_name_query", "display_mode", "wishlisted", "notes", "created_at", "updated_at",
+            "card_name_query", "display_mode", "cover_card_id", "wishlisted", "notes",
+            "created_at", "updated_at",
         ]]
         let formatter = ISO8601DateFormatter()
 
         for item in document.ownership {
             rows.append(["ownership", item.cardID, item.variant.rawValue, String(item.quantity)]
-                + Array(repeating: "", count: 12)
+                + Array(repeating: "", count: 13)
                 + [formatter.string(from: item.updatedAt)])
         }
         for item in document.setPreferences {
             rows.append(["set_preference", "", "", "", item.setID, item.status.rawValue,
                          item.goal.rawValue, item.includedVariants.map(\.rawValue).sorted().joined(separator: "|"),
                          String(item.includesSecretCards)]
-                + Array(repeating: "", count: 7)
+                + Array(repeating: "", count: 8)
                 + [formatter.string(from: item.updatedAt)])
         }
         for item in document.folders {
             rows.append(["folder", "", "", "", "", "", "", "", "", item.id.uuidString,
-                         item.name, item.cardNameQuery, item.displayMode.rawValue, "", "",
+                         item.name, item.cardNameQuery, item.displayMode.rawValue, item.coverCardID ?? "", "", "",
                          formatter.string(from: item.createdAt), formatter.string(from: item.updatedAt)])
         }
         for item in document.cardMetadata {
-            rows.append(["card_metadata", item.cardID, "", "", "", "", "", "", "", "", "", "", "",
+            rows.append(["card_metadata", item.cardID, "", "", "", "", "", "", "", "", "", "", "", "",
                          String(item.isWishlisted), item.notes, "", formatter.string(from: item.updatedAt)])
         }
 

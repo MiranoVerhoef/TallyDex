@@ -120,10 +120,11 @@ export so messaging apps never receive two unrelated-looking attachments.
 
 Completed in v0.9.5:
 
-1. TallyDex now stores and shows TCGdex's exact detailed printing records when the
-   provider supplies them: stable printing ID, type and subtype, stamps, foil
+1. TallyDex now stores TCGdex's exact detailed printing records internally when
+   the provider supplies them: stable printing ID, type and subtype, stamps, foil
    pattern, standard/jumbo size, language availability, and Cardmarket,
-   TCGplayer, or CardTrader product IDs.
+   TCGplayer, or CardTrader product IDs. Card details keep the simple collector-
+   facing Printings list such as Normal and Reverse Holo.
 2. Existing installations perform a one-time per-card metadata refresh, and exact
    printing records are cached locally in a dedicated database table. An older or
    incomplete response cannot erase already cached detailed records.
@@ -133,6 +134,17 @@ Completed in v0.9.5:
    without losing quantities or backup compatibility.
 4. Card sharing now explicitly offers either one clean image or one TallyDex card
    document, preventing messaging apps from displaying two separate attachments.
+
+Completed in v0.9.6:
+
+1. Card details are collector-facing again: **Printings:** followed by simple rows
+   such as Normal and Reverse Holo. Detailed provider identifiers remain cached
+   internally and no longer clutter the card screen.
+2. A Collection can use any currently matching card as its cover image or keep one
+   of the existing symbols. The selected card cover is preserved in rollback
+   backups, JSON import/export, and readable CSV export.
+3. The missing-artwork roadmap now explicitly includes a one-time download tool
+   with an estimate, Wi-Fi guidance, progress, cancellation, and cache-limit safety.
 
 Research and later builds:
 
@@ -157,18 +169,21 @@ Research and later builds:
    incomplete provider coverage must be shown honestly.
 9. Audit missing set/card artwork and bundle lawful local replacements or durable
    placeholders so the catalogue looks complete offline.
-10. Add first-run introduction and preference setup, plus Reset Introduction in
+10. Add a one-time **Download Missing Artwork** cache action after that audit. Show
+   an estimated download/storage size, recommend Wi-Fi, provide progress and
+   cancellation, and respect the user's existing automatic cache-size ceiling.
+11. Add first-run introduction and preference setup, plus Reset Introduction in
    Settings.
-11. Research another permitted card/catalogue/price API, including its licence,
+12. Research another permitted card/catalogue/price API, including its licence,
    attribution, rate limits, coverage, and whether it can be an optional provider
    without weakening TCGdex correctness.
-12. Activate country-specific Cardmarket listings only if permitted official API
+13. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
+14. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
     optional StoreKit Tip Jar, and—only with an independently controlled HTTPS
     domain—true universal card links with rich previews.
-14. Binder planner.
-15. Finish automatic live card scanning after the remaining catalogue and
+15. Binder planner.
+16. Finish automatic live card scanning after the remaining catalogue and
     collection work: improve live-frame OCR, confidence ranking, glare handling,
     top-loader detection, and real-device validation. Promote Auto from Beta to the
     default camera mode once it reliably identifies a varied real-card test set and

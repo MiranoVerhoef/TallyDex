@@ -1794,17 +1794,14 @@ struct CatalogCardDetailView: View {
                     }
                 }
 
-                if let snapshot, !snapshot.printings.isEmpty {
-                    detailedPrintingsSection(snapshot.printings)
-                } else if let variants = snapshot?.variants, !variants.isEmpty {
+                if let variants = snapshot?.variants, !variants.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Available printing types")
+                        Text("Printings:")
                             .font(.headline)
-                        Text(variants.map(\.displayName).sorted().joined(separator: " · "))
-                            .foregroundStyle(.secondary)
-                        Text("TCGdex has not supplied exact printing records for this card yet.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        ForEach(variants.sorted { $0.displayName < $1.displayName }, id: \.self) { variant in
+                            Text(variant.displayName)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -1926,46 +1923,6 @@ struct CatalogCardDetailView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(notes == savedNotes || isSavingMetadata)
             }
-        }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
-    }
-
-    private func detailedPrintingsSection(_ printings: [CatalogPrinting]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Exact TCGdex printings")
-                .font(.headline)
-            ForEach(printings) { printing in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(printing.displayName)
-                        .font(.subheadline.weight(.semibold))
-                    Text("Printing ID \(printing.providerID)")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    if let size = printing.size {
-                        Text("Size: \(size.capitalized)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !printing.languages.isEmpty {
-                        Text("Languages: \(printing.languages.map { $0.uppercased() }.joined(separator: ", "))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if let marketplaceIDs = printing.marketplaceIdentifiersDescription {
-                        Text(marketplaceIDs)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if printing.id != printings.last?.id {
-                    Divider()
-                }
-            }
-            Text("These are provider-supplied records. Collection ownership remains grouped by the printing types shown below until the lossless ownership migration is complete.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -3514,13 +3471,23 @@ struct CollectionView: View {
 
 private struct CustomCollectionFolderRow: View {
     let folder: CustomCollectionFolder
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var coverCard: CatalogCard?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: CollectionFolderIcon.validated(folder.iconName).rawValue)
-                .font(.title2)
-                .foregroundStyle(.tint)
-                .frame(width: 34)
+            Group {
+                if let coverCard {
+                    CachedCardImage(reference: coverCard.thumbnailArtworkReference)
+                        .aspectRatio(245 / 337, contentMode: .fill)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else {
+                    Image(systemName: CollectionFolderIcon.validated(folder.iconName).rawValue)
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
+            }
+            .frame(width: 44, height: 56)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(folder.name)
@@ -3532,17 +3499,28 @@ private struct CustomCollectionFolderRow: View {
             }
         }
         .padding(.vertical, 3)
+        .task(id: folder.coverCardID) {
+            guard let cardID = folder.coverCardID else {
+                coverCard = nil
+                return
+            }
+            coverCard = try? await catalogStore.searchResults(cardIDs: [cardID]).first?.card
+        }
     }
 }
 
 private struct CustomCollectionFolderEditorView: View {
     let folder: CustomCollectionFolder?
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(CatalogStore.self) private var catalogStore
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var cardNameQuery: String
     @State private var displayMode: CustomCollectionFolderDisplayMode
     @State private var icon: CollectionFolderIcon
+    @State private var coverCardID: String?
+    @State private var coverCandidates: [CatalogCardSearchResult] = []
+    @State private var isLoadingCoverCandidates = false
     @State private var isSaving = false
     @State private var isConfirmingDelete = false
     @State private var message: String?
@@ -3561,6 +3539,7 @@ private struct CustomCollectionFolderEditorView: View {
         _cardNameQuery = State(initialValue: folder?.cardNameQuery ?? "")
         _displayMode = State(initialValue: folder?.displayMode ?? .allMatching)
         _icon = State(initialValue: CollectionFolderIcon.validated(folder?.iconName))
+        _coverCardID = State(initialValue: folder?.coverCardID)
     }
 
     var body: some View {
@@ -3574,24 +3553,57 @@ private struct CustomCollectionFolderEditorView: View {
                         .autocorrectionDisabled()
                 }
 
-                Section("Icon") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 14) {
-                        ForEach(CollectionFolderIcon.allCases) { option in
-                            Button {
-                                icon = option
-                            } label: {
-                                Image(systemName: option.rawValue)
-                                    .font(.title2)
-                                    .frame(width: 44, height: 44)
-                                    .foregroundStyle(icon == option ? Color.white : Color.accentColor)
-                                    .background(
-                                        icon == option ? Color.accentColor : Color.accentColor.opacity(0.1),
-                                        in: RoundedRectangle(cornerRadius: 11)
-                                    )
+                Section("Collection image") {
+                    Picker("Image", selection: $coverCardID) {
+                        Text("Use an icon").tag(String?.none)
+                        ForEach(coverCandidates) { result in
+                            Text("\(result.card.name) · \(result.setName) #\(result.card.localID)")
+                                .tag(Optional(result.card.id))
+                        }
+                    }
+                    .disabled(isLoadingCoverCandidates || trimmedQuery.isEmpty)
+
+                    if isLoadingCoverCandidates {
+                        ProgressView("Finding cards in this collection…")
+                    } else if let selected = coverCandidates.first(where: { $0.card.id == coverCardID }) {
+                        HStack(spacing: 12) {
+                            CachedCardImage(reference: selected.card.thumbnailArtworkReference)
+                                .aspectRatio(245 / 337, contentMode: .fill)
+                                .frame(width: 48, height: 66)
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(selected.card.name)
+                                    .font(.subheadline.weight(.semibold))
+                                Text("\(selected.setName) · #\(selected.card.localID)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(option.rawValue)
-                            .accessibilityAddTraits(icon == option ? .isSelected : [])
+                        }
+                    } else if !trimmedQuery.isEmpty && coverCandidates.isEmpty {
+                        Text("No matching cards are indexed yet. Pre-index the catalogue in Settings, or choose an icon for now.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if coverCardID == nil {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 14) {
+                            ForEach(CollectionFolderIcon.allCases) { option in
+                                Button {
+                                    icon = option
+                                } label: {
+                                    Image(systemName: option.rawValue)
+                                        .font(.title2)
+                                        .frame(width: 44, height: 44)
+                                        .foregroundStyle(icon == option ? Color.white : Color.accentColor)
+                                        .background(
+                                            icon == option ? Color.accentColor : Color.accentColor.opacity(0.1),
+                                            in: RoundedRectangle(cornerRadius: 11)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(option.rawValue)
+                                .accessibilityAddTraits(icon == option ? .isSelected : [])
+                            }
                         }
                     }
                 }
@@ -3650,6 +3662,32 @@ private struct CustomCollectionFolderEditorView: View {
             } message: {
                 Text("Your owned cards and quantities will stay unchanged.")
             }
+            .task(id: "\(trimmedQuery)|\(displayMode.rawValue)") {
+                await loadCoverCandidates()
+            }
+        }
+    }
+
+    @MainActor
+    private func loadCoverCandidates() async {
+        guard !trimmedQuery.isEmpty else {
+            coverCandidates = []
+            coverCardID = nil
+            return
+        }
+        isLoadingCoverCandidates = true
+        defer { isLoadingCoverCandidates = false }
+        do {
+            let matches = try await catalogStore.cards(matchingName: trimmedQuery)
+            coverCandidates = displayMode == .ownedOnly
+                ? matches.filter { collectionStore.owns(cardID: $0.card.id) }
+                : matches
+            if let coverCardID,
+               !coverCandidates.contains(where: { $0.card.id == coverCardID }) {
+                self.coverCardID = nil
+            }
+        } catch {
+            coverCandidates = []
         }
     }
 
@@ -3664,6 +3702,7 @@ private struct CustomCollectionFolderEditorView: View {
             cardNameQuery: trimmedQuery,
             displayMode: displayMode,
             iconName: icon.rawValue,
+            coverCardID: coverCardID,
             createdAt: folder?.createdAt ?? timestamp,
             updatedAt: timestamp
         )

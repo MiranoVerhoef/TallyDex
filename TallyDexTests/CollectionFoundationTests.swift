@@ -225,6 +225,7 @@ final class CollectionFoundationTests: XCTestCase {
             cardNameQuery: "Lucario",
             displayMode: .allMatching,
             iconName: CollectionFolderIcon.heart.rawValue,
+            coverCardID: "smp-SM95",
             createdAt: createdAt,
             updatedAt: createdAt
         )
@@ -236,6 +237,7 @@ final class CollectionFoundationTests: XCTestCase {
             cardNameQuery: "Lucario",
             displayMode: .ownedOnly,
             iconName: CollectionFolderIcon.crown.rawValue,
+            coverCardID: "swshp-SWSH186",
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -244,6 +246,7 @@ final class CollectionFoundationTests: XCTestCase {
         let savedFolders = try await repository.fetchCustomFolders()
         XCTAssertEqual(savedFolders, [edited])
         XCTAssertEqual(savedFolders.first?.iconName, CollectionFolderIcon.crown.rawValue)
+        XCTAssertEqual(savedFolders.first?.coverCardID, "swshp-SWSH186")
     }
 
     func testDeletingCustomFolderDoesNotDeleteOwnedCards() async throws {
@@ -633,6 +636,7 @@ final class CollectionFoundationTests: XCTestCase {
         try await source.saveCustomFolder(.init(
             id: folderID, name: "Lucario", cardNameQuery: "Lucario", displayMode: .ownedOnly,
             iconName: CollectionFolderIcon.star.rawValue,
+            coverCardID: "smp-SM95",
             createdAt: update, updatedAt: update
         ))
         try await source.saveCardMetadata(.init(
@@ -653,6 +657,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(preferences["me01"]?.includedVariants, [.holo, .reverseHolo])
         XCTAssertEqual(folders.first?.id, folderID)
         XCTAssertEqual(folders.first?.iconName, CollectionFolderIcon.star.rawValue)
+        XCTAssertEqual(folders.first?.coverCardID, "smp-SM95")
         XCTAssertEqual(metadata.notes, "Binder page 3")
     }
 
@@ -751,6 +756,7 @@ final class CollectionFoundationTests: XCTestCase {
             )],
             folders: [.init(
                 id: UUID(), name: "Favorites", cardNameQuery: "Lucario", displayMode: .allMatching,
+                coverCardID: "smp-SM95",
                 createdAt: date, updatedAt: date
             )],
             cardMetadata: [.init(cardID: "card-1", isWishlisted: true, notes: "Mint, signed", updatedAt: date)]
@@ -760,6 +766,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertTrue(csv.contains("set_preference"))
         XCTAssertTrue(csv.contains("folder"))
         XCTAssertTrue(csv.contains("card_metadata"))
+        XCTAssertTrue(csv.contains("smp-SM95"))
         XCTAssertTrue(csv.contains("\"Mint, signed\""))
     }
 

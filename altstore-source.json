@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.6/TallyDex-v0.9.6-collection-cover.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.5/TallyDex-v0.9.5-exact-printings.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.4/TallyDex-v0.9.4-auto-camera.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.3/TallyDex-v0.9.3-card-detection.png",
@@ -70,6 +71,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.6",
+          "buildVersion": "42",
+          "date": "2026-09-09",
+          "localizedDescription": "Restores the simple card-facing Printings list while retaining detailed TCGdex metadata internally. Collections can now use any matching card as their cover image or keep a symbol; card covers are preserved in rollback backups, JSON import/export, and CSV. The roadmap now explicitly includes a safe one-time missing-artwork download tool.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.6/TallyDex-v0.9.6.ipa",
+          "size": 5701999,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.5",
           "buildVersion": "41",

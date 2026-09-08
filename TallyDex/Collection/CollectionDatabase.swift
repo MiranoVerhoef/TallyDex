@@ -136,6 +136,12 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v9-card-covers") { database in
+            try database.alter(table: "customCollectionFolder") { table in
+                table.add(column: "coverCardID", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -212,7 +218,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try Row.fetchAll(
                 database,
                 sql: """
-                SELECT id, name, cardNameQuery, displayMode, iconName, createdAt, updatedAt
+                SELECT id, name, cardNameQuery, displayMode, iconName, coverCardID, createdAt, updatedAt
                 FROM customCollectionFolder
                 ORDER BY name COLLATE NOCASE, createdAt, id
                 """
@@ -446,13 +452,14 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try database.execute(
                 sql: """
                 INSERT INTO customCollectionFolder
-                    (id, name, cardNameQuery, displayMode, iconName, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (id, name, cardNameQuery, displayMode, iconName, coverCardID, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cardNameQuery = excluded.cardNameQuery,
                     displayMode = excluded.displayMode,
                     iconName = excluded.iconName,
+                    coverCardID = excluded.coverCardID,
                     updatedAt = excluded.updatedAt
                 """,
                 arguments: [
@@ -461,6 +468,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     query,
                     folder.displayMode.rawValue,
                     folder.iconName,
+                    folder.coverCardID,
                     folder.createdAt,
                     folder.updatedAt,
                 ]
@@ -581,7 +589,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         let folders = try Row.fetchAll(
             database,
             sql: """
-            SELECT id, name, cardNameQuery, displayMode, iconName, createdAt, updatedAt
+            SELECT id, name, cardNameQuery, displayMode, iconName, coverCardID, createdAt, updatedAt
             FROM customCollectionFolder
             """
         ).map {
@@ -591,6 +599,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 cardNameQuery: $0["cardNameQuery"],
                 displayMode: $0["displayMode"],
                 iconName: $0["iconName"],
+                coverCardID: $0["coverCardID"],
                 createdAt: $0["createdAt"],
                 updatedAt: $0["updatedAt"]
             )
@@ -657,6 +666,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     cardNameQuery: item.cardNameQuery,
                     displayMode: mode,
                     iconName: item.iconName,
+                    coverCardID: item.coverCardID,
                     createdAt: item.createdAt,
                     updatedAt: item.updatedAt
                 )
@@ -694,6 +704,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     cardNameQuery: $0.cardNameQuery,
                     displayMode: $0.displayMode.rawValue,
                     iconName: $0.iconName,
+                    coverCardID: $0.coverCardID,
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt
                 )
@@ -901,10 +912,11 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             }
             try database.execute(
                 sql: """
-                INSERT INTO customCollectionFolder (id, name, cardNameQuery, displayMode, iconName, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO customCollectionFolder (id, name, cardNameQuery, displayMode, iconName, coverCardID, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET name = excluded.name, cardNameQuery = excluded.cardNameQuery,
-                    displayMode = excluded.displayMode, iconName = excluded.iconName, updatedAt = excluded.updatedAt
+                    displayMode = excluded.displayMode, iconName = excluded.iconName,
+                    coverCardID = excluded.coverCardID, updatedAt = excluded.updatedAt
                 """,
                 arguments: [
                     item.id.uuidString,
@@ -912,6 +924,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     item.cardNameQuery,
                     item.displayMode.rawValue,
                     CollectionFolderIcon.validated(item.iconName).rawValue,
+                    item.coverCardID,
                     item.createdAt,
                     item.updatedAt,
                 ]
@@ -993,8 +1006,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try database.execute(
                 sql: """
                 INSERT INTO customCollectionFolder
-                    (id, name, cardNameQuery, displayMode, iconName, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (id, name, cardNameQuery, displayMode, iconName, coverCardID, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     item.id,
@@ -1002,6 +1015,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     item.cardNameQuery,
                     item.displayMode,
                     CollectionFolderIcon.validated(item.iconName).rawValue,
+                    item.coverCardID,
                     item.createdAt,
                     item.updatedAt,
                 ]
@@ -1044,6 +1058,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             cardNameQuery: row["cardNameQuery"],
             displayMode: displayMode,
             iconName: row["iconName"],
+            coverCardID: row["coverCardID"],
             createdAt: row["createdAt"],
             updatedAt: row["updatedAt"]
         )
@@ -1099,6 +1114,7 @@ private struct CollectionBackupPayload: Codable {
         let cardNameQuery: String
         let displayMode: String
         let iconName: String?
+        let coverCardID: String?
         let createdAt: Date
         let updatedAt: Date
     }

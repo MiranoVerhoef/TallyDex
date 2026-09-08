@@ -327,6 +327,7 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
     let cardNameQuery: String
     let displayMode: CustomCollectionFolderDisplayMode
     let iconName: String
+    let coverCardID: String?
     let createdAt: Date
     let updatedAt: Date
 
@@ -336,6 +337,7 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
         cardNameQuery: String,
         displayMode: CustomCollectionFolderDisplayMode,
         iconName: String = CollectionFolderIcon.defaultIcon.rawValue,
+        coverCardID: String? = nil,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -344,6 +346,7 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
         self.cardNameQuery = cardNameQuery
         self.displayMode = displayMode
         self.iconName = CollectionFolderIcon.validated(iconName).rawValue
+        self.coverCardID = coverCardID
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
