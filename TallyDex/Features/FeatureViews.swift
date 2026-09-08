@@ -5,6 +5,7 @@ import Charts
 import Photos
 import PhotosUI
 import Vision
+import CoreImage
 import LinkPresentation
 @preconcurrency import AVFoundation
 @preconcurrency import ImageIO
@@ -5341,6 +5342,9 @@ struct CardScannerView: View {
     @State private var results: [CatalogCardSearchResult] = []
     @State private var isShowingResults = false
     @State private var isScanning = false
+    @State private var scanStatus = "Finding card…"
+    @State private var detectedCardCorners: CardRectangleCorners?
+    @State private var scanStartedAt = Date()
     @State private var scanError: String?
 
     var body: some View {
@@ -5351,13 +5355,20 @@ struct CardScannerView: View {
                 cameraPreview
 
                 VStack(spacing: 0) {
-                    Text("Place one card inside the guide")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background(.black.opacity(0.55), in: Capsule())
-                        .padding(.top, 12)
+                    HStack(spacing: 8) {
+                        if isScanning {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                        }
+                        Text(isScanning ? scanStatus : "Place one card inside the guide")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(.black.opacity(0.55), in: Capsule())
+                    .padding(.top, 12)
 
                     Spacer()
 
@@ -5366,18 +5377,6 @@ struct CardScannerView: View {
                         .padding(.bottom, 104)
                 }
 
-                if isScanning {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .controlSize(.large)
-                            .tint(.white)
-                        Text("Reading card…")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                    }
-                    .padding(24)
-                    .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 20))
-                }
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
@@ -5444,43 +5443,122 @@ struct CardScannerView: View {
 
     @ViewBuilder
     private var cameraPreview: some View {
-        if let scannedImage {
-            Image(uiImage: scannedImage)
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
-                .clipped()
-        } else if camera.isAvailable {
-            LiveCardCameraPreview(session: camera.session)
-                .ignoresSafeArea()
-        } else {
-            ContentUnavailableView {
-                Label(
-                    camera.permissionDenied ? "Camera Access Needed" : "Camera Unavailable",
-                    systemImage: "camera.fill"
-                )
-            } description: {
-                Text(
-                    camera.permissionDenied
-                        ? "Allow camera access in Settings, or choose a card photo below."
-                        : "Choose an existing card photo below."
-                )
-            }
-            .foregroundStyle(.white)
-        }
-
         GeometryReader { geometry in
+            if let scannedImage {
+                Image(uiImage: scannedImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            } else if camera.isAvailable {
+                LiveCardCameraPreview(session: camera.session)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            } else {
+                ContentUnavailableView {
+                    Label(
+                        camera.permissionDenied ? "Camera Access Needed" : "Camera Unavailable",
+                        systemImage: "camera.fill"
+                    )
+                } description: {
+                    Text(
+                        camera.permissionDenied
+                            ? "Allow camera access in Settings, or choose a card photo below."
+                            : "Choose an existing card photo below."
+                    )
+                }
+                .foregroundStyle(.white)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+            }
+
             let availableHeight = max(100, geometry.size.height - 270)
             let guideWidth = min(300, geometry.size.width - 72, availableHeight * 245 / 337)
             let guideHeight = guideWidth * 337 / 245
             let centerY = 60 + availableHeight / 2
 
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 4, dash: [12, 8]))
+            if let detectedCardCorners, let scannedImage {
+                detectedCardScanOverlay(
+                    corners: detectedCardCorners,
+                    imageSize: scannedImage.size,
+                    viewportSize: geometry.size
+                )
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(
+                            Color.accentColor,
+                            style: StrokeStyle(
+                                lineWidth: isScanning ? 5 : 4,
+                                dash: isScanning ? [5, 5] : [12, 8]
+                            )
+                        )
+                        .shadow(color: isScanning ? Color.accentColor.opacity(0.8) : .clear, radius: 9)
+                    if isScanning {
+                        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                            let elapsed = timeline.date.timeIntervalSince(scanStartedAt)
+                            let progress = elapsed.truncatingRemainder(dividingBy: 1.15) / 1.15
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.clear, Color.accentColor.opacity(0.95), .clear],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: guideWidth - 20, height: 4)
+                                .offset(y: -guideHeight / 2 + 10 + CGFloat(progress) * (guideHeight - 20))
+                                .shadow(color: Color.accentColor, radius: 6)
+                        }
+                    }
+                }
                 .frame(width: guideWidth, height: guideHeight)
                 .position(x: geometry.size.width / 2, y: centerY)
                 .allowsHitTesting(false)
+            }
         }
+        .ignoresSafeArea()
+    }
+
+    private func detectedCardScanOverlay(
+        corners: CardRectangleCorners,
+        imageSize: CGSize,
+        viewportSize: CGSize
+    ) -> some View {
+        let mapped = corners.points(inAspectFill: viewportSize, imageSize: imageSize)
+        let bounds = mapped.boundingBox.intersection(CGRect(origin: .zero, size: viewportSize))
+        return ZStack {
+            Path { path in
+                path.move(to: mapped.topLeft)
+                path.addLine(to: mapped.topRight)
+                path.addLine(to: mapped.bottomRight)
+                path.addLine(to: mapped.bottomLeft)
+                path.closeSubpath()
+            }
+            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            .shadow(color: Color.accentColor.opacity(0.95), radius: 8)
+
+            if isScanning, !bounds.isNull, bounds.height > 8, bounds.width > 8 {
+                TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                    let elapsed = timeline.date.timeIntervalSince(scanStartedAt)
+                    let progress = elapsed.truncatingRemainder(dividingBy: 1.15) / 1.15
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, Color.accentColor.opacity(0.95), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(1, bounds.width - 12), height: 4)
+                        .position(
+                            x: bounds.midX,
+                            y: bounds.minY + 6 + CGFloat(progress) * max(1, bounds.height - 12)
+                        )
+                        .shadow(color: Color.accentColor, radius: 6)
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private var cameraControls: some View {
@@ -5603,13 +5681,34 @@ struct CardScannerView: View {
         recognizedLines = []
         results = []
         scanError = nil
+        detectedCardCorners = nil
+        scanStatus = "Finding card…"
+        scanStartedAt = Date()
         isScanning = true
         Task {
             defer { isScanning = false }
             do {
-                let lines = try await CardTextRecognizer.recognize(image)
+                let detection = await CardRectangleDetector.detect(in: image)
+                detectedCardCorners = detection.corners
+                scanStatus = detection.corners == nil ? "Reading card…" : "Card found — matching…"
+                scanStartedAt = Date()
+                let lines: [String]
+                if detection.corners != nil {
+                    async let fullCaptureLines = CardTextRecognizer.recognize(image)
+                    async let correctedCardLines = CardTextRecognizer.recognize(detection.cardImage)
+                    let (fullLines, correctedLines) = try await (fullCaptureLines, correctedCardLines)
+                    let combined = fullLines + correctedLines
+                    lines = combined.reduce(into: []) { unique, line in
+                        if !unique.contains(line) { unique.append(line) }
+                    }
+                } else {
+                    lines = try await CardTextRecognizer.recognize(detection.cardImage)
+                }
                 recognizedLines = lines
                 results = try await searchRecognizedText(lines)
+                // Keep the edge and scan animation visible long enough to make
+                // the detection step understandable instead of flashing by.
+                try? await Task.sleep(nanoseconds: 650_000_000)
                 isShowingResults = true
             } catch {
                 scanError = "TallyDex couldn’t read that photo. Try again in brighter, even light."
@@ -5619,16 +5718,25 @@ struct CardScannerView: View {
     }
 
     private func searchRecognizedText(_ lines: [String]) async throws -> [CatalogCardSearchResult] {
+        let recognizedNames = CardTextRecognizer.nameCandidates(in: lines)
         // A set mark plus collector number is more specific than 022/086 by
         // itself: multiple expansions can share the same printed denominator.
         for identifier in CardTextRecognizer.setAndCollectorCandidates(in: lines) {
             let matches = try await catalogStore.searchCards(query: identifier)
-            if !matches.isEmpty { return Array(matches.prefix(20)) }
+            let nameChecked = matches.filter { result in
+                CardTextRecognizer.nameLooksLikeCard(result.card.name, candidates: recognizedNames)
+            }
+            if !nameChecked.isEmpty { return Array(nameChecked.prefix(20)) }
+            if recognizedNames.isEmpty, !matches.isEmpty { return Array(matches.prefix(20)) }
         }
 
         if let collectorNumber = CardTextRecognizer.collectorNumber(in: lines) {
             let exact = try await catalogStore.searchCards(query: collectorNumber)
-            if !exact.isEmpty { return exact }
+            let nameChecked = exact.filter { result in
+                CardTextRecognizer.nameLooksLikeCard(result.card.name, candidates: recognizedNames)
+            }
+            if !nameChecked.isEmpty { return nameChecked }
+            if recognizedNames.isEmpty, !exact.isEmpty { return exact }
         }
 
         for candidate in CardTextRecognizer.nameCandidates(in: lines).prefix(8) {
@@ -5640,6 +5748,8 @@ struct CardScannerView: View {
 
     private func resetScanner() {
         scannedImage = nil
+        detectedCardCorners = nil
+        scanStatus = "Finding card…"
         recognizedLines = []
         results = []
         if scanError == nil {
@@ -5880,6 +5990,11 @@ enum CardTextRecognizer {
                 with: "",
                 options: [.regularExpression, .caseInsensitive]
             )
+            candidate = candidate.replacingOccurrences(
+                of: #"\s+[-–—•·]?\s*(?:HP\s*)?\d{2,3}\s*$"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
             candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             let lowercased = candidate.lowercased()
             guard candidate.count >= 3,
@@ -5891,6 +6006,191 @@ enum CardTextRecognizer {
             }
             return candidate
         }
+    }
+
+    static func nameLooksLikeCard(_ cardName: String, candidates: [String]) -> Bool {
+        let expected = searchableName(cardName)
+        guard expected.count >= 3 else { return false }
+        return candidates.contains { candidate in
+            let recognized = searchableName(candidate)
+            return recognized == expected
+                || recognized.hasPrefix(expected + " ")
+                || recognized.hasSuffix(" " + expected)
+                || recognized.contains(" " + expected + " ")
+        }
+    }
+
+    private static func searchableName(_ value: String) -> String {
+        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+struct CardRectangleCorners: Sendable, Equatable {
+    let topLeft: CGPoint
+    let topRight: CGPoint
+    let bottomRight: CGPoint
+    let bottomLeft: CGPoint
+
+    init(observation: VNRectangleObservation) {
+        topLeft = observation.topLeft
+        topRight = observation.topRight
+        bottomRight = observation.bottomRight
+        bottomLeft = observation.bottomLeft
+    }
+
+    func points(inAspectFill viewportSize: CGSize, imageSize: CGSize) -> CardRectangleCorners {
+        guard imageSize.width > 0, imageSize.height > 0 else { return self }
+        let scale = max(viewportSize.width / imageSize.width, viewportSize.height / imageSize.height)
+        let renderedSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let origin = CGPoint(
+            x: (viewportSize.width - renderedSize.width) / 2,
+            y: (viewportSize.height - renderedSize.height) / 2
+        )
+        func map(_ point: CGPoint) -> CGPoint {
+            CGPoint(
+                x: origin.x + point.x * renderedSize.width,
+                y: origin.y + (1 - point.y) * renderedSize.height
+            )
+        }
+        return CardRectangleCorners(
+            topLeft: map(topLeft),
+            topRight: map(topRight),
+            bottomRight: map(bottomRight),
+            bottomLeft: map(bottomLeft)
+        )
+    }
+
+    var boundingBox: CGRect {
+        let allPoints = [topLeft, topRight, bottomRight, bottomLeft]
+        let xs = allPoints.map(\.x)
+        let ys = allPoints.map(\.y)
+        guard let minX = xs.min(), let maxX = xs.max(),
+              let minY = ys.min(), let maxY = ys.max() else { return .null }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private init(topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint) {
+        self.topLeft = topLeft
+        self.topRight = topRight
+        self.bottomRight = bottomRight
+        self.bottomLeft = bottomLeft
+    }
+}
+
+struct CardRectangleDetectionResult: @unchecked Sendable {
+    let cardImage: UIImage
+    let corners: CardRectangleCorners?
+}
+
+enum CardRectangleDetector {
+    static func detect(in image: UIImage) async -> CardRectangleDetectionResult {
+        guard let uprightImage = uprightBitmap(from: image),
+              let cgImage = uprightImage.cgImage else {
+            return CardRectangleDetectionResult(cardImage: image, corners: nil)
+        }
+
+        let corners = await Task.detached(priority: .userInitiated) {
+            let request = VNDetectRectanglesRequest()
+            request.maximumObservations = 8
+            request.minimumConfidence = 0.22
+            request.minimumAspectRatio = 0.42
+            request.maximumAspectRatio = 0.95
+            request.minimumSize = 0.08
+            request.quadratureTolerance = 45
+            let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
+            try? handler.perform([request])
+            return bestCardObservation(
+                request.results ?? [],
+                imageSize: CGSize(width: cgImage.width, height: cgImage.height)
+            ).map(CardRectangleCorners.init(observation:))
+        }.value
+
+        guard let corners,
+              let corrected = perspectiveCorrectedImage(cgImage: cgImage, corners: corners) else {
+            return CardRectangleDetectionResult(cardImage: uprightImage, corners: nil)
+        }
+        return CardRectangleDetectionResult(cardImage: corrected, corners: corners)
+    }
+
+    private static func bestCardObservation(
+        _ observations: [VNRectangleObservation],
+        imageSize: CGSize
+    ) -> VNRectangleObservation? {
+        let expectedAspect = CGFloat(245.0 / 337.0)
+        return observations.filter { observation in
+            isPlausiblyUprightCard(observation, imageSize: imageSize)
+        }.min { left, right in
+            score(left, imageSize: imageSize, expectedAspect: expectedAspect)
+                < score(right, imageSize: imageSize, expectedAspect: expectedAspect)
+        }
+    }
+
+    private static func isPlausiblyUprightCard(
+        _ observation: VNRectangleObservation,
+        imageSize: CGSize
+    ) -> Bool {
+        guard observation.boundingBox.width * observation.boundingBox.height >= 0.08 else {
+            return false
+        }
+        let deltaX = (observation.topRight.x - observation.topLeft.x) * imageSize.width
+        let deltaY = (observation.topRight.y - observation.topLeft.y) * imageSize.height
+        let rotation = abs(atan2(deltaY, deltaX))
+        return rotation <= 18 * .pi / 180
+    }
+
+    private static func score(
+        _ observation: VNRectangleObservation,
+        imageSize: CGSize,
+        expectedAspect: CGFloat
+    ) -> CGFloat {
+        let box = observation.boundingBox
+        let observedWidth = box.width * imageSize.width
+        let observedHeight = box.height * imageSize.height
+        let aspect = min(observedWidth, observedHeight) / max(1, max(observedWidth, observedHeight))
+        let aspectPenalty = abs(aspect - expectedAspect) * 8
+        let centerPenalty = hypot(box.midX - 0.5, box.midY - 0.56)
+        let areaPenalty: CGFloat = box.width * box.height < 0.06 ? 2 : 0
+        let edgePenalty: CGFloat = box.minX < 0.015 || box.maxX > 0.985
+            || box.minY < 0.015 || box.maxY > 0.985 ? 1.5 : 0
+        return aspectPenalty + centerPenalty + areaPenalty + edgePenalty
+    }
+
+    private static func uprightBitmap(from image: UIImage) -> UIImage? {
+        guard let source = CIImage(
+            image: image,
+            options: [CIImageOption.applyOrientationProperty: true]
+        ) else { return nil }
+        let context = CIContext(options: [.cacheIntermediates: false])
+        let extent = source.extent.integral
+        guard let cgImage = context.createCGImage(source, from: extent) else { return nil }
+        return UIImage(cgImage: cgImage, scale: 1, orientation: .up)
+    }
+
+    private static func perspectiveCorrectedImage(
+        cgImage: CGImage,
+        corners: CardRectangleCorners
+    ) -> UIImage? {
+        let input = CIImage(cgImage: cgImage)
+        let width = input.extent.width
+        let height = input.extent.height
+        func vector(_ point: CGPoint) -> CIVector {
+            CIVector(x: point.x * width, y: point.y * height)
+        }
+        guard let filter = CIFilter(name: "CIPerspectiveCorrection") else { return nil }
+        filter.setValue(input, forKey: kCIInputImageKey)
+        filter.setValue(vector(corners.topLeft), forKey: "inputTopLeft")
+        filter.setValue(vector(corners.topRight), forKey: "inputTopRight")
+        filter.setValue(vector(corners.bottomRight), forKey: "inputBottomRight")
+        filter.setValue(vector(corners.bottomLeft), forKey: "inputBottomLeft")
+        guard let output = filter.outputImage else { return nil }
+        let context = CIContext(options: [.cacheIntermediates: false])
+        let extent = output.extent.integral
+        guard extent.width > 40, extent.height > 40,
+              let corrected = context.createCGImage(output, from: extent) else { return nil }
+        return UIImage(cgImage: corrected, scale: 1, orientation: .up)
     }
 }
 
