@@ -154,7 +154,9 @@ Research and later builds:
 14. Binder planner.
 15. Finish automatic live card scanning after the remaining catalogue and
     collection work: improve live-frame OCR, confidence ranking, glare handling,
-    top-loader detection, and real-device validation before making Auto the default.
+    top-loader detection, and real-device validation. Promote Auto from Beta to the
+    default camera mode once it reliably identifies a varied real-card test set and
+    falls back to confirmation instead of presenting low-confidence false matches.
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
 calculates every card’s goal progress in a single pass per set. Card grids,
