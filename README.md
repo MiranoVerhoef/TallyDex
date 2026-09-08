@@ -100,38 +100,42 @@ Completed in v0.9.3:
 
 Research and later builds:
 
-1. Expand TCGdex printing support with stable variant IDs, subtype, stamps, foil
+1. Make shared cards openable from receiving apps that do not turn a custom
+   `tallydex://` URL into a tappable link. Keep this native and local-only by
+   investigating a small registered TallyDex card-link attachment with the artwork
+   preview; do not reintroduce a hosted web redirect.
+2. Expand TCGdex printing support with stable variant IDs, subtype, stamps, foil
    pattern, standard/jumbo size, language availability, and per-variant marketplace
    identifiers. Never infer a printing that TCGdex does not explicitly identify.
-2. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
+3. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
    depending only on names; support cards containing multiple Pokémon IDs.
-3. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
+4. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
    Treat them as market statistics, never as substitutes for a missing exact
    printing price.
-4. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
+5. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
    refresh dates because tournament legality changes over time.
-5. Store and display TCGdex's card-data update timestamp separately from pricing
+6. Store and display TCGdex's card-data update timestamp separately from pricing
    timestamps.
-6. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
+7. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
    clearly labelled as TCGdex totals.
-7. Enrich card details and optional filters with HP, type, evolution stage,
+8. Enrich card details and optional filters with HP, type, evolution stage,
    attacks, abilities, weaknesses, resistance, retreat cost, and flavor text.
    Scanner ranking may use this only as supporting evidence.
-8. Add optional booster membership and pack artwork where TCGdex supplies it;
+9. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-9. Audit missing set/card artwork and bundle lawful local replacements or durable
+10. Audit missing set/card artwork and bundle lawful local replacements or durable
    placeholders so the catalogue looks complete offline.
-10. Add first-run introduction and preference setup, plus Reset Introduction in
+11. Add first-run introduction and preference setup, plus Reset Introduction in
    Settings.
-11. Research another permitted card/catalogue/price API, including its licence,
+12. Research another permitted card/catalogue/price API, including its licence,
    attribution, rate limits, coverage, and whether it can be an optional provider
    without weakening TCGdex correctness.
-12. Activate country-specific Cardmarket listings only if permitted official API
+13. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, and
+14. After Apple Developer Program enrollment: private iCloud sync, TestFlight, and
    an optional StoreKit Tip Jar.
-14. Binder planner.
-15. Fully automatic on-device card scanner after the catalogue and collection flows
+15. Binder planner.
+16. Fully automatic on-device card scanner after the catalogue and collection flows
    are stable. Camera images must stay on device.
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
