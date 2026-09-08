@@ -636,6 +636,13 @@ enum CatalogVariantOverrides {
         guard let override = byCardID[cardID] else { return variants }
         return variants.subtracting(override.removals).union(override.additions)
     }
+
+    static func cardIDs(matching requirement: CatalogVariantSearchQuery.Requirement) -> [String] {
+        byCardID.compactMap { cardID, override in
+            requirement.matches(override.additions.subtracting(override.removals)) ? cardID : nil
+        }
+        .sorted()
+    }
 }
 
 struct CatalogCardSnapshot: Codable, Equatable, Sendable {
@@ -696,6 +703,7 @@ protocol CatalogRepository: Sendable {
     func fetchCards(setID: String) async throws -> [CatalogCard]
     func fetchDownloadedSetIDs() async throws -> [String]
     func searchCards(query: String, limit: Int?) async throws -> [CatalogCardSearchResult]
+    func searchCards(requiredVariants: Set<CatalogVariantKind>) async throws -> [CatalogCardSearchResult]
     func fetchCards(matchingName query: String) async throws -> [CatalogCardSearchResult]
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>

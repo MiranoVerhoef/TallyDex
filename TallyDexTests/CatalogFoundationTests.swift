@@ -909,6 +909,14 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertTrue(candidates.contains("SVE 012"))
     }
 
+    func testScannerRepairsPartiallyReadLanguageMarkAfterSetCode() {
+        let candidates = CardTextRecognizer.setAndCollectorCandidates(
+            in: ["Illus. fakuyoa", "J CRIE 022/086", "2026 Pokémon"]
+        )
+
+        XCTAssertEqual(Array(candidates.prefix(2)), ["CRIE 022", "CRI 022"])
+    }
+
     func testRepositoryRecognizesVanGoghSearchAlias() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
@@ -1065,6 +1073,31 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(prereleaseResults.map(\.card.id), [lucario.id])
         let cardRequestCount = await provider.cardRequestCount
         XCTAssertEqual(cardRequestCount, 1, "The second query should reuse the hydrated variants")
+    }
+
+    @MainActor
+    func testBarePrereleaseSearchReturnsKnownAndCachedStampedCards() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let series = CatalogSeries(id: "sm", name: "Sun & Moon", logoURL: nil)
+        let promos = set(id: "smp", seriesID: series.id, name: "SM Black Star Promos")
+        let lucario = CatalogCard(
+            id: "smp-SM95", setID: promos.id, localID: "SM95", name: "Lucario",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil
+        )
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [promos]),
+        ])
+        try await repository.replaceSearchIndex([lucario])
+        let provider = CatalogProviderSpy(cardSnapshot: CatalogCardSnapshot(
+            card: lucario,
+            variants: [.normal]
+        ))
+        let store = CatalogStore(provider: provider, repository: repository)
+
+        let results = try await store.searchCards(query: "prerelease")
+
+        XCTAssertEqual(results.map(\.card.id), [lucario.id])
     }
 
     func testRepositoryCachesCurrentPricesAndDailyHistory() async throws {

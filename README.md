@@ -74,17 +74,68 @@ individual downloads in Settings → Offline Sets.
 
 ## Roadmap order
 
-1. Offline set pinning — completed in v0.5.4
-2. Performance and accessibility hardening — completed in v0.6.0
-3. Remove the 100-result ceiling from stamped-variant searches — completed in v0.6.2
-4. Browser-based mass collection editing — completed in v0.7.0
-5. Direct Cardmarket listings — integration boundary and preferences reserved in
-   v0.8.0; activation waits for permitted official Cardmarket API access
-6. Final real-device, accessibility, performance, and v1.0 hardening — continued
-   in v0.8.1
-7. Apple services after Developer Program enrollment: iCloud sync, TestFlight, and an optional StoreKit Tip Jar
-8. Binder planner
-9. Fully on-device card scanner — last
+Completed foundations:
+
+1. Native series, set, card, search, collection goals, printings, wishlist, notes,
+   My Sets, Hidden sets, custom Collections, backups, and CSV export.
+2. TCGdex-backed pricing, exact-printing totals, rolling averages, locally built
+   price history, Cardmarket links, cache controls, and offline set pinning.
+3. Browser-based mass collection editing, catalogue pre-indexing, performance and
+   accessibility hardening, photo-assisted search, and local image caching.
+4. Goal-aware progress in Sets, Search, and Collection, note markers, collection
+   icons, collapsed owned cards, and lossless switching between collection goals.
+
+Completed in v0.9.2:
+
+1. Removed the GitHub Pages runtime bridge. Shared cards use the native local
+   `tallydex://` URL; GitHub remains distribution-only for releases and the
+   optional AltStore-compatible feed.
+2. Reduced live-photo memory use by decoding an orientation-correct OCR-sized
+   bitmap directly from the captured JPEG, and added an on/off flashlight control.
+3. Made photo matching prioritize an exact set code and collector number before
+   weaker fallbacks. It also repairs common OCR damage to an adjacent language mark
+   and keeps a clean card-shaped library photo at its original resolution.
+4. Added standalone `prerelease` and `staff` results for locally indexed TCGdex
+   printing data and the existing documented compatibility corrections.
+5. Rechecked Lucario SM95 pricing. TCGdex still exposes one ordinary printing and
+   one Cardmarket product without separate Prerelease or Staff product IDs, so
+   TallyDex intentionally does not copy that price to either stamped printing.
+
+Research and later builds:
+
+1. Expand TCGdex printing support with stable variant IDs, subtype, stamps, foil
+   pattern, standard/jumbo size, language availability, and per-variant marketplace
+   identifiers. Never infer a printing that TCGdex does not explicitly identify.
+2. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
+   depending only on names; support cards containing multiple Pokémon IDs.
+3. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
+   Treat them as market statistics, never as substitutes for a missing exact
+   printing price.
+4. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
+   refresh dates because tournament legality changes over time.
+5. Store and display TCGdex's card-data update timestamp separately from pricing
+   timestamps.
+6. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
+   clearly labelled as TCGdex totals.
+7. Enrich card details and optional filters with HP, type, evolution stage,
+   attacks, abilities, weaknesses, resistance, retreat cost, and flavor text.
+   Scanner ranking may use this only as supporting evidence.
+8. Add optional booster membership and pack artwork where TCGdex supplies it;
+   incomplete provider coverage must be shown honestly.
+9. Audit missing set/card artwork and bundle lawful local replacements or durable
+   placeholders so the catalogue looks complete offline.
+10. Add first-run introduction and preference setup, plus Reset Introduction in
+   Settings.
+11. Research another permitted card/catalogue/price API, including its licence,
+   attribution, rate limits, coverage, and whether it can be an optional provider
+   without weakening TCGdex correctness.
+12. Activate country-specific Cardmarket listings only if permitted official API
+   access becomes available; the provider boundary and preferences already exist.
+13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, and
+   an optional StoreKit Tip Jar.
+14. Binder planner.
+15. Fully automatic on-device card scanner after the catalogue and collection flows
+   are stable. Camera images must stay on device.
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
 calculates every card’s goal progress in a single pass per set. Card grids,
@@ -159,9 +210,9 @@ starts an embedded live preview, with an aligned card guide, a single shutter, a
 round Photos shortcut. Captured-image orientation is preserved for Vision, and OCR
 can combine a printed set code and collector number such as `SVE EN 012`, including
 language marks that Vision joins to the code. Results appear in a compact card sheet
-without the previous confirmation copy. Shared cards now use a clickable HTTPS link,
-include the cached card artwork as the system share preview, and open a small TallyDex
-bridge page that launches the exact card in the installed app.
+without the previous confirmation copy. Shared cards include the cached card artwork
+and a native `tallydex://` link that opens the exact card in the installed app. This
+sharing flow is local and does not depend on a web page or GitHub Pages.
 
 Photos from the library can be dragged and zoomed inside the card guide before
 recognition. The smaller shutter stays clear of the guide. Shared artwork is also
