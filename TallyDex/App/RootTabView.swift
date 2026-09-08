@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum AppTab: Hashable, CaseIterable {
     case sets
@@ -37,6 +38,59 @@ enum CardDeepLink {
             return value.isEmpty ? nil : value.removingPercentEncoding ?? value
         }
         return nil
+    }
+}
+
+extension UTType {
+    static let tallyDexCard = UTType(
+        exportedAs: SharedCardDocument.formatIdentifier,
+        conformingTo: .json
+    )
+}
+
+struct SharedCardDocument: Codable, Equatable, Sendable {
+    static let formatIdentifier = "com.miranoverhoef.tallydex.card-link"
+    static let format = "TallyDex Card"
+
+    let format: String
+    let cardID: String
+    let cardName: String
+
+    init(cardID: String, cardName: String) {
+        format = Self.format
+        self.cardID = cardID
+        self.cardName = cardName
+    }
+
+    static func cardID(from url: URL) -> String? {
+        guard url.isFileURL,
+              url.pathExtension.lowercased() == "tallydexcard" else { return nil }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed { url.stopAccessingSecurityScopedResource() }
+        }
+        guard
+              let data = try? Data(contentsOf: url),
+              let document = try? JSONDecoder().decode(Self.self, from: data),
+              document.format == format,
+              !document.cardID.isEmpty else { return nil }
+        return document.cardID
+    }
+
+    func temporaryURL() throws -> URL {
+        let rootFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TallyDex Card Shares", isDirectory: true)
+        let safeID = cardID
+            .replacingOccurrences(of: #"[^A-Za-z0-9._-]+"#, with: "-", options: .regularExpression)
+        let folder = rootFolder.appendingPathComponent(safeID.isEmpty ? "card" : safeID, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let safeName = cardName
+            .replacingOccurrences(of: #"[^A-Za-z0-9 ._'-]+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let filename = (safeName.isEmpty ? "TallyDex Card" : safeName) + ".tallydexcard"
+        let url = folder.appendingPathComponent(filename)
+        try JSONEncoder().encode(self).write(to: url, options: .atomic)
+        return url
     }
 }
 

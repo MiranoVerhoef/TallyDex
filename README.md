@@ -98,45 +98,54 @@ Completed in v0.9.3:
    are accepted, preventing an unrelated card such as Omastar from replacing a
    clearly read Bewear merely because OCR found a similar collector number.
 
+Completed in v0.9.4:
+
+1. Camera mode can be switched directly between Auto and Manual on the Camera
+   screen. Auto tracks the card boundary in live frames and captures only after
+   the complete outline remains stable; the shutter remains available in both modes.
+2. Rectangle detection now rejects small inner and partial contours, favours the
+   largest credible card-shaped region, and accepts moderate camera angles for
+   perspective correction.
+3. OCR matching tolerates small spelling damage across a complete card title and
+   ranks the full local catalogue name, fixing scans such as Pikachu with Grey Felt
+   Hat without weakening the unrelated-name safeguard.
+4. Shared cards now include a registered `.tallydexcard` attachment. It opens the
+   exact card locally in TallyDex when tapped, while the separately shared artwork
+   provides the visual preview; no website or hosted redirect is required.
+
 Research and later builds:
 
-1. Make shared cards openable from receiving apps that do not turn a custom
-   `tallydex://` URL into a tappable link. Keep this native and local-only by
-   investigating a small registered TallyDex card-link attachment with the artwork
-   preview; do not reintroduce a hosted web redirect.
-2. Expand TCGdex printing support with stable variant IDs, subtype, stamps, foil
+1. Expand TCGdex printing support with stable variant IDs, subtype, stamps, foil
    pattern, standard/jumbo size, language availability, and per-variant marketplace
    identifiers. Never infer a printing that TCGdex does not explicitly identify.
-3. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
+2. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
    depending only on names; support cards containing multiple Pokémon IDs.
-4. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
+3. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
    Treat them as market statistics, never as substitutes for a missing exact
    printing price.
-5. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
+4. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
    refresh dates because tournament legality changes over time.
-6. Store and display TCGdex's card-data update timestamp separately from pricing
+5. Store and display TCGdex's card-data update timestamp separately from pricing
    timestamps.
-7. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
+6. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
    clearly labelled as TCGdex totals.
-8. Enrich card details and optional filters with HP, type, evolution stage,
+7. Enrich card details and optional filters with HP, type, evolution stage,
    attacks, abilities, weaknesses, resistance, retreat cost, and flavor text.
    Scanner ranking may use this only as supporting evidence.
-9. Add optional booster membership and pack artwork where TCGdex supplies it;
+8. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-10. Audit missing set/card artwork and bundle lawful local replacements or durable
+9. Audit missing set/card artwork and bundle lawful local replacements or durable
    placeholders so the catalogue looks complete offline.
-11. Add first-run introduction and preference setup, plus Reset Introduction in
+10. Add first-run introduction and preference setup, plus Reset Introduction in
    Settings.
-12. Research another permitted card/catalogue/price API, including its licence,
+11. Research another permitted card/catalogue/price API, including its licence,
    attribution, rate limits, coverage, and whether it can be an optional provider
    without weakening TCGdex correctness.
-13. Activate country-specific Cardmarket listings only if permitted official API
+12. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-14. After Apple Developer Program enrollment: private iCloud sync, TestFlight, and
+13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, and
    an optional StoreKit Tip Jar.
-15. Binder planner.
-16. Fully automatic on-device card scanner after the catalogue and collection flows
-   are stable. Camera images must stay on device.
+14. Binder planner.
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
 calculates every card’s goal progress in a single pass per set. Card grids,

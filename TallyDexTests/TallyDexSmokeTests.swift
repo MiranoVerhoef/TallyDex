@@ -64,6 +64,48 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertFalse(CardTextRecognizer.nameLooksLikeCard("Omastar", candidates: candidates))
     }
 
+    func testScannerFuzzyTitleMatchingRecoversDamagedOCRWithoutFalsePositive() {
+        let recognized = [
+            "Pikachu utth Grey Fat Hat 60",
+            "Pikachu with Gray Palt Hat",
+            "Pika-Portrait",
+        ]
+        let candidates = CardTextRecognizer.nameCandidates(in: recognized)
+
+        XCTAssertTrue(
+            CardTextRecognizer.nameLooksLikeCard(
+                "Pikachu with Grey Felt Hat",
+                candidates: candidates
+            )
+        )
+        XCTAssertFalse(CardTextRecognizer.nameLooksLikeCard("Omastar", candidates: candidates))
+        XCTAssertEqual(CardTextRecognizer.fallbackNameQueries(in: recognized).first, "Pikachu")
+    }
+
+    func testAutomaticScannerWaitsForStableFullCard() {
+        let card = CardRectangleCorners(
+            topLeft: CGPoint(x: 0.2, y: 0.85),
+            topRight: CGPoint(x: 0.8, y: 0.85),
+            bottomRight: CGPoint(x: 0.8, y: 0.15),
+            bottomLeft: CGPoint(x: 0.2, y: 0.15)
+        )
+        var tracker = CardRectangleStabilityTracker(requiredStableFrames: 3)
+
+        XCTAssertFalse(tracker.observe(card))
+        XCTAssertFalse(tracker.observe(card))
+        XCTAssertTrue(tracker.observe(card))
+        tracker.reset()
+        XCTAssertFalse(tracker.observe(card))
+        XCTAssertFalse(tracker.observe(nil))
+        XCTAssertEqual(tracker.consecutiveStableFrames, 0)
+    }
+
+    func testCameraCaptureModeDefaultsToAutomaticAndCanResolveManual() {
+        XCTAssertEqual(CardScannerCaptureMode.defaultMode, .automatic)
+        XCTAssertEqual(CardScannerCaptureMode.resolve("manual"), .manual)
+        XCTAssertEqual(CardScannerCaptureMode.resolve("unsupported"), .automatic)
+    }
+
     func testPrimaryNavigationIncludesCameraTab() {
         XCTAssertEqual(AppTab.allCases.count, 5)
         XCTAssertTrue(AppTab.allCases.contains(.camera))
@@ -99,6 +141,18 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertEqual(CardDeepLink.cardID(from: url), "me02.5-076")
         XCTAssertNil(CardDeepLink.cardID(from: URL(string: "https://miranoverhoef.github.io/TallyDex/card/?id=me02.5-076")!))
         XCTAssertNil(CardDeepLink.cardID(from: URL(string: "https://example.com/card")!))
+    }
+
+    func testSharedCardDocumentIsRegisteredAndRoundTripsCardIdentifier() throws {
+        let document = SharedCardDocument(
+            cardID: "me02.5-076",
+            cardName: "Lillie's Clefairy ex"
+        )
+        let url = try document.temporaryURL()
+
+        XCTAssertEqual(UTType.tallyDexCard.identifier, SharedCardDocument.formatIdentifier)
+        XCTAssertEqual(url.pathExtension, "tallydexcard")
+        XCTAssertEqual(SharedCardDocument.cardID(from: url), "me02.5-076")
     }
 
     func testFutureCardmarketCurrenciesRemainExplicit() {
