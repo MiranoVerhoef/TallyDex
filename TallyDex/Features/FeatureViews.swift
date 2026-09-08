@@ -1666,7 +1666,8 @@ private struct CardDetailArtworkView: View {
         .sheet(isPresented: $isSharing) {
             CardShareSheet(
                 card: card,
-                image: imageData.flatMap(UIImage.init(data:))
+                image: imageData.flatMap(UIImage.init(data:)),
+                kind: .image
             )
             .presentationDetents([.medium, .large])
         }
@@ -2118,12 +2119,14 @@ private struct CardShareToolbarButton: View {
     let card: CatalogCard
     @State private var imageData: Data?
     @State private var cardDocumentURL: URL?
-    @State private var isSharing = false
+    @State private var shareKind: CardShareKind?
+    @State private var isChoosingShareKind = false
     @State private var isPreparing = false
+    @State private var shareError: String?
 
     var body: some View {
         Button {
-            prepareShare()
+            isChoosingShareKind = true
         } label: {
             if isPreparing {
                 ProgressView()
@@ -2132,53 +2135,94 @@ private struct CardShareToolbarButton: View {
             }
         }
         .disabled(isPreparing)
-        .sheet(isPresented: $isSharing) {
+        .confirmationDialog("Share Card", isPresented: $isChoosingShareKind) {
+            Button("Share Card Image") { prepareShare(.image) }
+            Button("Export TallyDex Card File") { prepareShare(.tallyDexFile) }
+        } message: {
+            Text("Images display normally in messaging apps. TallyDex card files open the exact card through Files or AirDrop on devices with TallyDex installed.")
+        }
+        .sheet(item: $shareKind) { kind in
             CardShareSheet(
                 card: card,
                 image: imageData.flatMap(UIImage.init(data:)),
-                documentURL: cardDocumentURL
+                documentURL: cardDocumentURL,
+                kind: kind
             )
             .presentationDetents([.medium, .large])
         }
+        .alert("Share Card", isPresented: Binding(
+            get: { shareError != nil },
+            set: { if !$0 { shareError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(shareError ?? "")
+        }
     }
 
-    private func prepareShare() {
+    private func prepareShare(_ kind: CardShareKind) {
         isPreparing = true
         Task {
+            imageData = nil
+            cardDocumentURL = nil
             if let reference = card.fullArtworkReference {
                 imageData = try? await CatalogArtworkCache.shared.data(for: reference)
             }
-            cardDocumentURL = try? SharedCardDocument(
-                cardID: card.id,
-                cardName: card.name
-            ).temporaryURL()
+            if kind == .image, imageData == nil {
+                shareError = "This card does not have artwork available to share."
+                isPreparing = false
+                return
+            }
+            if kind == .tallyDexFile {
+                cardDocumentURL = try? SharedCardDocument(
+                    cardID: card.id,
+                    cardName: card.name
+                ).temporaryURL()
+                if cardDocumentURL == nil {
+                    shareError = "The TallyDex card file couldn’t be created."
+                    isPreparing = false
+                    return
+                }
+            }
             isPreparing = false
-            isSharing = true
+            shareKind = kind
         }
     }
+}
+
+private enum CardShareKind: String, Identifiable {
+    case image
+    case tallyDexFile
+
+    var id: String { rawValue }
 }
 
 private struct CardShareSheet: UIViewControllerRepresentable {
     let card: CatalogCard
     let image: UIImage?
     var documentURL: URL? = nil
+    let kind: CardShareKind
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let shareURL = documentURL ?? (try? SharedCardDocument(
-            cardID: card.id,
-            cardName: card.name
-        ).temporaryURL()) ?? CardDeepLink.url(cardID: card.id)
-        return UIActivityViewController(
-            activityItems: [
+        let items: [Any]
+        switch kind {
+        case .image:
+            if let image {
+                items = [CardImageShareItemSource(title: card.name, image: image)]
+            } else {
+                items = [card.name]
+            }
+        case .tallyDexFile:
+            let shareURL = documentURL ?? CardDeepLink.url(cardID: card.id)
+            items = [
                 CardShareItemSource(
                     title: card.name,
-                    subtitle: "Open #\(card.localID) in TallyDex",
                     itemURL: shareURL,
                     image: image
-                ),
-            ] + (image.map { [$0 as Any] } ?? []),
-            applicationActivities: nil
-        )
+                )
+            ]
+        }
+        return UIActivityViewController(activityItems: items, applicationActivities: nil)
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
@@ -2186,13 +2230,11 @@ private struct CardShareSheet: UIViewControllerRepresentable {
 
 private final class CardShareItemSource: NSObject, UIActivityItemSource {
     let title: String
-    let subtitle: String
     let itemURL: URL
     let image: UIImage?
 
-    init(title: String, subtitle: String, itemURL: URL, image: UIImage?) {
+    init(title: String, itemURL: URL, image: UIImage?) {
         self.title = title
-        self.subtitle = subtitle
         self.itemURL = itemURL
         self.image = image
     }
@@ -2233,6 +2275,56 @@ private final class CardShareItemSource: NSObject, UIActivityItemSource {
         itemURL.pathExtension.lowercased() == "tallydexcard"
             ? UTType.tallyDexCard.identifier
             : UTType.url.identifier
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        thumbnailImageForActivityType activityType: UIActivity.ActivityType?,
+        suggestedSize size: CGSize
+    ) -> UIImage? {
+        image
+    }
+}
+
+private final class CardImageShareItemSource: NSObject, UIActivityItemSource {
+    let title: String
+    let image: UIImage
+
+    init(title: String, image: UIImage) {
+        self.title = title
+        self.image = image
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        image
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        image
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        title
+    }
+
+    func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = title
+        metadata.imageProvider = NSItemProvider(object: image)
+        return metadata
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        UTType.image.identifier
     }
 
     func activityViewController(
@@ -5362,10 +5454,10 @@ enum CardScannerCaptureMode: String, CaseIterable, Identifiable {
     case manual
 
     static let storageKey = "camera.captureMode"
-    static let defaultMode = CardScannerCaptureMode.automatic
+    static let defaultMode = CardScannerCaptureMode.manual
 
     var id: String { rawValue }
-    var title: String { self == .automatic ? "Auto" : "Manual" }
+    var title: String { self == .automatic ? "Auto Beta" : "Manual" }
     var systemImage: String {
         self == .automatic ? "viewfinder.circle.fill" : "camera.circle.fill"
     }
