@@ -105,6 +105,10 @@ final class CollectionStore {
         try await reloadCollectionState()
     }
 
+    func previewBackupRestore(_ backup: CollectionBackup) async throws -> CollectionImportPreview {
+        try await resolveRepository().previewBackupRestore(id: backup.id)
+    }
+
     func exportDocument() async throws -> PortableCollectionDocument {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"

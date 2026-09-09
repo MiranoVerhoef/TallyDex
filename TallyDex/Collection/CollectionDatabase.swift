@@ -472,24 +472,34 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         return backup
     }
 
+    func previewBackupRestore(id: UUID) async throws -> CollectionImportPreview {
+        try await database.queue.read { database in
+            let savedPayload = try Self.backupPayload(id: id, in: database)
+            let currentPayload = try Self.captureSnapshot(in: database)
+            let referenceDate = Date(timeIntervalSince1970: 0)
+            return Self.preview(
+                Self.portableDocument(
+                    from: savedPayload,
+                    exportedAt: referenceDate,
+                    appVersion: "Local backup"
+                ),
+                current: Self.portableDocument(
+                    from: currentPayload,
+                    exportedAt: referenceDate,
+                    appVersion: "Current collection"
+                ),
+                mode: .replace
+            )
+        }
+    }
+
     func restoreBackup(
         id: UUID,
         safetyBackupReason: String,
         restoredAt: Date
     ) async throws {
         try await database.queue.write { database in
-            guard let row = try Row.fetchOne(
-                database,
-                sql: "SELECT payloadJSON FROM collectionBackup WHERE id = ?",
-                arguments: [id.uuidString]
-            ) else {
-                throw CollectionRepositoryError.invalidBackup
-            }
-            let payloadJSON: String = row["payloadJSON"]
-            guard let payloadData = payloadJSON.data(using: .utf8),
-                  let payload = try? JSONDecoder().decode(CollectionBackupPayload.self, from: payloadData) else {
-                throw CollectionRepositoryError.invalidBackup
-            }
+            let payload = try Self.backupPayload(id: id, in: database)
 
             let safetyBackup = CollectionBackup(
                 id: UUID(),
@@ -799,6 +809,22 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             folders: folders,
             metadata: metadata
         )
+    }
+
+    private static func backupPayload(id: UUID, in database: Database) throws -> CollectionBackupPayload {
+        guard let row = try Row.fetchOne(
+            database,
+            sql: "SELECT payloadJSON FROM collectionBackup WHERE id = ?",
+            arguments: [id.uuidString]
+        ) else {
+            throw CollectionRepositoryError.invalidBackup
+        }
+        let payloadJSON: String = row["payloadJSON"]
+        guard let payloadData = payloadJSON.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(CollectionBackupPayload.self, from: payloadData) else {
+            throw CollectionRepositoryError.invalidBackup
+        }
+        return payload
     }
 
     private static func portableDocument(
