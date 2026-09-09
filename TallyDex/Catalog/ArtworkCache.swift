@@ -76,9 +76,10 @@ struct CatalogArtworkCacheSnapshot: Equatable, Sendable {
 
 /// TCGdex currently omits the image field for several English gallery and vault
 /// subsets even though the same assets are available on its CDN under the parent
-/// set path. MEP currently omits every card image, so exact numeric MEP cards use
-/// Pokémon's official static card asset instead. These fallbacks are deliberately
-/// explicit: a set ID and collector number are never guessed.
+/// set path. When TCGdex has no image, the same exact set ID and collector number
+/// are also checked against Pokémon's official static card assets. A short alias
+/// table handles legacy IDs whose official asset directory uses a different but
+/// verified code. A card name or nearby collector number is never guessed.
 enum TCGdexArtworkFallbacks {
     private static let parentSetBySetID: [String: String] = [
         "swsh4.5sv": "swsh4.5",
@@ -114,28 +115,60 @@ enum TCGdexArtworkFallbacks {
         "swsh12.5gg-GG69",
     ]
 
-    static func cardImageURL(
+    private static let officialAssetCodeBySetID: [String: String] = [
+        "2011bw": "MCD11",
+        "2012bw": "MCD12",
+        "2014xy": "MCD14",
+        "2015xy": "MCD15",
+        "2016xy": "MCD16",
+        "2017sm": "MCD17",
+        "2018sm": "MCD18",
+        "2019sm": "MCD19",
+        "2021swsh": "MCD21",
+        "2022swsh": "MCD22",
+        "bog": "BP",
+        "hgssp": "HSP",
+        "sm3.5": "SM35",
+        "sm7.5": "SM75",
+        "swsh4.5sv": "SWSH45SV",
+        "swsh12.5gg": "SWSH12PT5GG",
+        "tk-ex-latia": "TK1A",
+        "tk-ex-latio": "TK1B",
+        "tk-ex-m": "TK2B",
+        "tk-ex-p": "TK2A",
+    ]
+
+    static func cardImageURLs(
         for card: CatalogCard,
         category: CatalogArtworkCategory
-    ) -> URL? {
-        if let imageURL = card.imageURL {
-            return imageURL
-        }
+    ) -> [URL] {
+        var urls: [URL] = []
+        if let imageURL = card.imageURL { urls.append(imageURL) }
 
         if !knownUnavailableCardIDs.contains(card.id),
            !(category == .cardArtwork
              && knownUnavailableHighResolutionCardIDs.contains(card.id)),
            let parentSetID = parentSetBySetID[card.setID] {
-            return URL(
+            if let correctedURL = URL(
                 string: "https://assets.tcgdex.net/en/swsh/\(parentSetID)/\(card.localID)"
-            )
+            ) {
+                urls.append(correctedURL)
+            }
         }
 
-        guard card.setID.caseInsensitiveCompare("mep") == .orderedSame,
-              let number = Int(card.localID) else { return nil }
-        return URL(
-            string: "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/MEP/MEP_EN_\(number).png"
-        )
+        let assetCode = officialAssetCodeBySetID[card.setID.lowercased()]
+            ?? card.setID.uppercased()
+        let collectorNumber = Int(card.localID).map(String.init) ?? card.localID
+        if !assetCode.isEmpty,
+           !collectorNumber.isEmpty,
+           let officialURL = URL(
+               string: "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/\(assetCode)/\(assetCode)_EN_\(collectorNumber).png"
+           ) {
+            urls.append(officialURL)
+        }
+        return urls.reduce(into: []) { result, url in
+            if !result.contains(url) { result.append(url) }
+        }
     }
 }
 
@@ -268,12 +301,10 @@ actor CatalogArtworkCache {
         return response.data
     }
 
-    func bestAvailableData(for card: CatalogCard) async throws -> Data {
-        let references = [card.fullArtworkReference, card.thumbnailArtworkReference]
-            .compactMap { $0 }
-            .reduce(into: [CatalogArtworkReference]()) { result, reference in
-                if !result.contains(reference) { result.append(reference) }
-            }
+    func bestAvailableData(for references: [CatalogArtworkReference]) async throws -> Data {
+        let references = references.reduce(into: [CatalogArtworkReference]()) { result, reference in
+            if !result.contains(reference) { result.append(reference) }
+        }
         var lastError: Error = CatalogArtworkCacheError.invalidResponse
         for reference in references {
             do {
@@ -283,6 +314,12 @@ actor CatalogArtworkCache {
             }
         }
         throw lastError
+    }
+
+    func bestAvailableData(for card: CatalogCard) async throws -> Data {
+        try await bestAvailableData(
+            for: card.fullArtworkReferences + card.thumbnailArtworkReferences
+        )
     }
 
     @discardableResult
@@ -591,8 +628,13 @@ final class ArtworkCacheStore {
     }
 
     func keepOffline(set: CatalogSet, cards: [CatalogCard]) async {
-        let references = Array(Set(set.offlineArtworkReferences + cards.flatMap(\.offlineArtworkReferences)))
-        guard !cards.isEmpty, !references.isEmpty else {
+        let requestGroups = (
+            set.offlineArtworkReferences.map { [$0] }
+                + cards.flatMap(\.offlineArtworkReferenceGroups)
+        ).reduce(into: [[CatalogArtworkReference]]()) { result, group in
+            if !group.isEmpty, !result.contains(group) { result.append(group) }
+        }
+        guard !cards.isEmpty, !requestGroups.isEmpty else {
             preparationFailed(setID: set.id, setName: set.name)
             return
         }
@@ -604,18 +646,24 @@ final class ArtworkCacheStore {
         var succeeded = 0
         var failed = 0
 
-        for batchStart in stride(from: 0, to: references.count, by: 6) {
-            let batchEnd = min(batchStart + 6, references.count)
-            let batch = Array(references[batchStart..<batchEnd])
+        for batchStart in stride(from: 0, to: requestGroups.count, by: 6) {
+            let batchEnd = min(batchStart + 6, requestGroups.count)
+            let batch = Array(requestGroups[batchStart..<batchEnd])
             let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
-                for reference in batch {
+                for alternatives in batch {
                     group.addTask {
-                        do {
-                            _ = try await cache.downloadOffline(reference: reference, setID: set.id)
-                            return true
-                        } catch {
-                            return false
+                        for reference in alternatives {
+                            do {
+                                _ = try await cache.downloadOffline(
+                                    reference: reference,
+                                    setID: set.id
+                                )
+                                return true
+                            } catch {
+                                continue
+                            }
                         }
+                        return false
                     }
                 }
                 var values: [Bool] = []
@@ -624,7 +672,7 @@ final class ArtworkCacheStore {
             }
             succeeded += results.filter { $0 }.count
             failed += results.filter { !$0 }.count
-            downloadProgress[set.id] = Double(succeeded + failed) / Double(references.count)
+            downloadProgress[set.id] = Double(succeeded + failed) / Double(requestGroups.count)
         }
 
         downloadProgress.removeValue(forKey: set.id)
@@ -713,25 +761,38 @@ extension CatalogSet {
 }
 
 extension CatalogCard {
-    var thumbnailArtworkReference: CatalogArtworkReference? {
-        TCGdexArtworkFallbacks.cardImageURL(for: self, category: .cardThumbnails).map {
+    var thumbnailArtworkReferences: [CatalogArtworkReference] {
+        TCGdexArtworkFallbacks.cardImageURLs(for: self, category: .cardThumbnails).map {
             .init(url: $0, category: .cardThumbnails, offlineSetID: setID)
         }
     }
 
-    var fullArtworkReference: CatalogArtworkReference? {
-        if let url = TCGdexArtworkFallbacks.cardImageURL(for: self, category: .cardArtwork) {
+    var thumbnailArtworkReference: CatalogArtworkReference? {
+        thumbnailArtworkReferences.first
+    }
+
+    var fullArtworkReferences: [CatalogArtworkReference] {
+        let fullReferences = TCGdexArtworkFallbacks.cardImageURLs(
+            for: self,
+            category: .cardArtwork
+        ).map { url in
             let category: CatalogArtworkCategory = url.pathExtension.isEmpty
                 ? .cardArtwork
                 : .cardThumbnails
-            return .init(url: url, category: category, offlineSetID: setID)
+            return CatalogArtworkReference(url: url, category: category, offlineSetID: setID)
         }
-        return TCGdexArtworkFallbacks.cardImageURL(for: self, category: .cardThumbnails).map {
-            .init(url: $0, category: .cardThumbnails, offlineSetID: setID)
-        }
+        return fullReferences.isEmpty ? thumbnailArtworkReferences : fullReferences
+    }
+
+    var fullArtworkReference: CatalogArtworkReference? {
+        fullArtworkReferences.first
     }
 
     var offlineArtworkReferences: [CatalogArtworkReference] {
         [thumbnailArtworkReference, fullArtworkReference].compactMap { $0 }
+    }
+
+    var offlineArtworkReferenceGroups: [[CatalogArtworkReference]] {
+        [thumbnailArtworkReferences, fullArtworkReferences]
     }
 }

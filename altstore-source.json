@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.9/TallyDex-v0.9.9-official-artwork-fallback.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.8/TallyDex-v0.9.8-recovered-artwork.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.7/TallyDex-v0.9.7-exact-ownership.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.6/TallyDex-v0.9.6-collection-cover.png",
@@ -73,6 +74,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.9",
+          "buildVersion": "45",
+          "date": "2026-09-09",
+          "localizedDescription": "Automatically recovers exact missing card artwork across the catalogue by trying TCGdex first and then Pokémon’s official static asset service with the same set identity and collector number. Verified aliases cover legacy and subset directories; 716 of 1,717 current TCGdex image omissions now resolve exactly, including Lucario & Melmetal GX SM192 and Forbidden Light Lucario GX 122. The remaining gaps retain honest placeholders, successful images cache locally, and no GitHub or deprecated community API is required at runtime.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.9/TallyDex-v0.9.9.ipa",
+          "size": 5768377,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.8",
           "buildVersion": "44",
