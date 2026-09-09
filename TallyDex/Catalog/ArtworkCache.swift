@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import ImageIO
 import Observation
+import UniformTypeIdentifiers
 
 enum CatalogArtworkCategory: String, CaseIterable, Identifiable, Sendable {
     case seriesLogos = "series-logos"
@@ -214,10 +215,10 @@ actor CatalogArtworkCache {
         self.fileManager = fileManager
         self.maximumByteCount = maximumByteCount
         self.httpClient = httpClient
+        let automaticCacheBase = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("TallyDexArtwork", isDirectory: true)
         let resolvedRootDirectory = rootDirectory
-            ?? fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("TallyDexArtwork", isDirectory: true)
-                .appendingPathComponent("v1", isDirectory: true)
+            ?? automaticCacheBase.appendingPathComponent("v2", isDirectory: true)
         self.rootDirectory = resolvedRootDirectory
         self.offlineRootDirectory = offlineRootDirectory
             ?? (rootDirectory != nil
@@ -225,6 +226,13 @@ actor CatalogArtworkCache {
                 : fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent("TallyDexOfflineSets", isDirectory: true)
                     .appendingPathComponent("v1", isDirectory: true))
+        if rootDirectory == nil {
+            let legacyAutomaticCache = automaticCacheBase
+                .appendingPathComponent("v1", isDirectory: true)
+            if fileManager.fileExists(atPath: legacyAutomaticCache.path) {
+                try? fileManager.removeItem(at: legacyAutomaticCache)
+            }
+        }
     }
 
     static func resolvedAssetURL(_ url: URL, category: CatalogArtworkCategory) -> URL {
@@ -264,16 +272,58 @@ actor CatalogArtworkCache {
         return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
     }
 
+    static func optimizedImageData(
+        _ data: Data,
+        category: CatalogArtworkCategory
+    ) -> Data {
+        let target: (maximumPixelSize: Int, quality: Double)? = switch category {
+        case .cardThumbnails: (480, 0.78)
+        case .cardArtwork: (1_600, 0.88)
+        case .seriesLogos, .setLogos, .expansionSymbols: nil
+        }
+        guard let target,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(
+                  source,
+                  0,
+                  [
+                      kCGImageSourceCreateThumbnailFromImageAlways: true,
+                      kCGImageSourceCreateThumbnailWithTransform: true,
+                      kCGImageSourceThumbnailMaxPixelSize: target.maximumPixelSize,
+                  ] as CFDictionary
+              ) else {
+            return data
+        }
+
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output,
+            UTType.jpeg.identifier as CFString,
+            1,
+            nil
+        ) else {
+            return data
+        }
+        CGImageDestinationAddImage(
+            destination,
+            image,
+            [kCGImageDestinationLossyCompressionQuality: target.quality] as CFDictionary
+        )
+        guard CGImageDestinationFinalize(destination) else { return data }
+        let optimized = output as Data
+        return optimized.count < data.count ? optimized : data
+    }
+
     func data(for reference: CatalogArtworkReference) async throws -> Data {
         if let offlineSetID = reference.offlineSetID {
             let offlineURL = offlineFileURL(for: reference, setID: offlineSetID)
-            if let offline = validCachedData(at: offlineURL) {
+            if let offline = validCachedData(at: offlineURL, category: reference.category) {
                 return offline
             }
         }
 
         let fileURL = cachedFileURL(for: reference)
-        if let cached = validCachedData(at: fileURL) {
+        if let cached = validCachedData(at: fileURL, category: reference.category) {
             try? fileManager.setAttributes(
                 [.modificationDate: Date()],
                 ofItemAtPath: fileURL.path
@@ -296,9 +346,10 @@ actor CatalogArtworkCache {
 
         let directory = directory(for: reference.category)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        try response.data.write(to: fileURL, options: .atomic)
+        let storedData = Self.optimizedImageData(response.data, category: reference.category)
+        try storedData.write(to: fileURL, options: .atomic)
         try trimIfNeeded()
-        return response.data
+        return storedData
     }
 
     func bestAvailableData(for references: [CatalogArtworkReference]) async throws -> Data {
@@ -332,6 +383,16 @@ actor CatalogArtworkCache {
         guard Self.isValidImageData(data) else {
             throw CatalogArtworkCacheError.invalidImageData
         }
+        let storedData = Self.optimizedImageData(data, category: reference.category)
+        return try writeOffline(storedData, for: reference, setID: setID)
+    }
+
+    @discardableResult
+    private func writeOffline(
+        _ data: Data,
+        for reference: CatalogArtworkReference,
+        setID: String
+    ) throws -> Int64 {
         let directory = offlineDirectory(for: setID)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         var values = URLResourceValues()
@@ -349,13 +410,13 @@ actor CatalogArtworkCache {
         setID: String
     ) async throws -> Int64 {
         let offlineURL = offlineFileURL(for: reference, setID: setID)
-        if let offline = validCachedData(at: offlineURL) {
+        if let offline = validCachedData(at: offlineURL, category: reference.category) {
             return Int64(offline.count)
         }
 
         let cachedURL = cachedFileURL(for: reference)
-        if let cached = validCachedData(at: cachedURL) {
-            return try storeOffline(cached, for: reference, setID: setID)
+        if let cached = validCachedData(at: cachedURL, category: reference.category) {
+            return try writeOffline(cached, for: reference, setID: setID)
         }
 
         let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
@@ -473,7 +534,10 @@ actor CatalogArtworkCache {
         directory(for: reference.category).appendingPathComponent(cacheFileName(for: reference))
     }
 
-    private func validCachedData(at url: URL) -> Data? {
+    private func validCachedData(
+        at url: URL,
+        category: CatalogArtworkCategory
+    ) -> Data? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard Self.isValidImageData(data) else {
             try? fileManager.removeItem(at: url)
@@ -548,6 +612,8 @@ actor CatalogArtworkCache {
 @Observable
 final class ArtworkCacheStore {
     static let offlineSetIDsKey = "catalog.offlineSetIDs"
+    static let warmedSetSignaturesKey = "catalog.warmedSetSignatures"
+    private static let cacheWarmAlgorithmVersion = "2"
 
     private(set) var snapshot = CatalogArtworkCacheSnapshot.empty
     private(set) var isPrefetching = false
@@ -556,6 +622,7 @@ final class ArtworkCacheStore {
     private(set) var offlineStatistics: [String: CatalogOfflineSetStatistics] = [:]
     private(set) var preparingSetIDs: Set<String> = []
     private(set) var downloadProgress: [String: Double] = [:]
+    private(set) var cacheWarmProgress: [String: Double] = [:]
 
     @ObservationIgnored private let cache: CatalogArtworkCache
     @ObservationIgnored private let userDefaults: UserDefaults
@@ -592,6 +659,9 @@ final class ArtworkCacheStore {
     func remove(_ category: CatalogArtworkCategory) async {
         do {
             try await cache.remove(category)
+            if category == .cardThumbnails {
+                clearWarmedSetSignatures()
+            }
             snapshot = await cache.snapshot()
             statusMessage = "Cleared \(category.title.lowercased())."
         } catch {
@@ -602,6 +672,7 @@ final class ArtworkCacheStore {
     func removeAll() async {
         do {
             try await cache.removeAll()
+            clearWarmedSetSignatures()
             snapshot = await cache.snapshot()
             statusMessage = "Cleared all artwork caches."
         } catch {
@@ -620,6 +691,54 @@ final class ArtworkCacheStore {
     func beginPreparing(setID: String) {
         preparingSetIDs.insert(setID)
         statusMessage = nil
+    }
+
+    func warmImagesIfNeeded(set: CatalogSet, cards: [CatalogCard]) async {
+        guard !cards.isEmpty, cacheWarmProgress[set.id] == nil else { return }
+        let signature = cacheWarmSignature(setID: set.id, cards: cards)
+        let storedSignatures = userDefaults.dictionary(
+            forKey: Self.warmedSetSignaturesKey
+        ) as? [String: String] ?? [:]
+        guard storedSignatures[set.id] != signature else { return }
+
+        let requestGroups = cards.map(\.thumbnailArtworkReferences).filter { !$0.isEmpty }
+        guard !requestGroups.isEmpty else {
+            persistWarmedSetSignature(signature, setID: set.id)
+            return
+        }
+
+        cacheWarmProgress[set.id] = 0
+        defer { cacheWarmProgress.removeValue(forKey: set.id) }
+        let cache = cache
+        var completed = 0
+        var succeeded = 0
+
+        for batchStart in stride(from: 0, to: requestGroups.count, by: 6) {
+            guard !Task.isCancelled else { return }
+            let batchEnd = min(batchStart + 6, requestGroups.count)
+            let batch = Array(requestGroups[batchStart..<batchEnd])
+            let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
+                for alternatives in batch {
+                    group.addTask {
+                        (try? await cache.bestAvailableData(for: alternatives)) != nil
+                    }
+                }
+                var values: [Bool] = []
+                for await value in group { values.append(value) }
+                return values
+            }
+            completed += results.count
+            succeeded += results.filter { $0 }.count
+            cacheWarmProgress[set.id] = Double(completed) / Double(requestGroups.count)
+        }
+
+        // Do not remember a fully failed attempt, because it most likely happened
+        // while the device was offline. Exact unavailable images are still handled
+        // honestly by their normal on-demand placeholders.
+        if succeeded > 0 {
+            persistWarmedSetSignature(signature, setID: set.id)
+        }
+        snapshot = await cache.snapshot()
     }
 
     func preparationFailed(setID: String, setName: String) {
@@ -723,6 +842,34 @@ final class ArtworkCacheStore {
     private func persistPinnedSetIDs() {
         userDefaults.set(pinnedSetIDs.sorted(), forKey: Self.offlineSetIDsKey)
     }
+
+    private func cacheWarmSignature(setID: String, cards: [CatalogCard]) -> String {
+        let identity = cards
+            .sorted { $0.id < $1.id }
+            .map { card in
+                let sources = card.thumbnailArtworkReferences
+                    .map { CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString }
+                    .joined(separator: ",")
+                return "\(card.id)=\(sources)"
+            }
+            .joined(separator: "|")
+        let payload = "\(Self.cacheWarmAlgorithmVersion)|\(setID)|\(identity)"
+        return SHA256.hash(data: Data(payload.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func persistWarmedSetSignature(_ signature: String, setID: String) {
+        var signatures = userDefaults.dictionary(
+            forKey: Self.warmedSetSignaturesKey
+        ) as? [String: String] ?? [:]
+        signatures[setID] = signature
+        userDefaults.set(signatures, forKey: Self.warmedSetSignaturesKey)
+    }
+
+    private func clearWarmedSetSignatures() {
+        userDefaults.removeObject(forKey: Self.warmedSetSignaturesKey)
+    }
 }
 
 extension CatalogSeriesGroup {
@@ -776,10 +923,7 @@ extension CatalogCard {
             for: self,
             category: .cardArtwork
         ).map { url in
-            let category: CatalogArtworkCategory = url.pathExtension.isEmpty
-                ? .cardArtwork
-                : .cardThumbnails
-            return CatalogArtworkReference(url: url, category: category, offlineSetID: setID)
+            CatalogArtworkReference(url: url, category: .cardArtwork, offlineSetID: setID)
         }
         return fullReferences.isEmpty ? thumbnailArtworkReferences : fullReferences
     }

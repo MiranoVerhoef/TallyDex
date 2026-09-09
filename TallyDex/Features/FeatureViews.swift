@@ -1031,6 +1031,11 @@ private struct CatalogSetDetailView: View {
                     if artworkCacheStore.isPreparing(setID: set.id) {
                         ProgressView("Preparing card metadata…")
                             .font(.caption)
+                    } else if let cacheProgress = artworkCacheStore.cacheWarmProgress[set.id] {
+                        ProgressView(value: cacheProgress) {
+                            Text("Downloading and caching images · \(Int(cacheProgress * 100))%")
+                        }
+                        .font(.caption)
                     } else if let offlineProgress = artworkCacheStore.downloadProgress[set.id] {
                         ProgressView(value: offlineProgress) {
                             Text("Downloading offline artwork · \(Int(offlineProgress * 100))%")
@@ -1168,6 +1173,7 @@ private struct CatalogSetDetailView: View {
                     .disabled(
                         set.isUpcoming()
                             || artworkCacheStore.isPreparing(setID: set.id)
+                            || artworkCacheStore.cacheWarmProgress[set.id] != nil
                             || artworkCacheStore.downloadProgress[set.id] != nil
                     )
                 }
@@ -1342,6 +1348,10 @@ private struct CatalogSetDetailView: View {
         defer { isLoadingCards = false }
         do {
             cards = try await catalogStore.cards(for: set, forceRefresh: forceRefresh)
+            let loadedCards = cards
+            Task {
+                await artworkCacheStore.warmImagesIfNeeded(set: set, cards: loadedCards)
+            }
             // Pull-to-refresh updates the set list immediately, while exact card
             // details and prices continue to honor their 18-hour cache window.
             await loadGoalVariants()
@@ -5625,7 +5635,7 @@ private struct ArtworkCacheSettingsView: View {
                     )
                 )
             } footer: {
-                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch. Missing card artwork is retried when viewed and exact verified source fallbacks are cached automatically. When the limit is reached, the least recently used card images are removed first. Sets chosen in Offline Sets are stored separately and are never removed here.")
+                Text("The first time a set opens, TallyDex downloads and caches its grid images. Card images are resized and compressed on this iPhone before storage; thumbnails use a smaller optimized copy while full artwork stays detailed. Missing artwork uses exact verified fallbacks. When the 400 MB limit is reached, the least recently used card images are removed first. Sets chosen in Offline Sets are stored separately and are never removed here.")
             }
 
             Section("Choose What to Remove") {

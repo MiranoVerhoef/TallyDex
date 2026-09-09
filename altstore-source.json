@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.10/TallyDex-v0.9.10-cache-progress.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.9/TallyDex-v0.9.9-official-artwork-fallback.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.8/TallyDex-v0.9.8-recovered-artwork.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.7/TallyDex-v0.9.7-exact-ownership.png",
@@ -74,6 +75,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.10",
+          "buildVersion": "46",
+          "date": "2026-09-09",
+          "localizedDescription": "Opening a released set for the first time now downloads and caches every grid image with visible progress. A catalogue fingerprint prevents repeat downloads while automatically warming newly added cards. Card images are resized and JPEG-compressed on device only when the optimized copy is smaller; thumbnails use a 480-pixel ceiling and full artwork retains up to 1,600 pixels at higher quality. The old uncompressed automatic cache is replaced on upgrade, explicit Offline Sets remain intact, and no GitHub image mirror is used at runtime.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.10/TallyDex-v0.9.10.ipa",
+          "size": 5778379,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.9",
           "buildVersion": "45",
