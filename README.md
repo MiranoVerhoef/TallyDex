@@ -191,6 +191,18 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.12:
+
+1. Cache verification is now invisible when every requested image is already on
+   the device. **Downloading and caching images** appears only when TallyDex has
+   real missing artwork to fetch.
+2. Thirty-five user-supplied WebP logos are bundled directly in the IPA for
+   McDonald's collections, promo sets, Trainer/Galarian Galleries, and other
+   missing set artwork. Bundled logos work offline and override an absent or
+   broken provider logo; the native McDonald's year badge remains the fallback.
+3. The app does not scrape a third-party site or depend on one at runtime.
+   Additional artwork can be bundled through the same exact set-ID mapping.
+
 Completed in v0.9.11:
 
 1. Scarlet & Violet series and set logos load from TCGdex's WebP assets instead
