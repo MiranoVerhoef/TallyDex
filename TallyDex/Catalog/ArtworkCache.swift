@@ -74,6 +74,71 @@ struct CatalogArtworkCacheSnapshot: Equatable, Sendable {
     }
 }
 
+/// TCGdex currently omits the image field for several English gallery and vault
+/// subsets even though the same assets are available on its CDN under the parent
+/// set path. MEP currently omits every card image, so exact numeric MEP cards use
+/// Pokémon's official static card asset instead. These fallbacks are deliberately
+/// explicit: a set ID and collector number are never guessed.
+enum TCGdexArtworkFallbacks {
+    private static let parentSetBySetID: [String: String] = [
+        "swsh4.5sv": "swsh4.5",
+        "swsh9tg": "swsh9",
+        "swsh10tg": "swsh10",
+        "swsh11tg": "swsh11",
+        "swsh12tg": "swsh12",
+        "swsh12.5gg": "swsh12.5",
+    ]
+
+    private static let knownUnavailableCardIDs: Set<String> = [
+        "swsh4.5sv-SV028",
+        "swsh4.5sv-SV046",
+        "swsh4.5sv-SV078",
+        "swsh12.5gg-GG48",
+        "swsh12.5gg-GG63",
+    ]
+
+    private static let knownUnavailableHighResolutionCardIDs: Set<String> = [
+        "swsh4.5sv-SV011",
+        "swsh4.5sv-SV067",
+        "swsh9tg-TG23",
+        "swsh10tg-TG19",
+        "swsh10tg-TG28",
+        "swsh12tg-TG04",
+        "swsh12tg-TG24",
+        "swsh12tg-TG29",
+        "swsh12.5gg-GG06",
+        "swsh12.5gg-GG34",
+        "swsh12.5gg-GG62",
+        "swsh12.5gg-GG64",
+        "swsh12.5gg-GG67",
+        "swsh12.5gg-GG69",
+    ]
+
+    static func cardImageURL(
+        for card: CatalogCard,
+        category: CatalogArtworkCategory
+    ) -> URL? {
+        if let imageURL = card.imageURL {
+            return imageURL
+        }
+
+        if !knownUnavailableCardIDs.contains(card.id),
+           !(category == .cardArtwork
+             && knownUnavailableHighResolutionCardIDs.contains(card.id)),
+           let parentSetID = parentSetBySetID[card.setID] {
+            return URL(
+                string: "https://assets.tcgdex.net/en/swsh/\(parentSetID)/\(card.localID)"
+            )
+        }
+
+        guard card.setID.caseInsensitiveCompare("mep") == .orderedSame,
+              let number = Int(card.localID) else { return nil }
+        return URL(
+            string: "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/MEP/MEP_EN_\(number).png"
+        )
+    }
+}
+
 struct CatalogOfflineSetStatistics: Equatable, Sendable {
     let fileCount: Int
     let byteCount: Int64
@@ -130,14 +195,27 @@ actor CatalogArtworkCache {
     }
 
     static func resolvedAssetURL(_ url: URL, category: CatalogArtworkCategory) -> URL {
+        // Some verified fallbacks are already complete PNG URLs rather than the
+        // extensionless TCGdex asset base used by the primary API.
+        if !url.pathExtension.isEmpty { return url }
         if category == .cardThumbnails {
             return url.appending(path: "low.webp")
         }
         if category == .cardArtwork {
             return url.appending(path: "high.webp")
         }
-        guard url.pathExtension.isEmpty else { return url }
-        return url.appendingPathExtension("png")
+        let localizedURL: URL
+        if category == .expansionSymbols,
+           url.host == "assets.tcgdex.net",
+           url.path.hasPrefix("/univ/") {
+            localizedURL = URL(
+                string: url.absoluteString.replacingOccurrences(of: "/univ/", with: "/en/")
+            ) ?? url
+        } else {
+            localizedURL = url
+        }
+        guard localizedURL.pathExtension.isEmpty else { return localizedURL }
+        return localizedURL.appendingPathExtension("png")
     }
 
     static func resolvedAssetURL(_ url: URL) -> URL {
@@ -188,6 +266,23 @@ actor CatalogArtworkCache {
         try response.data.write(to: fileURL, options: .atomic)
         try trimIfNeeded()
         return response.data
+    }
+
+    func bestAvailableData(for card: CatalogCard) async throws -> Data {
+        let references = [card.fullArtworkReference, card.thumbnailArtworkReference]
+            .compactMap { $0 }
+            .reduce(into: [CatalogArtworkReference]()) { result, reference in
+                if !result.contains(reference) { result.append(reference) }
+            }
+        var lastError: Error = CatalogArtworkCacheError.invalidResponse
+        for reference in references {
+            do {
+                return try await data(for: reference)
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
     }
 
     @discardableResult
@@ -452,8 +547,7 @@ final class ArtworkCacheStore {
         defer { isPrefetching = false }
 
         try? await cache.enforceLimit()
-        let references = groups.flatMap(\.artworkReferences)
-        await cache.prefetch(references)
+        await cache.prefetch(groups.flatMap(\.artworkReferences))
         snapshot = await cache.snapshot()
         statusMessage = "Catalog logos and symbols are cached."
     }
@@ -620,11 +714,21 @@ extension CatalogSet {
 
 extension CatalogCard {
     var thumbnailArtworkReference: CatalogArtworkReference? {
-        imageURL.map { .init(url: $0, category: .cardThumbnails, offlineSetID: setID) }
+        TCGdexArtworkFallbacks.cardImageURL(for: self, category: .cardThumbnails).map {
+            .init(url: $0, category: .cardThumbnails, offlineSetID: setID)
+        }
     }
 
     var fullArtworkReference: CatalogArtworkReference? {
-        imageURL.map { .init(url: $0, category: .cardArtwork, offlineSetID: setID) }
+        if let url = TCGdexArtworkFallbacks.cardImageURL(for: self, category: .cardArtwork) {
+            let category: CatalogArtworkCategory = url.pathExtension.isEmpty
+                ? .cardArtwork
+                : .cardThumbnails
+            return .init(url: url, category: category, offlineSetID: setID)
+        }
+        return TCGdexArtworkFallbacks.cardImageURL(for: self, category: .cardThumbnails).map {
+            .init(url: $0, category: .cardThumbnails, offlineSetID: setID)
+        }
     }
 
     var offlineArtworkReferences: [CatalogArtworkReference] {

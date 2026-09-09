@@ -160,6 +160,21 @@ Completed in v0.9.7:
    old unspecified check can satisfy one printing slot, never falsely complete all
    similar printings.
 
+Completed in v0.9.8:
+
+1. Missing card art is repaired only through exact, verified identities. TCGdex
+   gallery and vault subsets use their confirmed parent asset paths; no set or
+   collector number is guessed.
+2. Riolu GG26 in Crown Zenith Galarian Gallery now loads from the existing TCGdex
+   asset. Numeric MEP promos—including Riolu 010 and Mega Lucario ex 012/033—use
+   their matching official Pokémon card asset when TCGdex omits the image field.
+3. Recovered images use the same bounded local cache as normal artwork. They load
+   on demand when a set, search result, or card is viewed; there is no full-library
+   bulk download.
+4. Broken universal TCGdex symbol links are repaired to the verified English asset
+   path. Failed detail artwork falls back to its usable thumbnail, and a real
+   placeholder replaces endless loading when no exact source exists.
+
 Research and later builds:
 
 1. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
@@ -178,23 +193,21 @@ Research and later builds:
    Scanner ranking may use this only as supporting evidence.
 7. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-8. Audit missing set/card artwork and bundle lawful local replacements or durable
-   placeholders so the catalogue looks complete offline.
-9. Add a one-time **Download Missing Artwork** cache action after that audit. Show
-   an estimated download/storage size, recommend Wi-Fi, provide progress and
-   cancellation, and respect the user's existing automatic cache-size ceiling.
-10. Add first-run introduction and preference setup, plus Reset Introduction in
+8. Continue the missing-art audit for the remaining genuine provider gaps. Add a
+   fallback only where set, collector number, source permission, and image identity
+   can all be verified; otherwise keep the honest TallyDex placeholder.
+9. Add first-run introduction and preference setup, plus Reset Introduction in
    Settings.
-11. Research another permitted card/catalogue/price API, including its licence,
+10. Research another permitted card/catalogue/price API, including its licence,
    attribution, rate limits, coverage, and whether it can be an optional provider
    without weakening TCGdex correctness.
-12. Activate country-specific Cardmarket listings only if permitted official API
+11. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
+12. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
     optional StoreKit Tip Jar, and—only with an independently controlled HTTPS
     domain—true universal card links with rich previews.
-14. Binder planner.
-15. Finish automatic live card scanning after the remaining catalogue and
+13. Binder planner.
+14. Finish automatic live card scanning after the remaining catalogue and
     collection work: improve live-frame OCR, confidence ranking, glare handling,
     top-loader detection, and real-device validation. Promote Auto from Beta to the
     default camera mode once it reliably identifies a varied real-card test set and
@@ -297,8 +310,8 @@ needed. **Browser Editor → Allow access while app is minimized** is off by def
 When enabled, the server remains available while iOS permits background execution;
 return to TallyDex if iOS suspends it.
 
-Next-version backlog: audit missing artwork and bundle suitable replacements;
-add introductory setup with collection preferences and an option to repeat it.
+Next-version backlog: continue the verified missing-art audit and add introductory
+setup with collection preferences and an option to repeat it.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average

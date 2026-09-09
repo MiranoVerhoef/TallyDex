@@ -883,6 +883,129 @@ final class CatalogFoundationTests: XCTestCase {
         )
     }
 
+    func testArtworkCacheRepairsTCGdexUniversalSymbolPath() {
+        let symbol = URL(string: "https://assets.tcgdex.net/univ/swsh/swsh9/symbol")!
+        XCTAssertEqual(
+            CatalogArtworkCache.resolvedAssetURL(
+                symbol,
+                category: .expansionSymbols
+            ).absoluteString,
+            "https://assets.tcgdex.net/en/swsh/swsh9/symbol.png"
+        )
+    }
+
+    func testArtworkFallbackUsesVerifiedParentSetPathsOnly() {
+        let galleryCard = CatalogCard(
+            id: "swsh12.5gg-GG36",
+            setID: "swsh12.5gg",
+            localID: "GG36",
+            name: "Entei V",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        XCTAssertEqual(
+            galleryCard.thumbnailArtworkReference.map {
+                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            },
+            "https://assets.tcgdex.net/en/swsh/swsh12.5/GG36/low.webp"
+        )
+
+        let providerGap = CatalogCard(
+            id: "swsh12.5gg-GG48",
+            setID: "swsh12.5gg",
+            localID: "GG48",
+            name: "Zacian V",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        XCTAssertNil(providerGap.thumbnailArtworkReference)
+
+        let lowOnly = CatalogCard(
+            id: "swsh12.5gg-GG06",
+            setID: "swsh12.5gg",
+            localID: "GG06",
+            name: "Goodra",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        XCTAssertNotNil(lowOnly.thumbnailArtworkReference)
+        XCTAssertEqual(lowOnly.fullArtworkReference?.category, .cardThumbnails)
+
+        let unrelated = CatalogCard(
+            id: "tk-example-1",
+            setID: "tk-example",
+            localID: "1",
+            name: "Example",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+        XCTAssertNil(unrelated.thumbnailArtworkReference)
+    }
+
+    func testArtworkFallbackRepairsRioluGalarianGalleryImage() {
+        let riolu = CatalogCard(
+            id: "swsh12.5gg-GG26",
+            setID: "swsh12.5gg",
+            localID: "GG26",
+            name: "Riolu",
+            imageURL: nil,
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+
+        XCTAssertEqual(
+            riolu.thumbnailArtworkReference.map {
+                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            },
+            "https://assets.tcgdex.net/en/swsh/swsh12.5/GG26/low.webp"
+        )
+        XCTAssertEqual(
+            riolu.fullArtworkReference.map {
+                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            },
+            "https://assets.tcgdex.net/en/swsh/swsh12.5/GG26/high.webp"
+        )
+    }
+
+    func testArtworkFallbackUsesExactOfficialMEPAssets() {
+        for (localID, name) in [("010", "Riolu"), ("012", "Mega Lucario ex"), ("033", "Mega Lucario ex")] {
+            let card = CatalogCard(
+                id: "mep-\(localID)",
+                setID: "mep",
+                localID: localID,
+                name: name,
+                imageURL: nil,
+                category: nil,
+                illustrator: nil,
+                rarity: nil
+            )
+            let expected = "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/MEP/MEP_EN_\(Int(localID)!).png"
+
+            XCTAssertEqual(
+                card.thumbnailArtworkReference.map {
+                    CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+                },
+                expected
+            )
+            XCTAssertEqual(
+                card.fullArtworkReference.map {
+                    CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+                },
+                expected
+            )
+            XCTAssertEqual(card.fullArtworkReference?.category, .cardThumbnails)
+        }
+    }
+
     func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
