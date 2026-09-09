@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.11/TallyDex-v0.9.11-series-art.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.10/TallyDex-v0.9.10-cache-progress.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.9/TallyDex-v0.9.9-official-artwork-fallback.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.8/TallyDex-v0.9.8-recovered-artwork.png",
@@ -75,6 +76,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.11",
+          "buildVersion": "47",
+          "date": "2026-09-09",
+          "localizedDescription": "Restores Scarlet & Violet series and set artwork by using TCGdex's WebP logo assets while keeping expansion symbols on PNG. Adds a bundled native McDonald's Collection badge without a remote campaign-image dependency. Announced and recently released sets now receive a lightweight hourly foreground check for exact TCGdex matches, allowing real covers and cards to appear automatically while rejecting near matches and preserving unmatched announcements. Collections now show Downloading and caching images progress and reuse the same compressed fingerprinted thumbnail cache as set pages.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.11/TallyDex-v0.9.11.ipa",
+          "size": 5800352,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.10",
           "buildVersion": "46",

@@ -860,15 +860,105 @@ final class CatalogFoundationTests: XCTestCase {
         )
     }
 
-    func testArtworkCacheAddsPNGExtensionOnlyWhenNeeded() {
+    func testArtworkCacheUsesWebPForLogosAndPNGForSymbols() {
         let extensionless = URL(string: "https://assets.tcgdex.net/en/sv/sv01/logo")!
         let png = URL(string: "https://example.com/logo.png")!
+        let symbol = URL(string: "https://assets.tcgdex.net/en/sv/sv01/symbol")!
 
         XCTAssertEqual(
             CatalogArtworkCache.resolvedAssetURL(extensionless).absoluteString,
-            "https://assets.tcgdex.net/en/sv/sv01/logo.png"
+            "https://assets.tcgdex.net/en/sv/sv01/logo.webp"
+        )
+        XCTAssertEqual(
+            CatalogArtworkCache.resolvedAssetURL(
+                symbol,
+                category: .expansionSymbols
+            ).absoluteString,
+            "https://assets.tcgdex.net/en/sv/sv01/symbol.png"
         )
         XCTAssertEqual(CatalogArtworkCache.resolvedAssetURL(png), png)
+    }
+
+    func testCatalogMetadataFallbackPreservesArtwork() {
+        let seriesLogo = URL(string: "https://assets.example/series")!
+        let setLogo = URL(string: "https://assets.example/set")!
+        let symbol = URL(string: "https://assets.example/symbol")!
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let fallbackSeries = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: seriesLogo)
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let fallbackSet = CatalogSet(
+            id: catalogSet.id,
+            seriesID: catalogSet.seriesID,
+            name: catalogSet.name,
+            abbreviation: "SVI",
+            logoURL: setLogo,
+            symbolURL: symbol,
+            officialCardCount: 198,
+            totalCardCount: 258,
+            releaseDate: "2023-03-31",
+            rarityCounts: nil
+        )
+
+        XCTAssertEqual(series.fillingMissingMetadata(from: fallbackSeries).logoURL, seriesLogo)
+        XCTAssertEqual(catalogSet.fillingMissingMetadata(from: fallbackSet).logoURL, setLogo)
+        XCTAssertEqual(catalogSet.fillingMissingMetadata(from: fallbackSet).symbolURL, symbol)
+    }
+
+    func testUpcomingAvailabilityUsesExactIDsAndNormalizedExactNamesOnly() throws {
+        let referenceDate = try XCTUnwrap(
+            Calendar(identifier: .gregorian).date(
+                from: DateComponents(year: 2026, month: 9, day: 9)
+            )
+        )
+        let announced = CatalogSet(
+            id: "upcoming-30c", seriesID: "me", name: "30th Celebration",
+            abbreviation: nil, logoURL: nil, symbolURL: nil,
+            officialCardCount: 0, totalCardCount: 0,
+            releaseDate: "2026-09-16", rarityCounts: nil
+        )
+        let recentlyReleased = CatalogSet(
+            id: "me05", seriesID: "me", name: "Pitch Black",
+            abbreviation: nil, logoURL: nil, symbolURL: nil,
+            officialCardCount: 86, totalCardCount: 122,
+            releaseDate: "2026-08-22", rarityCounts: nil
+        )
+        let old = set(id: "me01", seriesID: "me", name: "Mega Evolution")
+        let candidates = CatalogUpcomingAvailability.candidates(
+            in: [CatalogSeriesGroup(
+                series: CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil),
+                sets: [announced, recentlyReleased, old]
+            )],
+            relativeTo: referenceDate
+        )
+        XCTAssertEqual(Set(candidates.map(\.id)), Set([announced.id, recentlyReleased.id]))
+
+        let exactRemote = CatalogSet(
+            id: "me06", seriesID: "me", name: "30th Celebration",
+            abbreviation: "30C", logoURL: URL(string: "https://assets.example/logo"),
+            symbolURL: nil, officialCardCount: 100, totalCardCount: 130,
+            releaseDate: "2026-09-16", rarityCounts: nil
+        )
+        let nearRemote = CatalogSet(
+            id: "me07", seriesID: "me", name: "30th Celebration Special",
+            abbreviation: nil, logoURL: nil, symbolURL: nil,
+            officialCardCount: 0, totalCardCount: 0,
+            releaseDate: nil, rarityCounts: nil
+        )
+        let snapshot = CatalogSeriesSnapshot(
+            series: CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil),
+            sets: [nearRemote, exactRemote]
+        )
+        XCTAssertEqual(
+            CatalogUpcomingAvailability.providerSet(for: announced, in: snapshot)?.id,
+            exactRemote.id
+        )
+        let unmatched = CatalogSet(
+            id: "upcoming-other", seriesID: "me", name: "Unknown Set",
+            abbreviation: nil, logoURL: nil, symbolURL: nil,
+            officialCardCount: 0, totalCardCount: 0,
+            releaseDate: nil, rarityCounts: nil
+        )
+        XCTAssertNil(CatalogUpcomingAvailability.providerSet(for: unmatched, in: snapshot))
     }
 
     func testArtworkCacheBuildsTCGdexCardImageURLs() {
@@ -1151,6 +1241,43 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(requestCount, 2)
         XCTAssertNotNil(signatures?[catalogSet.id])
         XCTAssertNil(store.cacheWarmProgress[catalogSet.id])
+    }
+
+    @MainActor
+    func testFirstCollectionVisitWarmsEveryThumbnailOnlyOnce() async throws {
+        let suiteName = "TallyDexTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imageData = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+        ])
+        let store = ArtworkCacheStore(
+            cache: CatalogArtworkCache(rootDirectory: root, httpClient: stub),
+            userDefaults: defaults
+        )
+        let card = CatalogCard(
+            id: "smp-SM95", setID: "smp", localID: "SM95", name: "Lucario",
+            imageURL: URL(string: "https://assets.example/lucario.png"),
+            category: nil, illustrator: nil, rarity: nil
+        )
+        let key = "collection-test"
+
+        await store.warmImagesIfNeeded(cacheKey: key, cards: [card])
+        await store.warmImagesIfNeeded(cacheKey: key, cards: [card])
+
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(requestCount, 1)
+        let signatures = defaults.dictionary(
+            forKey: ArtworkCacheStore.warmedSetSignaturesKey
+        ) as? [String: String]
+        XCTAssertNotNil(signatures?[key])
+        XCTAssertNil(store.cacheWarmProgress[key])
     }
 
     func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {
