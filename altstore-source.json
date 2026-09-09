@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.8/TallyDex-v0.9.8-recovered-artwork.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.7/TallyDex-v0.9.7-exact-ownership.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.6/TallyDex-v0.9.6-collection-cover.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.5/TallyDex-v0.9.5-exact-printings.png",
@@ -72,6 +73,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.8",
+          "buildVersion": "44",
+          "date": "2026-09-09",
+          "localizedDescription": "Repairs missing artwork without a bulk download. Verified TCGdex parent paths restore gallery and vault subsets including Crown Zenith GG26, while exact numeric MEP promos such as Riolu 010 and Mega Lucario ex 012/033 use matching official Pokémon assets when TCGdex omits the image. Recovered artwork loads on demand, uses the existing bounded local cache, and failed full art falls back cleanly instead of spinning forever.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.8/TallyDex-v0.9.8.ipa",
+          "size": 5765928,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.7",
           "buildVersion": "43",

@@ -5,6 +5,13 @@ sponsored by The Pokémon Company, Nintendo, Creatures Inc., or GAME FREAK inc.
 Pokémon and all related names, card images, set artwork, logos, characters, and
 trademarks belong to their respective owners.
 
+## Official Pokémon card assets
+
+When TCGdex omits an image for an exactly identified MEP promo, TallyDex may load
+the corresponding card asset from `assets.pokemon.com`. The artwork is cached only
+for the app's local catalogue display. Pokémon card images and all associated
+rights remain the property of their respective owners.
+
 ## TCGdex cards database
 
 Catalog data and associated asset links are provided by TCGdex. The TCGdex

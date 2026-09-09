@@ -1730,6 +1730,7 @@ private struct CardDetailArtworkView: View {
     @State private var saveResult: String?
     @State private var isSharing = false
     @State private var isSavingPhoto = false
+    @State private var didFinishLoading = false
 
     var body: some View {
         ZStack {
@@ -1741,8 +1742,10 @@ private struct CardDetailArtworkView: View {
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-            } else {
+            } else if !didFinishLoading {
                 ProgressView()
+            } else {
+                CatalogPlaceholderMark()
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1760,8 +1763,10 @@ private struct CardDetailArtworkView: View {
             }
         }
         .task(id: card.fullArtworkReference) {
-            guard let reference = card.fullArtworkReference else { return }
-            imageData = try? await CatalogArtworkCache.shared.data(for: reference)
+            imageData = nil
+            didFinishLoading = false
+            imageData = try? await CatalogArtworkCache.shared.bestAvailableData(for: card)
+            didFinishLoading = true
         }
         .alert(
             "Card Image",
@@ -2355,9 +2360,7 @@ private struct CardShareToolbarButton: View {
         Task {
             imageData = nil
             cardDocumentURL = nil
-            if let reference = card.fullArtworkReference {
-                imageData = try? await CatalogArtworkCache.shared.data(for: reference)
-            }
+            imageData = try? await CatalogArtworkCache.shared.bestAvailableData(for: card)
             if kind == .image, imageData == nil {
                 shareError = "This card does not have artwork available to share."
                 isPreparing = false
@@ -5597,7 +5600,7 @@ private struct ArtworkCacheSettingsView: View {
                     if artworkCacheStore.isPrefetching {
                         Label("Caching Artwork…", systemImage: "arrow.down.circle")
                     } else {
-                        Label("Cache Missing Artwork", systemImage: "arrow.down.circle")
+                        Label("Cache Catalog Logos & Symbols", systemImage: "arrow.down.circle")
                     }
                 }
                 .disabled(artworkCacheStore.isPrefetching || catalogStore.groups.isEmpty)
@@ -5619,7 +5622,7 @@ private struct ArtworkCacheSettingsView: View {
                     )
                 )
             } footer: {
-                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch. When the limit is reached, the least recently used card images are removed first. Sets chosen in Offline Sets are stored separately and are never removed here.")
+                Text("TallyDex stores TCGdex series logos, set logos, expansion symbols, and viewed card images on this iPhone so they appear immediately after a cold launch. Missing card artwork is retried when viewed and exact verified source fallbacks are cached automatically. When the limit is reached, the least recently used card images are removed first. Sets chosen in Offline Sets are stored separately and are never removed here.")
             }
 
             Section("Choose What to Remove") {
@@ -5706,6 +5709,7 @@ private struct AboutTallyDexView: View {
 
             Section("Data & Artwork") {
                 Text("Catalog metadata, set logos, and expansion symbols are supplied by TCGdex and cached locally by TallyDex.")
+                Text("When TCGdex omits an exactly identified MEP promo image, TallyDex may load the matching card asset from Pokémon’s official asset service and cache it locally.")
                 Text("Missing or incorrect catalog data can be reported from Settings → Missing or Incorrect Card.")
                 Link("Visit TCGdex", destination: URL(string: "https://www.tcgdex.net")!)
             }
