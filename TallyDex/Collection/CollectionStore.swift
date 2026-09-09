@@ -6,6 +6,8 @@ import Observation
 final class CollectionStore {
     private(set) var quantitiesByCardID: [String: [CatalogVariantKind: Int]] = [:]
     private(set) var ownedEntries: [CollectionVariantEntry] = []
+    private(set) var broadOwnedEntries: [CollectionVariantEntry] = []
+    private(set) var exactOwnedEntries: [CollectionPrintingEntry] = []
     private(set) var ownedCardIDs: Set<String> = []
     private(set) var goalsBySetID: [String: CollectionGoal] = [:]
     private(set) var setPreferencesByID: [String: SetCollectionPreference] = [:]
@@ -34,6 +36,8 @@ final class CollectionStore {
         guard !hasStarted else { return }
         hasStarted = true
         do {
+            let repository = try resolveRepository()
+            try await repository.prepareExactOwnershipMigration(createdAt: now())
             try await reloadCollectionState()
         } catch {
             loadMessage = "Your saved collection couldn’t be loaded."
@@ -214,13 +218,25 @@ final class CollectionStore {
         ownedEntriesByCardID[cardID] ?? []
     }
 
+    func printingEntries(for cardID: String) -> [CollectionPrintingEntry] {
+        exactOwnedEntries.filter { $0.cardID == cardID }
+    }
+
+    func printingQuantity(cardID: String, printingID: String) -> Int {
+        exactOwnedEntries.first {
+            $0.cardID == cardID && $0.printingID == printingID
+        }?.quantity ?? 0
+    }
+
     func quantities(for cardID: String, forceReload: Bool = false) async throws -> [CatalogVariantKind: Int] {
         if !forceReload, let quantities = quantitiesByCardID[cardID] {
             return quantities
         }
 
-        let entries = try await resolveRepository().fetchEntries(cardID: cardID)
-        let quantities = Dictionary(uniqueKeysWithValues: entries.map { ($0.variant, $0.quantity) })
+        let repository = try resolveRepository()
+        async let broad = repository.fetchEntries(cardID: cardID)
+        async let exact = repository.fetchPrintingEntries(cardID: cardID)
+        let quantities = Self.aggregateQuantities(broad: try await broad, exact: try await exact)
         quantitiesByCardID[cardID] = quantities
         return quantities
     }
@@ -248,9 +264,9 @@ final class CollectionStore {
         }
         quantitiesByCardID[cardID] = quantities
 
-        ownedEntries.removeAll { $0.cardID == cardID && $0.variant == variant }
+        broadOwnedEntries.removeAll { $0.cardID == cardID && $0.variant == variant }
         if quantity > 0 {
-            ownedEntries.append(
+            broadOwnedEntries.append(
                 CollectionVariantEntry(
                     cardID: cardID,
                     variant: variant,
@@ -259,18 +275,77 @@ final class CollectionStore {
                 )
             )
         }
-        ownedEntries.sort {
-            if $0.updatedAt == $1.updatedAt { return $0.id < $1.id }
-            return $0.updatedAt > $1.updatedAt
+        rebuildAggregatedOwnership()
+    }
+
+    func setPrintingQuantity(
+        _ quantity: Int,
+        cardID: String,
+        printing: CatalogPrinting
+    ) async throws {
+        guard let variant = printing.kind else { return }
+        let updatedAt = now()
+        let repository = try resolveRepository()
+        try await repository.prepareExactOwnershipMigration(createdAt: updatedAt)
+        try await repository.setPrintingQuantity(
+            quantity,
+            cardID: cardID,
+            printingID: printing.providerID,
+            variant: variant,
+            updatedAt: updatedAt
+        )
+        try await reloadOwnership(for: cardID)
+    }
+
+    func setPreferredQuantity(
+        _ quantity: Int,
+        cardID: String,
+        variant: CatalogVariantKind,
+        printings: [CatalogPrinting]
+    ) async throws {
+        let matching = printings.filter { $0.kind == variant }
+        if matching.count == 1, let printing = matching.first {
+            try await reconcileExactOwnership(cardID: cardID, printings: printings)
+            try await setPrintingQuantity(quantity, cardID: cardID, printing: printing)
+        } else {
+            try await setQuantity(quantity, cardID: cardID, variant: variant)
         }
-        refreshOwnershipIndex(for: cardID)
+    }
+
+    /// Safely upgrades broad ownership only when TCGdex supplies one and only
+    /// one exact record for that broad printing type. Ambiguous ownership stays
+    /// broad until the collector chooses an exact printing.
+    func reconcileExactOwnership(cardID: String, printings: [CatalogPrinting]) async throws {
+        guard !printings.isEmpty else { return }
+        let repository = try resolveRepository()
+        try await repository.prepareExactOwnershipMigration(createdAt: now())
+        let changed = try await repository.reconcileExactOwnership(
+            cardID: cardID,
+            printings: printings
+        )
+        if changed {
+            try await reloadOwnership(for: cardID)
+            backups = try await repository.fetchBackups()
+        }
     }
 
     func removeAllOwnership(cardID: String) async throws {
-        let savedQuantities = try await quantities(for: cardID)
-        for variant in savedQuantities.keys where savedQuantities[variant, default: 0] > 0 {
-            try await setQuantity(0, cardID: cardID, variant: variant)
+        let repository = try resolveRepository()
+        let broad = try await repository.fetchEntries(cardID: cardID)
+        let exact = try await repository.fetchPrintingEntries(cardID: cardID)
+        for entry in broad where entry.quantity > 0 {
+            try await repository.setQuantity(0, cardID: cardID, variant: entry.variant, updatedAt: now())
         }
+        for entry in exact where entry.quantity > 0 {
+            try await repository.setPrintingQuantity(
+                0,
+                cardID: cardID,
+                printingID: entry.printingID,
+                variant: entry.variant,
+                updatedAt: now()
+            )
+        }
+        try await reloadOwnership(for: cardID)
     }
 
     private func resolveRepository() throws -> any CollectionRepository {
@@ -287,12 +362,14 @@ final class CollectionStore {
     private func reloadCollectionState() async throws {
         let repository = try resolveRepository()
         async let entries = repository.fetchOwnedEntries()
+        async let printingEntries = repository.fetchOwnedPrintingEntries()
         async let preferences = repository.fetchSetPreferences()
         async let folders = repository.fetchCustomFolders()
         async let metadata = repository.fetchAllCardMetadata()
         async let savedBackups = repository.fetchBackups()
-        ownedEntries = try await entries
-        rebuildOwnershipIndexes()
+        broadOwnedEntries = try await entries
+        exactOwnedEntries = try await printingEntries
+        rebuildAggregatedOwnership()
         setPreferencesByID = try await preferences
         goalsBySetID = setPreferencesByID.mapValues(\.goal)
         customFolders = try await folders
@@ -301,12 +378,41 @@ final class CollectionStore {
         quantitiesByCardID.removeAll()
     }
 
-    private func rebuildOwnershipIndexes() {
+    private func rebuildAggregatedOwnership() {
+        var grouped: [String: CollectionVariantEntry] = [:]
+        for entry in broadOwnedEntries {
+            grouped[entry.id] = entry
+        }
+        for entry in exactOwnedEntries {
+            let key = "\(entry.cardID)|\(entry.variant.rawValue)"
+            if let saved = grouped[key] {
+                grouped[key] = CollectionVariantEntry(
+                    cardID: entry.cardID,
+                    variant: entry.variant,
+                    quantity: saved.quantity + entry.quantity,
+                    updatedAt: max(saved.updatedAt, entry.updatedAt)
+                )
+            } else {
+                grouped[key] = CollectionVariantEntry(
+                    cardID: entry.cardID,
+                    variant: entry.variant,
+                    quantity: entry.quantity,
+                    updatedAt: entry.updatedAt
+                )
+            }
+        }
+        ownedEntries = grouped.values.sorted {
+            if $0.updatedAt == $1.updatedAt { return $0.id < $1.id }
+            return $0.updatedAt > $1.updatedAt
+        }
         ownedEntriesByCardID = Dictionary(
             grouping: ownedEntries.filter { $0.quantity > 0 },
             by: \.cardID
         )
         ownedCardIDs = Set(ownedEntriesByCardID.keys)
+        quantitiesByCardID = Dictionary(uniqueKeysWithValues: ownedEntriesByCardID.map { cardID, entries in
+            (cardID, Dictionary(uniqueKeysWithValues: entries.map { ($0.variant, $0.quantity) }))
+        })
     }
 
     private func refreshOwnershipIndex(for cardID: String) {
@@ -318,6 +424,27 @@ final class CollectionStore {
             ownedEntriesByCardID[cardID] = entries
             ownedCardIDs.insert(cardID)
         }
+    }
+
+    private func reloadOwnership(for cardID: String) async throws {
+        let repository = try resolveRepository()
+        let broadForCard = try await repository.fetchEntries(cardID: cardID)
+        let exactForCard = try await repository.fetchPrintingEntries(cardID: cardID)
+        broadOwnedEntries.removeAll { $0.cardID == cardID }
+        broadOwnedEntries.append(contentsOf: broadForCard.filter { $0.quantity > 0 })
+        exactOwnedEntries.removeAll { $0.cardID == cardID }
+        exactOwnedEntries.append(contentsOf: exactForCard.filter { $0.quantity > 0 })
+        rebuildAggregatedOwnership()
+    }
+
+    private static func aggregateQuantities(
+        broad: [CollectionVariantEntry],
+        exact: [CollectionPrintingEntry]
+    ) -> [CatalogVariantKind: Int] {
+        var result: [CatalogVariantKind: Int] = [:]
+        for entry in broad { result[entry.variant, default: 0] += entry.quantity }
+        for entry in exact { result[entry.variant, default: 0] += entry.quantity }
+        return result
     }
 
     private func sortCustomFolders() {

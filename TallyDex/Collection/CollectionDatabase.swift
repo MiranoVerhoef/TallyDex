@@ -142,6 +142,21 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v10-exact-printing-ownership") { database in
+            try database.create(table: "collectionPrinting") { table in
+                table.column("cardID", .text).notNull().indexed()
+                table.column("printingID", .text).notNull()
+                table.column("variant", .text).notNull()
+                table.column("quantity", .integer).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.primaryKey(["cardID", "printingID"])
+            }
+            try database.create(table: "collectionMetadata") { table in
+                table.column("key", .text).primaryKey()
+                table.column("value", .text).notNull()
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -179,6 +194,111 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 ORDER BY updatedAt DESC, cardID, variant
                 """
             ).compactMap(Self.entry)
+        }
+    }
+
+    func fetchPrintingEntries(cardID: String) async throws -> [CollectionPrintingEntry] {
+        try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT cardID, printingID, variant, quantity, updatedAt
+                FROM collectionPrinting
+                WHERE cardID = ?
+                ORDER BY variant, printingID
+                """,
+                arguments: [cardID]
+            ).compactMap(Self.printingEntry)
+        }
+    }
+
+    func fetchOwnedPrintingEntries() async throws -> [CollectionPrintingEntry] {
+        try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT cardID, printingID, variant, quantity, updatedAt
+                FROM collectionPrinting
+                WHERE quantity > 0
+                ORDER BY updatedAt DESC, cardID, printingID
+                """
+            ).compactMap(Self.printingEntry)
+        }
+    }
+
+    func prepareExactOwnershipMigration(createdAt: Date) async throws {
+        try await database.queue.write { database in
+            let key = "exact-printing-ownership-v1-prepared"
+            guard try String.fetchOne(
+                database,
+                sql: "SELECT value FROM collectionMetadata WHERE key = ?",
+                arguments: [key]
+            ) == nil else { return }
+
+            let broadCount = try Int.fetchOne(
+                database,
+                sql: "SELECT COUNT(*) FROM collectionVariant WHERE quantity > 0"
+            ) ?? 0
+            if broadCount > 0 {
+                let backup = CollectionBackup(
+                    id: UUID(),
+                    createdAt: createdAt,
+                    reason: "Before exact printing ownership migration"
+                )
+                try Self.insertBackup(
+                    backup,
+                    payload: Self.captureSnapshot(in: database),
+                    in: database
+                )
+                try Self.pruneBackups(in: database)
+            }
+            try database.execute(
+                sql: "INSERT INTO collectionMetadata (key, value) VALUES (?, ?)",
+                arguments: [key, "prepared"]
+            )
+        }
+    }
+
+    @discardableResult
+    func reconcileExactOwnership(
+        cardID: String,
+        printings: [CatalogPrinting]
+    ) async throws -> Bool {
+        let exactByVariant = Dictionary(grouping: printings.filter { $0.kind != nil }, by: { $0.kind! })
+        guard !exactByVariant.isEmpty else { return false }
+
+        return try await database.queue.write { database in
+            var changed = false
+            for (variant, exactPrintings) in exactByVariant where exactPrintings.count == 1 {
+                let printing = exactPrintings[0]
+                let broadRow = try Row.fetchOne(
+                    database,
+                    sql: """
+                    SELECT quantity, updatedAt FROM collectionVariant
+                    WHERE cardID = ? AND variant = ? AND quantity > 0
+                    """,
+                    arguments: [cardID, variant.rawValue]
+                )
+                guard let broadRow else { continue }
+                let broadQuantity: Int = broadRow["quantity"]
+                let broadUpdatedAt: Date = broadRow["updatedAt"]
+                try database.execute(
+                    sql: """
+                    INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(cardID, printingID) DO UPDATE SET
+                        quantity = MAX(quantity, excluded.quantity),
+                        updatedAt = MAX(updatedAt, excluded.updatedAt)
+                    """,
+                    arguments: [cardID, printing.providerID, variant.rawValue, broadQuantity, broadUpdatedAt]
+                )
+                try database.execute(
+                    sql: "DELETE FROM collectionVariant WHERE cardID = ? AND variant = ?",
+                    arguments: [cardID, variant.rawValue]
+                )
+                changed = true
+            }
+            return changed
         }
     }
 
@@ -537,11 +657,56 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func setPrintingQuantity(
+        _ quantity: Int,
+        cardID: String,
+        printingID: String,
+        variant: CatalogVariantKind,
+        updatedAt: Date
+    ) async throws {
+        guard quantity >= 0, !printingID.isEmpty else {
+            throw CollectionRepositoryError.invalidQuantity
+        }
+
+        try await database.queue.write { database in
+            if quantity == 0 {
+                try database.execute(
+                    sql: "DELETE FROM collectionPrinting WHERE cardID = ? AND printingID = ?",
+                    arguments: [cardID, printingID]
+                )
+            } else {
+                try database.execute(
+                    sql: """
+                    INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(cardID, printingID) DO UPDATE SET
+                        variant = excluded.variant,
+                        quantity = excluded.quantity,
+                        updatedAt = excluded.updatedAt
+                    """,
+                    arguments: [cardID, printingID, variant.rawValue, quantity, updatedAt]
+                )
+            }
+        }
+    }
+
     private static func entry(_ row: Row) -> CollectionVariantEntry? {
         let rawVariant: String = row["variant"]
         guard let variant = CatalogVariantKind(rawValue: rawVariant) else { return nil }
         return CollectionVariantEntry(
             cardID: row["cardID"],
+            variant: variant,
+            quantity: row["quantity"],
+            updatedAt: row["updatedAt"]
+        )
+    }
+
+    private static func printingEntry(_ row: Row) -> CollectionPrintingEntry? {
+        let rawVariant: String = row["variant"]
+        guard let variant = CatalogVariantKind(rawValue: rawVariant) else { return nil }
+        return CollectionPrintingEntry(
+            cardID: row["cardID"],
+            printingID: row["printingID"],
             variant: variant,
             quantity: row["quantity"],
             updatedAt: row["updatedAt"]
@@ -565,6 +730,18 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         ).map {
             CollectionBackupPayload.Variant(
                 cardID: $0["cardID"],
+                variant: $0["variant"],
+                quantity: $0["quantity"],
+                updatedAt: $0["updatedAt"]
+            )
+        }
+        let exactPrintings = try Row.fetchAll(
+            database,
+            sql: "SELECT cardID, printingID, variant, quantity, updatedAt FROM collectionPrinting"
+        ).map {
+            CollectionBackupPayload.ExactPrinting(
+                cardID: $0["cardID"],
+                printingID: $0["printingID"],
                 variant: $0["variant"],
                 quantity: $0["quantity"],
                 updatedAt: $0["updatedAt"]
@@ -617,6 +794,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
         return CollectionBackupPayload(
             variants: variants,
+            exactPrintings: exactPrintings,
             preferences: preferences,
             folders: folders,
             metadata: metadata
@@ -673,7 +851,17 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             }.sorted { $0.id.uuidString < $1.id.uuidString },
             cardMetadata: payload.metadata.map {
                 .init(cardID: $0.cardID, isWishlisted: $0.isWishlisted, notes: $0.notes, updatedAt: $0.updatedAt)
-            }.sorted { $0.cardID < $1.cardID }
+            }.sorted { $0.cardID < $1.cardID },
+            exactOwnership: (payload.exactPrintings ?? []).compactMap { item in
+                guard let variant = CatalogVariantKind(rawValue: item.variant) else { return nil }
+                return .init(
+                    cardID: item.cardID,
+                    printingID: item.printingID,
+                    variant: variant,
+                    quantity: item.quantity,
+                    updatedAt: item.updatedAt
+                )
+            }.sorted { ($0.cardID, $0.printingID) < ($1.cardID, $1.printingID) }
         )
     }
 
@@ -682,6 +870,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         return CollectionBackupPayload(
             variants: document.ownership.map {
                 .init(cardID: $0.cardID, variant: $0.variant.rawValue, quantity: $0.quantity, updatedAt: $0.updatedAt)
+            },
+            exactPrintings: document.exactOwnership.map {
+                .init(
+                    cardID: $0.cardID,
+                    printingID: $0.printingID,
+                    variant: $0.variant.rawValue,
+                    quantity: $0.quantity,
+                    updatedAt: $0.updatedAt
+                )
             },
             preferences: try document.setPreferences.map {
                 let variantsJSON = String(
@@ -719,11 +916,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         guard document.format == PortableCollectionDocument.formatIdentifier else {
             throw CollectionRepositoryError.invalidImport
         }
-        guard document.schemaVersion == PortableCollectionDocument.currentSchemaVersion else {
+        guard (1...PortableCollectionDocument.currentSchemaVersion).contains(document.schemaVersion) else {
             throw CollectionRepositoryError.unsupportedImportVersion(document.schemaVersion)
         }
         guard document.ownership.allSatisfy({ !$0.cardID.isEmpty && $0.quantity > 0 }),
               Set(document.ownership.map { "\($0.cardID)|\($0.variant.rawValue)" }).count == document.ownership.count,
+              document.exactOwnership.allSatisfy({
+                  !$0.cardID.isEmpty && !$0.printingID.isEmpty && $0.quantity > 0
+              }),
+              Set(document.exactOwnership.map { "\($0.cardID)|\($0.printingID)" }).count == document.exactOwnership.count,
               document.setPreferences.allSatisfy({ !$0.setID.isEmpty && !$0.includedVariants.isEmpty }),
               Set(document.setPreferences.map(\.setID)).count == document.setPreferences.count,
               document.folders.allSatisfy({
@@ -815,6 +1016,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             changeDetail: { "Quantity \($0.quantity) → \($1.quantity)" }
         )
         compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.exactOwnership.map { ("\($0.cardID)|\($0.printingID)", $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.exactOwnership.map { ("\($0.cardID)|\($0.printingID)", $0) }),
+            date: \.updatedAt,
+            category: "Exact owned printing",
+            keyText: { $0 },
+            title: { "\($0.cardID) · \($0.variant.displayName)" },
+            changeDetail: { "Quantity \($0.quantity) → \($1.quantity)" }
+        )
+        compare(
             incoming: Dictionary(uniqueKeysWithValues: incoming.setPreferences.map { ($0.setID, $0) }),
             current: Dictionary(uniqueKeysWithValues: current.setPreferences.map { ($0.setID, $0) }),
             date: \.updatedAt,
@@ -883,6 +1093,25 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 ON CONFLICT(cardID, variant) DO UPDATE SET quantity = excluded.quantity, updatedAt = excluded.updatedAt
                 """,
                 arguments: [item.cardID, item.variant.rawValue, item.quantity, item.updatedAt]
+            )
+        }
+
+        let currentExactOwnership = Dictionary(
+            uniqueKeysWithValues: current.exactOwnership.map { ("\($0.cardID)|\($0.printingID)", $0) }
+        )
+        for item in incoming.exactOwnership {
+            if let saved = currentExactOwnership["\(item.cardID)|\(item.printingID)"],
+               item.updatedAt <= saved.updatedAt {
+                continue
+            }
+            try database.execute(
+                sql: """
+                INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(cardID, printingID) DO UPDATE SET variant = excluded.variant,
+                    quantity = excluded.quantity, updatedAt = excluded.updatedAt
+                """,
+                arguments: [item.cardID, item.printingID, item.variant.rawValue, item.quantity, item.updatedAt]
             )
         }
 
@@ -972,6 +1201,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         in database: Database
     ) throws {
         try database.execute(sql: "DELETE FROM collectionVariant")
+        try database.execute(sql: "DELETE FROM collectionPrinting")
         try database.execute(sql: "DELETE FROM collectionSetPreference")
         try database.execute(sql: "DELETE FROM customCollectionFolder")
         try database.execute(sql: "DELETE FROM collectionCardMetadata")
@@ -983,6 +1213,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 VALUES (?, ?, ?, ?)
                 """,
                 arguments: [item.cardID, item.variant, item.quantity, item.updatedAt]
+            )
+        }
+        for item in payload.exactPrintings ?? [] {
+            try database.execute(
+                sql: """
+                INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                arguments: [item.cardID, item.printingID, item.variant, item.quantity, item.updatedAt]
             )
         }
         for item in payload.preferences {
@@ -1099,6 +1338,14 @@ private struct CollectionBackupPayload: Codable {
         let updatedAt: Date
     }
 
+    struct ExactPrinting: Codable, Equatable {
+        let cardID: String
+        let printingID: String
+        let variant: String
+        let quantity: Int
+        let updatedAt: Date
+    }
+
     struct Preference: Codable, Equatable {
         let setID: String
         let goal: String
@@ -1127,6 +1374,7 @@ private struct CollectionBackupPayload: Codable {
     }
 
     let variants: [Variant]
+    let exactPrintings: [ExactPrinting]?
     let preferences: [Preference]
     let folders: [Folder]
     let metadata: [Metadata]

@@ -10,7 +10,7 @@ extension UTType {
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     let format: String
     let schemaVersion: Int
@@ -20,9 +20,58 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
     let setPreferences: [SetPreferenceRecord]
     let folders: [FolderRecord]
     let cardMetadata: [CardMetadataRecord]
+    let exactOwnership: [ExactOwnershipRecord]
+
+    init(
+        format: String,
+        schemaVersion: Int,
+        exportedAt: Date,
+        appVersion: String,
+        ownership: [OwnershipRecord],
+        setPreferences: [SetPreferenceRecord],
+        folders: [FolderRecord],
+        cardMetadata: [CardMetadataRecord],
+        exactOwnership: [ExactOwnershipRecord] = []
+    ) {
+        self.format = format
+        self.schemaVersion = schemaVersion
+        self.exportedAt = exportedAt
+        self.appVersion = appVersion
+        self.ownership = ownership
+        self.setPreferences = setPreferences
+        self.folders = folders
+        self.cardMetadata = cardMetadata
+        self.exactOwnership = exactOwnership
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case format, schemaVersion, exportedAt, appVersion, ownership
+        case setPreferences, folders, cardMetadata, exactOwnership
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        format = try values.decode(String.self, forKey: .format)
+        schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        exportedAt = try values.decode(Date.self, forKey: .exportedAt)
+        appVersion = try values.decode(String.self, forKey: .appVersion)
+        ownership = try values.decode([OwnershipRecord].self, forKey: .ownership)
+        setPreferences = try values.decode([SetPreferenceRecord].self, forKey: .setPreferences)
+        folders = try values.decode([FolderRecord].self, forKey: .folders)
+        cardMetadata = try values.decode([CardMetadataRecord].self, forKey: .cardMetadata)
+        exactOwnership = try values.decodeIfPresent([ExactOwnershipRecord].self, forKey: .exactOwnership) ?? []
+    }
 
     struct OwnershipRecord: Codable, Equatable, Sendable {
         let cardID: String
+        let variant: CatalogVariantKind
+        let quantity: Int
+        let updatedAt: Date
+    }
+
+    struct ExactOwnershipRecord: Codable, Equatable, Sendable {
+        let cardID: String
+        let printingID: String
         let variant: CatalogVariantKind
         let quantity: Int
         let updatedAt: Date
@@ -165,30 +214,35 @@ enum CollectionTransferCodec {
             "record_type", "card_id", "variant", "quantity", "set_id", "status", "goal",
             "included_variants", "includes_secret_cards", "folder_id", "folder_name",
             "card_name_query", "display_mode", "cover_card_id", "wishlisted", "notes",
-            "created_at", "updated_at",
+            "printing_id", "created_at", "updated_at",
         ]]
         let formatter = ISO8601DateFormatter()
 
         for item in document.ownership {
             rows.append(["ownership", item.cardID, item.variant.rawValue, String(item.quantity)]
-                + Array(repeating: "", count: 13)
+                + Array(repeating: "", count: 14)
                 + [formatter.string(from: item.updatedAt)])
+        }
+        for item in document.exactOwnership {
+            rows.append(["exact_ownership", item.cardID, item.variant.rawValue, String(item.quantity)]
+                + Array(repeating: "", count: 12)
+                + [item.printingID, "", formatter.string(from: item.updatedAt)])
         }
         for item in document.setPreferences {
             rows.append(["set_preference", "", "", "", item.setID, item.status.rawValue,
                          item.goal.rawValue, item.includedVariants.map(\.rawValue).sorted().joined(separator: "|"),
                          String(item.includesSecretCards)]
-                + Array(repeating: "", count: 8)
+                + Array(repeating: "", count: 9)
                 + [formatter.string(from: item.updatedAt)])
         }
         for item in document.folders {
             rows.append(["folder", "", "", "", "", "", "", "", "", item.id.uuidString,
                          item.name, item.cardNameQuery, item.displayMode.rawValue, item.coverCardID ?? "", "", "",
-                         formatter.string(from: item.createdAt), formatter.string(from: item.updatedAt)])
+                         "", formatter.string(from: item.createdAt), formatter.string(from: item.updatedAt)])
         }
         for item in document.cardMetadata {
             rows.append(["card_metadata", item.cardID, "", "", "", "", "", "", "", "", "", "", "", "",
-                         String(item.isWishlisted), item.notes, "", formatter.string(from: item.updatedAt)])
+                         String(item.isWishlisted), item.notes, "", "", formatter.string(from: item.updatedAt)])
         }
 
         let csv = rows.map { $0.map(escapeCSV).joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"
