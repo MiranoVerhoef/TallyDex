@@ -1280,6 +1280,43 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertNil(store.cacheWarmProgress[key])
     }
 
+    @MainActor
+    func testWarmCheckDoesNotRedownloadAnExistingCachedImage() async throws {
+        let suiteName = "TallyDexTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imageData = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+        ])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub)
+        let reference = CatalogArtworkReference(
+            url: URL(string: "https://assets.example/existing.png")!,
+            category: .cardThumbnails
+        )
+        _ = try await cache.data(for: reference)
+        let store = ArtworkCacheStore(cache: cache, userDefaults: defaults)
+        let card = CatalogCard(
+            id: "sv01-001", setID: "sv01", localID: "001", name: "Cached Card",
+            imageURL: reference.url, category: nil, illustrator: nil, rarity: nil
+        )
+
+        await store.warmImagesIfNeeded(cacheKey: "existing-grid", cards: [card])
+
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(requestCount, 1)
+        XCTAssertNil(store.cacheWarmProgress["existing-grid"])
+        let signatures = defaults.dictionary(
+            forKey: ArtworkCacheStore.warmedSetSignaturesKey
+        ) as? [String: String]
+        XCTAssertNotNil(signatures?["existing-grid"])
+    }
+
     func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)

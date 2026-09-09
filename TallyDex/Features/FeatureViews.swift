@@ -461,6 +461,125 @@ private struct CatalogArtwork: View {
     }
 }
 
+@MainActor
+private enum BundledSetLogo {
+    private static let fileStemsByID: [String: String] = [
+        "upcoming-30c": "upcoming-30c",
+        "mep": "mep",
+        "mee": "mee",
+        "sv05": "sv05",
+        "swsh12.5gg": "swsh12.5gg",
+        "swsh12.5tg": "swsh12.5tg",
+        "swsh11.5tg": "swsh11.5tg",
+        "swsh10.5tg": "swsh10.5tg",
+        "swsh9.5tg": "swsh9.5tg",
+        "swshp": "swshp",
+        "sm7.5": "sm7.5",
+        "sm3.5": "sm3.5",
+        "smp": "smp",
+        "xy3": "xy3",
+        "xyp": "xyp",
+        "2024sv": "2024sv",
+        "2023sv": "2023sv",
+        "2022swsh": "2022swsh",
+        "2021swsh": "2021swsh",
+        "2019sm": "2019sm",
+        "2018sm": "2018sm",
+        "2017sm": "2017sm",
+        "2016xy": "2016xy",
+        "2015xy": "2015xy",
+        "2014xy": "2014xy",
+        "2013bw": "2013bw",
+        "2012bw": "2012bw",
+        "2011bw": "2011bw",
+        "rc": "rc",
+        "bwp": "bwp",
+        "hgss3": "hgss3",
+        "hgssp": "hgssp",
+        "dpp": "dpp",
+        "basep": "basep",
+    ]
+
+    private static let fileStemsByName: [String: String] = [
+        "30th celebration": "upcoming-30c",
+        "mega evolution energy": "mee",
+        "mega evolution energies": "mee",
+        "mep black star promos": "mep",
+        "temporal forces": "sv05",
+        "crown zenith galarian gallery": "swsh12.5gg",
+        "silver tempest trainer gallery": "swsh12.5tg",
+        "lost origin trainer gallery": "swsh11.5tg",
+        "astral radiance trainer gallery": "swsh10.5tg",
+        "brilliant stars trainer gallery": "swsh9.5tg",
+        "swsh black star promos": "swshp",
+        "dragon majesty": "sm7.5",
+        "shining legends": "sm3.5",
+        "sm black star promos": "smp",
+        "furious fists": "xy3",
+        "xy black star promos": "xyp",
+        "mcdonald's collection 2024": "2024sv",
+        "mcdonald's collection 2023": "2023sv",
+        "mcdonald's collection 2022": "2022swsh",
+        "mcdonald's collection 2021": "2021swsh",
+        "mcdonald's collection 2019": "2019sm",
+        "mcdonald's collection 2019 fr": "2019sm-fr",
+        "mcdonald's collection 2018": "2018sm",
+        "mcdonald's collection 2017": "2017sm",
+        "mcdonald's collection 2016": "2016xy",
+        "mcdonald's collection 2015": "2015xy",
+        "mcdonald's collection 2014": "2014xy",
+        "mcdonald's collection 2013": "2013bw",
+        "mcdonald's collection 2012": "2012bw",
+        "mcdonald's collection 2011": "2011bw",
+        "radiant collection": "rc",
+        "bw black star promos": "bwp",
+        "undaunted": "hgss3",
+        "hgss black star promos": "hgssp",
+        "dp black star promos": "dpp",
+        "wizards black star promos": "basep",
+    ]
+
+    private static var cachedImages: [String: UIImage] = [:]
+
+    static func image(for set: CatalogSet) -> UIImage? {
+        let normalizedName = set.name
+            .replacingOccurrences(of: "’", with: "'")
+            .lowercased()
+        guard let fileStem = fileStemsByID[set.id] ?? fileStemsByName[normalizedName] else {
+            return nil
+        }
+        if let image = cachedImages[fileStem] {
+            return image
+        }
+        let url = Bundle.main.url(
+            forResource: fileStem,
+            withExtension: "webp",
+            subdirectory: "BundledSetLogos"
+        ) ?? Bundle.main.url(forResource: fileStem, withExtension: "webp")
+        guard let url, let image = UIImage(contentsOfFile: url.path) else {
+            return nil
+        }
+        cachedImages[fileStem] = image
+        return image
+    }
+}
+
+private struct CatalogSetArtwork: View {
+    let set: CatalogSet
+
+    var body: some View {
+        if let bundledImage = BundledSetLogo.image(for: set) {
+            Image(uiImage: bundledImage)
+                .resizable()
+                .scaledToFit()
+        } else if set.seriesID == "mc", set.preferredArtworkReference == nil {
+            McDonaldsCollectionBadge(year: set.releaseDate.map { String($0.prefix(4)) })
+        } else {
+            CatalogArtwork(reference: set.preferredArtworkReference)
+        }
+    }
+}
+
 private struct CatalogSymbol: View {
     let url: URL
     var setID: String? = nil
@@ -533,7 +652,7 @@ private struct CatalogSetRow: View {
     }
 
     private var artwork: some View {
-        CatalogArtwork(reference: set.preferredArtworkReference)
+        CatalogSetArtwork(set: set)
             .accessibilityHidden(true)
     }
 
@@ -865,7 +984,7 @@ private struct CatalogSeriesRow: View {
     private var seriesArtwork: some View {
         Group {
             if group.series.id == "mc", group.preferredArtworkReference == nil {
-                McDonaldsCollectionBadge()
+                McDonaldsCollectionBadge(year: nil)
             } else {
                 CatalogArtwork(reference: group.preferredArtworkReference)
             }
@@ -891,6 +1010,8 @@ private struct CatalogSeriesRow: View {
 /// does not publish a generic series logo and campaign artwork differs by year,
 /// so this remains recognizable without copying or depending on a remote image.
 private struct McDonaldsCollectionBadge: View {
+    let year: String?
+
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: "fork.knife.circle.fill")
@@ -899,7 +1020,7 @@ private struct McDonaldsCollectionBadge: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Pokémon")
                     .font(.caption2.weight(.bold))
-                Text("McDonald's Collection")
+                Text(year.map { "McDonald's · \($0)" } ?? "McDonald's Collection")
                     .font(.caption2.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -1030,7 +1151,7 @@ private struct CatalogSetDetailView: View {
 
         ScrollView {
             LazyVStack(spacing: 20) {
-                CatalogArtwork(reference: set.preferredArtworkReference)
+                CatalogSetArtwork(set: set)
                 .frame(maxWidth: 260, minHeight: 96, maxHeight: 140)
                 .padding(.top)
 

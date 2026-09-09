@@ -373,6 +373,28 @@ actor CatalogArtworkCache {
         throw lastError
     }
 
+    /// Returns whether at least one exact alternative is already present locally.
+    /// This performs no network request and lets the UI avoid presenting cached
+    /// verification work as a new download.
+    func hasBestAvailableCachedData(for references: [CatalogArtworkReference]) -> Bool {
+        for reference in references {
+            if let offlineSetID = reference.offlineSetID,
+               validCachedData(
+                   at: offlineFileURL(for: reference, setID: offlineSetID),
+                   category: reference.category
+               ) != nil {
+                return true
+            }
+            if validCachedData(
+                at: cachedFileURL(for: reference),
+                category: reference.category
+            ) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
     func bestAvailableData(for card: CatalogCard) async throws -> Data {
         try await bestAvailableData(
             for: card.fullArtworkReferences + card.thumbnailArtworkReferences
@@ -720,16 +742,30 @@ final class ArtworkCacheStore {
             return
         }
 
-        cacheWarmProgress[cacheKey] = 0
-        defer { cacheWarmProgress.removeValue(forKey: cacheKey) }
         let cache = cache
-        var completed = 0
-        var succeeded = 0
+        var missingGroups: [[CatalogArtworkReference]] = []
+        for alternatives in requestGroups {
+            if !(await cache.hasBestAvailableCachedData(for: alternatives)) {
+                missingGroups.append(alternatives)
+            }
+        }
+        // A changed catalogue fingerprint can still point entirely at images
+        // already on disk. Record the new fingerprint without flashing progress.
+        guard !missingGroups.isEmpty else {
+            persistWarmedSetSignature(signature, cacheKey: cacheKey)
+            return
+        }
 
-        for batchStart in stride(from: 0, to: requestGroups.count, by: 6) {
+        let cachedCount = requestGroups.count - missingGroups.count
+        cacheWarmProgress[cacheKey] = Double(cachedCount) / Double(requestGroups.count)
+        defer { cacheWarmProgress.removeValue(forKey: cacheKey) }
+        var completed = cachedCount
+        var succeeded = cachedCount
+
+        for batchStart in stride(from: 0, to: missingGroups.count, by: 6) {
             guard !Task.isCancelled else { return }
-            let batchEnd = min(batchStart + 6, requestGroups.count)
-            let batch = Array(requestGroups[batchStart..<batchEnd])
+            let batchEnd = min(batchStart + 6, missingGroups.count)
+            let batch = Array(missingGroups[batchStart..<batchEnd])
             let results = await withTaskGroup(of: Bool.self, returning: [Bool].self) { group in
                 for alternatives in batch {
                     group.addTask {
