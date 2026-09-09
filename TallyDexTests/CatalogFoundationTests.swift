@@ -922,7 +922,12 @@ final class CatalogFoundationTests: XCTestCase {
             illustrator: nil,
             rarity: nil
         )
-        XCTAssertNil(providerGap.thumbnailArtworkReference)
+        XCTAssertEqual(
+            providerGap.thumbnailArtworkReference.map {
+                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            },
+            "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/SWSH12PT5GG/SWSH12PT5GG_EN_GG48.png"
+        )
 
         let lowOnly = CatalogCard(
             id: "swsh12.5gg-GG06",
@@ -947,7 +952,12 @@ final class CatalogFoundationTests: XCTestCase {
             illustrator: nil,
             rarity: nil
         )
-        XCTAssertNil(unrelated.thumbnailArtworkReference)
+        XCTAssertEqual(
+            unrelated.thumbnailArtworkReference.map {
+                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            },
+            "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/TK-EXAMPLE/TK-EXAMPLE_EN_1.png"
+        )
     }
 
     func testArtworkFallbackRepairsRioluGalarianGalleryImage() {
@@ -1004,6 +1014,71 @@ final class CatalogFoundationTests: XCTestCase {
             )
             XCTAssertEqual(card.fullArtworkReference?.category, .cardThumbnails)
         }
+    }
+
+    func testArtworkFallbackUsesOfficialSetAndCollectorIdentityUniversally() {
+        let examples = [
+            ("smp-SM192", "smp", "SM192", "Lucario & Melmetal GX", "SMP", "SM192"),
+            ("sm6-122", "sm6", "122", "Lucario GX", "SM6", "122"),
+            ("sm3.5-001", "sm3.5", "001", "Example", "SM35", "1"),
+        ]
+
+        for (id, setID, localID, name, assetCode, number) in examples {
+            let card = CatalogCard(
+                id: id,
+                setID: setID,
+                localID: localID,
+                name: name,
+                imageURL: nil,
+                category: nil,
+                illustrator: nil,
+                rarity: nil
+            )
+            XCTAssertEqual(
+                card.thumbnailArtworkReference.map {
+                    CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+                },
+                "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/\(assetCode)/\(assetCode)_EN_\(number).png"
+            )
+        }
+    }
+
+    func testArtworkCacheFallsBackToOfficialAssetWhenTCGdexImageFails() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imageData = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(), statusCode: 404, retryAfter: nil),
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+        ])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub)
+        let card = CatalogCard(
+            id: "me05-001",
+            setID: "me05",
+            localID: "001",
+            name: "Example",
+            imageURL: URL(string: "https://assets.tcgdex.net/en/me/me05/001"),
+            category: nil,
+            illustrator: nil,
+            rarity: nil
+        )
+
+        let references = card.thumbnailArtworkReferences
+        XCTAssertEqual(
+            references.map(\.url.absoluteString),
+            [
+                "https://assets.tcgdex.net/en/me/me05/001",
+                "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/ME05/ME05_EN_1.png",
+            ]
+        )
+        let resolved = try await cache.bestAvailableData(for: references)
+
+        XCTAssertEqual(resolved, imageData)
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(requestCount, 2)
     }
 
     func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {

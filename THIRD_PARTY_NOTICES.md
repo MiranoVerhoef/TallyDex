@@ -7,10 +7,10 @@ trademarks belong to their respective owners.
 
 ## Official Pokémon card assets
 
-When TCGdex omits an image for an exactly identified MEP promo, TallyDex may load
-the corresponding card asset from `assets.pokemon.com`. The artwork is cached only
-for the app's local catalogue display. Pokémon card images and all associated
-rights remain the property of their respective owners.
+When TCGdex omits an image for an exactly identified card, TallyDex may load the
+corresponding set and collector number from `assets.pokemon.com`. The artwork is
+cached only for the app's local catalogue display. Pokémon card images and all
+associated rights remain the property of their respective owners.
 
 ## TCGdex cards database
 

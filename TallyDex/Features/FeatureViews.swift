@@ -1408,7 +1408,7 @@ private struct CatalogVariantPickerView: View {
             Form {
                 Section {
                     HStack(spacing: 14) {
-                        CachedCardImage(reference: card.thumbnailArtworkReference)
+                        CachedCardImage(card: card)
                             .aspectRatio(245 / 337, contentMode: .fit)
                             .frame(width: 68)
                         VStack(alignment: .leading, spacing: 4) {
@@ -1691,15 +1691,19 @@ private struct CatalogCardTile: View {
     }
 
     private var cardImage: some View {
-        CachedCardImage(reference: card.thumbnailArtworkReference)
+        CachedCardImage(card: card)
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .accessibilityHidden(true)
     }
 }
 
 private struct CachedCardImage: View {
-    let reference: CatalogArtworkReference?
+    let references: [CatalogArtworkReference]
     @State private var imageData: Data?
+
+    init(card: CatalogCard) {
+        references = card.thumbnailArtworkReferences
+    }
 
     var body: some View {
         ZStack {
@@ -1717,9 +1721,8 @@ private struct CachedCardImage: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .task(id: reference) {
-            guard let reference else { return }
-            imageData = try? await CatalogArtworkCache.shared.data(for: reference)
+        .task(id: references) {
+            imageData = try? await CatalogArtworkCache.shared.bestAvailableData(for: references)
         }
     }
 }
@@ -3308,7 +3311,7 @@ struct SearchView: View {
                     CatalogCardDetailView(card: result.card)
                 } label: {
                     HStack(spacing: 12) {
-                        CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                        CachedCardImage(card: result.card)
                             .frame(width: 52, height: 72)
                             .overlay(alignment: .topLeading) {
                                 if !(collectionStore.cardMetadataByID[result.card.id]?.notes
@@ -3541,7 +3544,7 @@ struct CollectionView: View {
                                     CatalogCardDetailView(card: result.card)
                                 } label: {
                                     HStack(spacing: 12) {
-                                        CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                                        CachedCardImage(card: result.card)
                                             .frame(width: 52, height: 72)
                                             .overlay(alignment: .topLeading) {
                                                 if hasNotes(cardID: result.card.id) {
@@ -3656,7 +3659,7 @@ private struct CustomCollectionFolderRow: View {
         HStack(spacing: 12) {
             Group {
                 if let coverCard {
-                    CachedCardImage(reference: coverCard.thumbnailArtworkReference)
+                    CachedCardImage(card: coverCard)
                         .aspectRatio(245 / 337, contentMode: .fill)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 } else {
@@ -3745,7 +3748,7 @@ private struct CustomCollectionFolderEditorView: View {
                         ProgressView("Finding cards in this collection…")
                     } else if let selected = coverCandidates.first(where: { $0.card.id == coverCardID }) {
                         HStack(spacing: 12) {
-                            CachedCardImage(reference: selected.card.thumbnailArtworkReference)
+                            CachedCardImage(card: selected.card)
                                 .aspectRatio(245 / 337, contentMode: .fill)
                                 .frame(width: 48, height: 66)
                                 .clipShape(RoundedRectangle(cornerRadius: 7))
@@ -5709,7 +5712,7 @@ private struct AboutTallyDexView: View {
 
             Section("Data & Artwork") {
                 Text("Catalog metadata, set logos, and expansion symbols are supplied by TCGdex and cached locally by TallyDex.")
-                Text("When TCGdex omits an exactly identified MEP promo image, TallyDex may load the matching card asset from Pokémon’s official asset service and cache it locally.")
+                Text("When TCGdex omits an exactly identified card image, TallyDex may load the matching set and collector number from Pokémon’s official asset service and cache it locally.")
                 Text("Missing or incorrect catalog data can be reported from Settings → Missing or Incorrect Card.")
                 Link("Visit TCGdex", destination: URL(string: "https://www.tcgdex.net")!)
             }
@@ -6102,7 +6105,7 @@ struct CardScannerView: View {
                                 CatalogCardDetailView(card: result.card)
                             } label: {
                                 HStack(spacing: 14) {
-                                    CachedCardImage(reference: result.card.thumbnailArtworkReference)
+                                    CachedCardImage(card: result.card)
                                         .aspectRatio(245 / 337, contentMode: .fit)
                                         .frame(width: 58)
                                         .clipShape(RoundedRectangle(cornerRadius: 6))

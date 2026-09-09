@@ -175,6 +175,22 @@ Completed in v0.9.8:
    path. Failed detail artwork falls back to its usable thumbnail, and a real
    placeholder replaces endless loading when no exact source exists.
 
+Completed in v0.9.9:
+
+1. The exact artwork fallback now applies automatically to every TCGdex card whose
+   image field is missing, using the same set ID and collector number on Pokémon's
+   official asset service.
+2. Verified aliases cover legacy and subset IDs whose official asset directory is
+   different, including SM35, SM75, Galarian Gallery, McDonald's collections, and
+   early Trainer Kits. Numeric collector numbers are normalized without changing
+   alphanumeric promo numbers such as SM192.
+3. A live audit of all 1,717 current TCGdex image omissions found 716 exact working
+   assets. This includes Lucario & Melmetal GX SM192 and Lucario GX 122 from
+   Forbidden Light. The remaining cards keep the TallyDex placeholder rather than
+   receiving an uncertain or nearby image.
+4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
+   does not depend on GitHub or the deprecated community Pokémon TCG API.
+
 Research and later builds:
 
 1. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
@@ -193,7 +209,7 @@ Research and later builds:
    Scanner ranking may use this only as supporting evidence.
 7. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-8. Continue the missing-art audit for the remaining genuine provider gaps. Add a
+8. Continue the missing-art audit for the remaining 1,001 genuine provider gaps. Add a
    fallback only where set, collector number, source permission, and image identity
    can all be verified; otherwise keep the honest TallyDex placeholder.
 9. Add first-run introduction and preference setup, plus Reset Introduction in
