@@ -17,6 +17,22 @@ private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> St
     )
 }
 
+private func collectorPrintingLabel(
+    _ printing: CatalogPrinting,
+    within printings: [CatalogPrinting]
+) -> String {
+    guard printings.count > 1 else {
+        return printing.kind?.displayName ?? printing.displayName
+    }
+    let matchingNames = printings.filter { $0.displayName == printing.displayName }
+    guard matchingNames.count > 1,
+          let index = matchingNames.sorted(by: { $0.providerID < $1.providerID })
+            .firstIndex(where: { $0.providerID == printing.providerID }) else {
+        return printing.displayName
+    }
+    return "\(printing.displayName) \(index + 1)"
+}
+
 private struct CardCompletionIndicator: View {
     let progress: CollectionProgress
     var size: CGFloat = 34
@@ -916,6 +932,7 @@ private struct CatalogSetDetailView: View {
     @State private var selectedFilter = SetCardFilter.all
     @State private var searchText = ""
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
+    @State private var availablePrintingsByCardID: [String: [CatalogPrinting]] = [:]
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isPreparingGoalMetadata = false
     @State private var isConfirmingOfflineDownload = false
@@ -972,7 +989,9 @@ private struct CatalogSetDetailView: View {
             set: set,
             preference: collectionPreference,
             availableVariants: availableVariantsByCardID,
-            ownedEntries: collectionStore.ownedEntries
+            ownedEntries: collectionStore.broadOwnedEntries,
+            availablePrintings: availablePrintingsByCardID,
+            exactOwnedEntries: collectionStore.exactOwnedEntries
         )
         let progress = CollectionProgressCalculator.combined(progressByCardID)
         let visibleCards = visibleCards(progressByCardID: progressByCardID)
@@ -1221,10 +1240,11 @@ private struct CatalogSetDetailView: View {
                     collectionMessage = "Printing information isn’t available for \(card.name) yet."
                     return
                 }
-                try await collectionStore.setQuantity(
+                try await collectionStore.setPreferredQuantity(
                     1,
                     cardID: card.id,
-                    variant: standardVariant
+                    variant: standardVariant,
+                    printings: snapshot.printings
                 )
             } catch {
                 collectionMessage = "TallyDex couldn’t update \(card.name). Check your connection and try again."
@@ -1257,10 +1277,11 @@ private struct CatalogSetDetailView: View {
                     return
                 }
                 let quantity = collectionStore.quantity(cardID: card.id, variant: variant)
-                try await collectionStore.setQuantity(
+                try await collectionStore.setPreferredQuantity(
                     quantity > 0 ? 0 : 1,
                     cardID: card.id,
-                    variant: variant
+                    variant: variant,
+                    printings: snapshot.printings
                 )
             } catch {
                 collectionMessage = "TallyDex couldn’t load \(card.name)’s printings. Please try again."
@@ -1286,11 +1307,13 @@ private struct CatalogSetDetailView: View {
         Task {
             defer { updatingCardIDs.remove(card.id) }
             do {
+                let snapshot = try await catalogStore.details(for: card)
                 let quantity = collectionStore.quantity(cardID: card.id, variant: variant)
-                try await collectionStore.setQuantity(
+                try await collectionStore.setPreferredQuantity(
                     quantity > 0 ? 0 : 1,
                     cardID: card.id,
-                    variant: variant
+                    variant: variant,
+                    printings: snapshot.printings
                 )
             } catch {
                 collectionMessage = "TallyDex couldn’t update \(card.name). Please try again."
@@ -1335,6 +1358,12 @@ private struct CatalogSetDetailView: View {
         availableVariantsByCardID = await catalogStore.prepareVariants(
             for: cards
         )
+        availablePrintingsByCardID = await catalogStore.cachedPrintings(for: cards)
+        for card in cards where collectionStore.owns(cardID: card.id) {
+            if let printings = availablePrintingsByCardID[card.id] {
+                try? await collectionStore.reconcileExactOwnership(cardID: card.id, printings: printings)
+            }
+        }
         pricesByCardID = (try? await catalogStore.prices(cardIDs: cards.map(\.id))) ?? [:]
     }
 
@@ -1400,7 +1429,7 @@ private struct CatalogVariantPickerView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(availableVariants, id: \.self) { variant in
-                            variantRow(variant)
+                            printingRows(for: variant)
                         }
                     }
                 }
@@ -1425,7 +1454,25 @@ private struct CatalogVariantPickerView: View {
         }
     }
 
-    private func variantRow(_ variant: CatalogVariantKind) -> some View {
+    @ViewBuilder
+    private func printingRows(for variant: CatalogVariantKind) -> some View {
+        let exact = snapshot?.printings.filter { $0.kind == variant } ?? []
+        let fallbackQuantity = collectionStore.broadOwnedEntries.first {
+            $0.cardID == card.id && $0.variant == variant
+        }?.quantity ?? 0
+        if exact.isEmpty {
+            variantRow(variant)
+        } else {
+            if exact.count > 1, fallbackQuantity > 0 {
+                variantRow(variant, label: "\(variant.displayName) — unspecified")
+            }
+            ForEach(exact) { printing in
+                exactPrintingRow(printing, within: exact)
+            }
+        }
+    }
+
+    private func variantRow(_ variant: CatalogVariantKind, label: String? = nil) -> some View {
         let quantity = quantities[variant, default: 0]
         let isUpdating = updatingVariants.contains(variant)
 
@@ -1441,15 +1488,10 @@ private struct CatalogVariantPickerView: View {
             .accessibilityLabel(quantity > 0 ? "Remove \(variant.displayName)" : "Add \(variant.displayName)")
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(variant.displayName)
+                Text(label ?? variant.displayName)
                 Text(priceText(for: variant))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if let summary = exactPrintingSummary(for: variant) {
-                    Text(summary)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
             }
             Spacer()
 
@@ -1484,6 +1526,55 @@ private struct CatalogVariantPickerView: View {
         }
     }
 
+    private func exactPrintingRow(_ printing: CatalogPrinting, within printings: [CatalogPrinting]) -> some View {
+        let quantity = collectionStore.printingQuantity(cardID: card.id, printingID: printing.providerID)
+        let isUpdating = updatingVariants.contains(printing.kind ?? .normal)
+        let label = collectorPrintingLabel(printing, within: printings)
+
+        return HStack(spacing: 12) {
+            Button {
+                update(printing, to: quantity > 0 ? 0 : 1)
+            } label: {
+                Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .disabled(isUpdating)
+            .accessibilityLabel(quantity > 0 ? "Remove \(label)" : "Add \(label)")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                if let variant = printing.kind {
+                    Text(priceText(for: variant))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+
+            if allowsMultipleCopies, let variant = printing.kind {
+                Button { update(printing, to: max(0, quantity - 1)) } label: {
+                    Image(systemName: "minus").frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .frame(minWidth: 44, minHeight: 44)
+                .disabled(quantity == 0 || isUpdating)
+
+                Text("\(quantity)")
+                    .font(.body.monospacedDigit().weight(.semibold))
+                    .frame(minWidth: 24)
+
+                Button { update(printing, to: quantity + 1) } label: {
+                    Image(systemName: "plus").frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(minWidth: 44, minHeight: 44)
+                .disabled(isUpdating || variant != printing.kind)
+            }
+        }
+        .transaction { $0.animation = nil }
+    }
+
     private func priceText(for variant: CatalogVariantKind) -> String {
         let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
         guard let quote = snapshot?.prices.first(where: {
@@ -1494,23 +1585,15 @@ private struct CatalogVariantPickerView: View {
         return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
     }
 
-    private func exactPrintingSummary(for variant: CatalogVariantKind) -> String? {
-        let names = snapshot?.printings
-            .filter { $0.kind == variant }
-            .map(\.displayName) ?? []
-        guard !names.isEmpty else { return nil }
-        return names.joined(separator: "\n")
-    }
-
     private func load() async {
         isLoading = true
         message = nil
         defer { isLoading = false }
         do {
-            async let details = catalogStore.details(for: card)
-            async let savedQuantities = collectionStore.quantities(for: card.id)
-            snapshot = try await details
-            quantities = try await savedQuantities
+            let details = try await catalogStore.details(for: card)
+            try await collectionStore.reconcileExactOwnership(cardID: card.id, printings: details.printings)
+            snapshot = details
+            quantities = try await collectionStore.quantities(for: card.id, forceReload: true)
         } catch {
             message = "TallyDex couldn’t load this card’s printings. Please try again."
         }
@@ -1533,6 +1616,21 @@ private struct CatalogVariantPickerView: View {
                         quantities[variant] = quantity
                     }
                 }
+            } catch {
+                message = "That quantity couldn’t be saved. Please try again."
+            }
+        }
+    }
+
+    private func update(_ printing: CatalogPrinting, to quantity: Int) {
+        guard let variant = printing.kind, !updatingVariants.contains(variant) else { return }
+        updatingVariants.insert(variant)
+        message = nil
+        Task {
+            defer { updatingVariants.remove(variant) }
+            do {
+                try await collectionStore.setPrintingQuantity(quantity, cardID: card.id, printing: printing)
+                quantities = try await collectionStore.quantities(for: card.id, forceReload: true)
             } catch {
                 message = "That quantity couldn’t be saved. Please try again."
             }
@@ -1879,10 +1977,13 @@ struct CatalogCardDetailView: View {
         message = nil
         defer { isLoadingDetails = false }
         do {
-            snapshot = try await catalogStore.details(
+            let details = try await catalogStore.details(
                 for: card,
                 forceRefresh: forceRefresh
             )
+            try await collectionStore.reconcileExactOwnership(cardID: card.id, printings: details.printings)
+            snapshot = details
+            quantities = try await collectionStore.quantities(for: card.id, forceReload: true)
         } catch {
             message = forceRefresh
                 ? "The card couldn’t be refreshed. Cached details remain available."
@@ -1993,7 +2094,7 @@ struct CatalogCardDetailView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(availableVariants, id: \.self) { variant in
-                    quantityRow(for: variant)
+                    detailPrintingRows(for: variant)
                 }
             }
 
@@ -2012,13 +2113,31 @@ struct CatalogCardDetailView: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 
-    private func quantityRow(for variant: CatalogVariantKind) -> some View {
+    @ViewBuilder
+    private func detailPrintingRows(for variant: CatalogVariantKind) -> some View {
+        let exact = snapshot?.printings.filter { $0.kind == variant } ?? []
+        let fallbackQuantity = collectionStore.broadOwnedEntries.first {
+            $0.cardID == card.id && $0.variant == variant
+        }?.quantity ?? 0
+        if exact.isEmpty {
+            quantityRow(for: variant)
+        } else {
+            if exact.count > 1, fallbackQuantity > 0 {
+                quantityRow(for: variant, label: "\(variant.displayName) — unspecified")
+            }
+            ForEach(exact) { printing in
+                exactQuantityRow(for: printing, within: exact)
+            }
+        }
+    }
+
+    private func quantityRow(for variant: CatalogVariantKind, label: String? = nil) -> some View {
         let quantity = quantities[variant, default: 0]
         let isUpdating = updatingVariants.contains(variant)
 
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(variant.displayName)
+                Text(label ?? variant.displayName)
                     .font(.body.weight(.medium))
                 Text(priceText(for: variant))
                     .font(.caption)
@@ -2074,6 +2193,46 @@ struct CatalogCardDetailView: View {
         }
     }
 
+    private func exactQuantityRow(for printing: CatalogPrinting, within printings: [CatalogPrinting]) -> some View {
+        let variant = printing.kind ?? .normal
+        let quantity = collectionStore.printingQuantity(cardID: card.id, printingID: printing.providerID)
+        let isUpdating = updatingVariants.contains(variant)
+        let label = collectorPrintingLabel(printing, within: printings)
+
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(.body.weight(.medium))
+                Text(priceText(for: variant)).font(.caption).foregroundStyle(.secondary)
+                if allowsMultipleCopies {
+                    Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if allowsMultipleCopies {
+                Button { updateQuantity(for: printing, to: max(0, quantity - 1)) } label: {
+                    Image(systemName: "minus").frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .disabled(quantity == 0 || isUpdating)
+                Text("\(quantity)").font(.body.monospacedDigit().weight(.semibold)).frame(minWidth: 28)
+                Button { updateQuantity(for: printing, to: quantity + 1) } label: {
+                    Image(systemName: "plus").frame(width: 22, height: 22)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isUpdating)
+            } else {
+                Button { updateQuantity(for: printing, to: quantity > 0 ? 0 : 1) } label: {
+                    Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle").font(.title2)
+                }
+                .buttonStyle(.plain)
+                .frame(minWidth: 44, minHeight: 44)
+                .disabled(isUpdating)
+                .accessibilityLabel(quantity > 0 ? "Remove \(label)" : "Mark \(label) as owned")
+            }
+        }
+    }
+
     private func priceText(for variant: CatalogVariantKind) -> String {
         let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
         guard let quote = snapshot?.prices.first(where: {
@@ -2092,16 +2251,32 @@ struct CatalogCardDetailView: View {
         Task {
             defer { updatingVariants.remove(variant) }
             do {
-                try await collectionStore.setQuantity(
+                try await collectionStore.setPreferredQuantity(
                     newQuantity,
                     cardID: card.id,
-                    variant: variant
+                    variant: variant,
+                    printings: snapshot?.printings ?? []
                 )
                 if newQuantity == 0 {
                     quantities.removeValue(forKey: variant)
                 } else {
                     quantities[variant] = newQuantity
                 }
+            } catch {
+                collectionMessage = "That quantity couldn’t be saved. Please try again."
+            }
+        }
+    }
+
+    private func updateQuantity(for printing: CatalogPrinting, to newQuantity: Int) {
+        guard let variant = printing.kind, !updatingVariants.contains(variant) else { return }
+        updatingVariants.insert(variant)
+        collectionMessage = nil
+        Task {
+            defer { updatingVariants.remove(variant) }
+            do {
+                try await collectionStore.setPrintingQuantity(newQuantity, cardID: card.id, printing: printing)
+                quantities = try await collectionStore.quantities(for: card.id, forceReload: true)
             } catch {
                 collectionMessage = "That quantity couldn’t be saved. Please try again."
             }
@@ -4134,10 +4309,11 @@ private struct CustomCollectionFolderDetailView: View {
                     message = "Printing information isn’t available for \(card.name) yet."
                     return
                 }
-                try await collectionStore.setQuantity(
+                try await collectionStore.setPreferredQuantity(
                     1,
                     cardID: card.id,
-                    variant: standardVariant
+                    variant: standardVariant,
+                    printings: snapshot.printings
                 )
             } catch {
                 message = "TallyDex couldn’t update \(card.name). Check your connection and try again."

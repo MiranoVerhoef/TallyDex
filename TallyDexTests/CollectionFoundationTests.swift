@@ -3,6 +3,83 @@ import XCTest
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    func testExactPrintingMigrationMovesOnlyUnambiguousOwnershipAndCanRollback() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let before = Date(timeIntervalSince1970: 100)
+        let migration = Date(timeIntervalSince1970: 200)
+        try await repository.setQuantity(2, cardID: "base1-4", variant: .holo, updatedAt: before)
+        try await repository.prepareExactOwnershipMigration(createdAt: migration)
+        try await repository.prepareExactOwnershipMigration(createdAt: migration.addingTimeInterval(1))
+
+        let changed = try await repository.reconcileExactOwnership(
+            cardID: "base1-4",
+            printings: [printing(cardID: "base1-4", id: "unlimited-holo", kind: .holo)]
+        )
+
+        XCTAssertTrue(changed)
+        let migratedBroad = try await repository.fetchEntries(cardID: "base1-4")
+        let migratedExact = try await repository.fetchPrintingEntries(cardID: "base1-4")
+        XCTAssertTrue(migratedBroad.isEmpty)
+        XCTAssertEqual(migratedExact.first?.quantity, 2)
+        let backups = try await repository.fetchBackups()
+        XCTAssertEqual(backups.count, 1)
+        XCTAssertEqual(backups.first?.reason, "Before exact printing ownership migration")
+
+        try await repository.restoreBackup(
+            id: try XCTUnwrap(backups.first?.id),
+            safetyBackupReason: "Before exact migration rollback",
+            restoredAt: migration.addingTimeInterval(2)
+        )
+        let restoredBroad = try await repository.fetchEntries(cardID: "base1-4")
+        let restoredExact = try await repository.fetchPrintingEntries(cardID: "base1-4")
+        XCTAssertEqual(restoredBroad.first?.quantity, 2)
+        XCTAssertTrue(restoredExact.isEmpty)
+    }
+
+    func testExactPrintingMigrationKeepsAmbiguousBroadOwnership() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        try await repository.setQuantity(1, cardID: "base1-4", variant: .holo, updatedAt: .now)
+
+        let changed = try await repository.reconcileExactOwnership(
+            cardID: "base1-4",
+            printings: [
+                printing(cardID: "base1-4", id: "unlimited", kind: .holo),
+                printing(cardID: "base1-4", id: "shadowless", kind: .holo),
+            ]
+        )
+
+        XCTAssertFalse(changed)
+        let broad = try await repository.fetchEntries(cardID: "base1-4")
+        let exact = try await repository.fetchPrintingEntries(cardID: "base1-4")
+        XCTAssertEqual(broad.first?.quantity, 1)
+        XCTAssertTrue(exact.isEmpty)
+    }
+
+    func testMasterProgressCountsExactPrintingsWithoutTurningFallbackIntoFalseCompletion() {
+        let card = card(id: "base1-4", number: "4")
+        let printings = [
+            printing(cardID: card.id, id: "unlimited", kind: .holo),
+            printing(cardID: card.id, id: "shadowless", kind: .holo),
+        ]
+        let progress = CollectionProgressCalculator.progressByCardID(
+            cards: [card],
+            set: CatalogSet(
+                id: card.setID, seriesID: "base", name: "Base", abbreviation: nil,
+                logoURL: nil, symbolURL: nil, officialCardCount: 1, totalCardCount: 1,
+                releaseDate: nil, rarityCounts: nil
+            ),
+            preference: SetCollectionPreference.defaultPreference(setID: card.setID, goal: .master),
+            availableVariants: [card.id: [.holo]],
+            ownedEntries: [
+                CollectionVariantEntry(cardID: card.id, variant: .holo, quantity: 1, updatedAt: .now),
+            ],
+            availablePrintings: [card.id: printings],
+            exactOwnedEntries: []
+        )[card.id]
+
+        XCTAssertEqual(progress, CollectionProgress(completedSlots: 1, requiredSlots: 2))
+    }
+
     func testRepositoryTracksVariantQuantitiesIndependently() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let firstUpdate = Date(timeIntervalSince1970: 100)
@@ -629,6 +706,13 @@ final class CollectionFoundationTests: XCTestCase {
         let update = Date(timeIntervalSince1970: 100)
         let folderID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
         try await source.setQuantity(2, cardID: "me01-001", variant: .reverseHolo, updatedAt: update)
+        try await source.setPrintingQuantity(
+            1,
+            cardID: "me01-001",
+            printingID: "provider-holo-1",
+            variant: .holo,
+            updatedAt: update
+        )
         try await source.saveSetPreference(.init(
             setID: "me01", status: .hidden, goal: .custom,
             includedVariants: [.holo, .reverseHolo], includesSecretCards: false, updatedAt: update
@@ -650,15 +734,40 @@ final class CollectionFoundationTests: XCTestCase {
 
         try await destination.importCollection(decoded, mode: .replace, importedAt: update.addingTimeInterval(1))
         let entries = try await destination.fetchEntries(cardID: "me01-001")
+        let exactEntries = try await destination.fetchPrintingEntries(cardID: "me01-001")
         let preferences = try await destination.fetchSetPreferences()
         let folders = try await destination.fetchCustomFolders()
         let metadata = try await destination.fetchCardMetadata(cardID: "me01-001")
         XCTAssertEqual(entries.first?.quantity, 2)
+        XCTAssertEqual(exactEntries.first?.printingID, "provider-holo-1")
+        XCTAssertEqual(exactEntries.first?.quantity, 1)
         XCTAssertEqual(preferences["me01"]?.includedVariants, [.holo, .reverseHolo])
         XCTAssertEqual(folders.first?.id, folderID)
         XCTAssertEqual(folders.first?.iconName, CollectionFolderIcon.star.rawValue)
         XCTAssertEqual(folders.first?.coverCardID, "smp-SM95")
         XCTAssertEqual(metadata.notes, "Binder page 3")
+    }
+
+    func testSchemaOneBackupDecodesAndPreviewsWithEmptyExactOwnership() async throws {
+        let json = #"""
+        {
+          "format": "com.miranoverhoef.tallydex.collection",
+          "schemaVersion": 1,
+          "exportedAt": "1970-01-01T00:01:40Z",
+          "appVersion": "0.9.6 (42)",
+          "ownership": [],
+          "setPreferences": [],
+          "folders": [],
+          "cardMetadata": []
+        }
+        """#
+
+        let decoded = try CollectionTransferCodec.decode(Data(json.utf8))
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertTrue(decoded.exactOwnership.isEmpty)
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let preview = try await repository.previewImport(decoded, mode: .merge)
+        XCTAssertFalse(preview.hasChanges)
     }
 
     @MainActor
@@ -829,6 +938,27 @@ final class CollectionFoundationTests: XCTestCase {
             includedVariants: [.normal, .holo, .reverseHolo],
             includesSecretCards: true,
             updatedAt: .now
+        )
+    }
+
+    private func printing(
+        cardID: String,
+        id: String,
+        kind: CatalogVariantKind
+    ) -> CatalogPrinting {
+        CatalogPrinting(
+            cardID: cardID,
+            providerID: id,
+            rawType: kind.rawValue,
+            kind: kind,
+            subtype: nil,
+            size: nil,
+            stamps: [],
+            foil: nil,
+            languages: ["en"],
+            cardmarketProductID: nil,
+            tcgplayerProductID: nil,
+            cardtraderProductID: nil
         )
     }
 }

@@ -9,6 +9,18 @@ struct CollectionVariantEntry: Equatable, Identifiable, Sendable {
     var id: String { "\(cardID)|\(variant.rawValue)" }
 }
 
+/// Ownership of one exact printing reported by TCGdex. Printing identifiers
+/// are scoped to a card, so both values are always part of the identity.
+struct CollectionPrintingEntry: Equatable, Identifiable, Sendable {
+    let cardID: String
+    let printingID: String
+    let variant: CatalogVariantKind
+    let quantity: Int
+    let updatedAt: Date
+
+    var id: String { "\(cardID)|\(printingID)" }
+}
+
 enum CollectionGoal: String, Codable, CaseIterable, Sendable {
     case normal
     case master
@@ -201,7 +213,9 @@ enum CollectionProgressCalculator {
         set: CatalogSet,
         preference: SetCollectionPreference,
         availableVariants: [String: Set<CatalogVariantKind>],
-        ownedEntries: [CollectionVariantEntry]
+        ownedEntries: [CollectionVariantEntry],
+        availablePrintings: [String: [CatalogPrinting]] = [:],
+        exactOwnedEntries: [CollectionPrintingEntry] = []
     ) -> CollectionProgress {
         combined(
             progressByCardID(
@@ -209,7 +223,9 @@ enum CollectionProgressCalculator {
                 set: set,
                 preference: preference,
                 availableVariants: availableVariants,
-                ownedEntries: ownedEntries
+                ownedEntries: ownedEntries,
+                availablePrintings: availablePrintings,
+                exactOwnedEntries: exactOwnedEntries
             )
         )
     }
@@ -219,15 +235,20 @@ enum CollectionProgressCalculator {
         set: CatalogSet,
         preference: SetCollectionPreference,
         availableVariants: [String: Set<CatalogVariantKind>],
-        ownedEntries: [CollectionVariantEntry]
+        ownedEntries: [CollectionVariantEntry],
+        availablePrintings: [String: [CatalogPrinting]] = [:],
+        exactOwnedEntries: [CollectionPrintingEntry] = []
     ) -> [String: CollectionProgress] {
         let owned = Dictionary(grouping: ownedEntries.filter { $0.quantity > 0 }, by: \.cardID)
+        let exactOwned = Dictionary(grouping: exactOwnedEntries.filter { $0.quantity > 0 }, by: \.cardID)
         var result: [String: CollectionProgress] = [:]
         result.reserveCapacity(cards.count)
 
         for card in cards where includes(card: card, set: set, preference: preference) {
             let knownVariants = availableVariants[card.id] ?? []
-            let ownedVariants = Set((owned[card.id] ?? []).map(\.variant))
+            let broadOwnedForCard = owned[card.id] ?? []
+            let exactOwnedForCard = exactOwned[card.id] ?? []
+            let ownedVariants = Set(broadOwnedForCard.map(\.variant)).union(exactOwnedForCard.map(\.variant))
 
             if preference.goal == .normal {
                 result[card.id] = CollectionProgress(
@@ -241,10 +262,29 @@ enum CollectionProgressCalculator {
                 for: preference,
                 knownVariants: knownVariants
             )
-            result[card.id] = CollectionProgress(
-                completedSlots: requiredVariants.intersection(ownedVariants).count,
-                requiredSlots: requiredVariants.count
-            )
+            var completedSlots = 0
+            var requiredSlots = 0
+            for variant in requiredVariants {
+                let exactOptions = (availablePrintings[card.id] ?? []).filter { $0.kind == variant }
+                guard !exactOptions.isEmpty else {
+                    requiredSlots += 1
+                    if ownedVariants.contains(variant) { completedSlots += 1 }
+                    continue
+                }
+
+                requiredSlots += exactOptions.count
+                let requiredIDs = Set(exactOptions.map(\.providerID))
+                let exactCompleted = Set(
+                    exactOwnedForCard
+                        .filter { $0.variant == variant && requiredIDs.contains($0.printingID) }
+                        .map(\.printingID)
+                ).count
+                // An old broad check represents one real but unspecified copy.
+                // It may satisfy one slot, never every possible exact printing.
+                let fallbackCompleted = broadOwnedForCard.contains { $0.variant == variant } ? 1 : 0
+                completedSlots += min(exactOptions.count, exactCompleted + fallbackCompleted)
+            }
+            result[card.id] = CollectionProgress(completedSlots: completedSlots, requiredSlots: requiredSlots)
         }
         return result
     }
@@ -381,6 +421,14 @@ struct CollectionBackup: Equatable, Identifiable, Sendable {
 protocol CollectionRepository: Sendable {
     func fetchEntries(cardID: String) async throws -> [CollectionVariantEntry]
     func fetchOwnedEntries() async throws -> [CollectionVariantEntry]
+    func fetchPrintingEntries(cardID: String) async throws -> [CollectionPrintingEntry]
+    func fetchOwnedPrintingEntries() async throws -> [CollectionPrintingEntry]
+    func prepareExactOwnershipMigration(createdAt: Date) async throws
+    @discardableResult
+    func reconcileExactOwnership(
+        cardID: String,
+        printings: [CatalogPrinting]
+    ) async throws -> Bool
     func fetchSetGoals() async throws -> [String: CollectionGoal]
     func fetchSetPreferences() async throws -> [String: SetCollectionPreference]
     func fetchCustomFolders() async throws -> [CustomCollectionFolder]
@@ -412,6 +460,13 @@ protocol CollectionRepository: Sendable {
     func setQuantity(
         _ quantity: Int,
         cardID: String,
+        variant: CatalogVariantKind,
+        updatedAt: Date
+    ) async throws
+    func setPrintingQuantity(
+        _ quantity: Int,
+        cardID: String,
+        printingID: String,
         variant: CatalogVariantKind,
         updatedAt: Date
     ) async throws

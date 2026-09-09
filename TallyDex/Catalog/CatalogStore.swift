@@ -337,6 +337,20 @@ final class CatalogStore {
         return cached
     }
 
+    /// Reads the exact printing records populated by `prepareVariants` without
+    /// making a second provider request.
+    func cachedPrintings(for cards: [CatalogCard]) async -> [String: [CatalogPrinting]] {
+        guard let repository = try? resolveRepository() else { return [:] }
+        var result: [String: [CatalogPrinting]] = [:]
+        result.reserveCapacity(cards.count)
+        for card in cards {
+            if let printings = try? await repository.fetchPrintings(cardID: card.id), !printings.isEmpty {
+                result[card.id] = printings
+            }
+        }
+        return result
+    }
+
     func details(
         for card: CatalogCard,
         forceRefresh: Bool = false

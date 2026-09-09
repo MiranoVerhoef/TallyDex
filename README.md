@@ -146,44 +146,55 @@ Completed in v0.9.6:
 3. The missing-artwork roadmap now explicitly includes a one-time download tool
    with an estimate, Wi-Fi guidance, progress, cancellation, and cache-limit safety.
 
+Completed in v0.9.7:
+
+1. Ownership can now be stored against the exact TCGdex printing ID while the
+   everyday interface keeps collector-friendly names such as Normal and Reverse Holo.
+2. Existing broad ownership is migrated only when there is exactly one matching
+   provider printing. Ambiguous or unavailable matches remain as honest broad
+   fallback records, so TallyDex never guesses which printing is owned.
+3. A one-time rollback backup is created before exact migration. JSON backups now
+   use schema version 2, preserve exact and fallback ownership together, and still
+   import schema-version-1 backups.
+4. Master and Custom progress count exact provider printings where available. One
+   old unspecified check can satisfy one printing slot, never falsely complete all
+   similar printings.
+
 Research and later builds:
 
-1. Migrate ownership from broad printing types to exact provider printing IDs with
-   a versioned, lossless backup migration. Preserve every existing quantity and
-   keep a broad fallback wherever TCGdex has no detailed printing record.
-2. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
+1. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
    depending only on names; support cards containing multiple Pokémon IDs.
-3. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
+2. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
    Treat them as market statistics, never as substitutes for a missing exact
    printing price.
-4. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
+3. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
    refresh dates because tournament legality changes over time.
-5. Store and display TCGdex's card-data update timestamp separately from pricing
+4. Store and display TCGdex's card-data update timestamp separately from pricing
    timestamps.
-6. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
+5. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
    clearly labelled as TCGdex totals.
-7. Enrich card details and optional filters with HP, type, evolution stage,
+6. Enrich card details and optional filters with HP, type, evolution stage,
    attacks, abilities, weaknesses, resistance, retreat cost, and flavor text.
    Scanner ranking may use this only as supporting evidence.
-8. Add optional booster membership and pack artwork where TCGdex supplies it;
+7. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-9. Audit missing set/card artwork and bundle lawful local replacements or durable
+8. Audit missing set/card artwork and bundle lawful local replacements or durable
    placeholders so the catalogue looks complete offline.
-10. Add a one-time **Download Missing Artwork** cache action after that audit. Show
+9. Add a one-time **Download Missing Artwork** cache action after that audit. Show
    an estimated download/storage size, recommend Wi-Fi, provide progress and
    cancellation, and respect the user's existing automatic cache-size ceiling.
-11. Add first-run introduction and preference setup, plus Reset Introduction in
+10. Add first-run introduction and preference setup, plus Reset Introduction in
    Settings.
-12. Research another permitted card/catalogue/price API, including its licence,
+11. Research another permitted card/catalogue/price API, including its licence,
    attribution, rate limits, coverage, and whether it can be an optional provider
    without weakening TCGdex correctness.
-13. Activate country-specific Cardmarket listings only if permitted official API
+12. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-14. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
+13. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
     optional StoreKit Tip Jar, and—only with an independently controlled HTTPS
     domain—true universal card links with rich previews.
-15. Binder planner.
-16. Finish automatic live card scanning after the remaining catalogue and
+14. Binder planner.
+15. Finish automatic live card scanning after the remaining catalogue and
     collection work: improve live-frame OCR, confidence ranking, glare handling,
     top-loader detection, and real-device validation. Promote Auto from Beta to the
     default camera mode once it reliably identifies a varied real-card test set and
