@@ -256,6 +256,12 @@ actor CatalogArtworkCache {
             localizedURL = url
         }
         guard localizedURL.pathExtension.isEmpty else { return localizedURL }
+        // TCGdex's Scarlet & Violet logo endpoint is currently WebP-only. WebP
+        // is also substantially smaller for the other series/set logos and is
+        // decoded natively by iOS. Expansion symbols remain PNG-only.
+        if category == .seriesLogos || category == .setLogos {
+            return localizedURL.appendingPathExtension("webp")
+        }
         return localizedURL.appendingPathExtension("png")
     }
 
@@ -694,21 +700,28 @@ final class ArtworkCacheStore {
     }
 
     func warmImagesIfNeeded(set: CatalogSet, cards: [CatalogCard]) async {
-        guard !cards.isEmpty, cacheWarmProgress[set.id] == nil else { return }
-        let signature = cacheWarmSignature(setID: set.id, cards: cards)
+        await warmImagesIfNeeded(cacheKey: set.id, cards: cards)
+    }
+
+    /// Warms a card grid that is not tied to one set, such as a user Collection.
+    /// A stable caller-owned key keeps its progress and fingerprint independent
+    /// from normal set warm-ups while sharing the same bounded artwork cache.
+    func warmImagesIfNeeded(cacheKey: String, cards: [CatalogCard]) async {
+        guard !cards.isEmpty, cacheWarmProgress[cacheKey] == nil else { return }
+        let signature = cacheWarmSignature(cacheKey: cacheKey, cards: cards)
         let storedSignatures = userDefaults.dictionary(
             forKey: Self.warmedSetSignaturesKey
         ) as? [String: String] ?? [:]
-        guard storedSignatures[set.id] != signature else { return }
+        guard storedSignatures[cacheKey] != signature else { return }
 
         let requestGroups = cards.map(\.thumbnailArtworkReferences).filter { !$0.isEmpty }
         guard !requestGroups.isEmpty else {
-            persistWarmedSetSignature(signature, setID: set.id)
+            persistWarmedSetSignature(signature, cacheKey: cacheKey)
             return
         }
 
-        cacheWarmProgress[set.id] = 0
-        defer { cacheWarmProgress.removeValue(forKey: set.id) }
+        cacheWarmProgress[cacheKey] = 0
+        defer { cacheWarmProgress.removeValue(forKey: cacheKey) }
         let cache = cache
         var completed = 0
         var succeeded = 0
@@ -729,14 +742,14 @@ final class ArtworkCacheStore {
             }
             completed += results.count
             succeeded += results.filter { $0 }.count
-            cacheWarmProgress[set.id] = Double(completed) / Double(requestGroups.count)
+            cacheWarmProgress[cacheKey] = Double(completed) / Double(requestGroups.count)
         }
 
         // Do not remember a fully failed attempt, because it most likely happened
         // while the device was offline. Exact unavailable images are still handled
         // honestly by their normal on-demand placeholders.
         if succeeded > 0 {
-            persistWarmedSetSignature(signature, setID: set.id)
+            persistWarmedSetSignature(signature, cacheKey: cacheKey)
         }
         snapshot = await cache.snapshot()
     }
@@ -843,7 +856,7 @@ final class ArtworkCacheStore {
         userDefaults.set(pinnedSetIDs.sorted(), forKey: Self.offlineSetIDsKey)
     }
 
-    private func cacheWarmSignature(setID: String, cards: [CatalogCard]) -> String {
+    private func cacheWarmSignature(cacheKey: String, cards: [CatalogCard]) -> String {
         let identity = cards
             .sorted { $0.id < $1.id }
             .map { card in
@@ -853,17 +866,17 @@ final class ArtworkCacheStore {
                 return "\(card.id)=\(sources)"
             }
             .joined(separator: "|")
-        let payload = "\(Self.cacheWarmAlgorithmVersion)|\(setID)|\(identity)"
+        let payload = "\(Self.cacheWarmAlgorithmVersion)|\(cacheKey)|\(identity)"
         return SHA256.hash(data: Data(payload.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
     }
 
-    private func persistWarmedSetSignature(_ signature: String, setID: String) {
+    private func persistWarmedSetSignature(_ signature: String, cacheKey: String) {
         var signatures = userDefaults.dictionary(
             forKey: Self.warmedSetSignaturesKey
         ) as? [String: String] ?? [:]
-        signatures[setID] = signature
+        signatures[cacheKey] = signature
         userDefaults.set(signatures, forKey: Self.warmedSetSignaturesKey)
     }
 

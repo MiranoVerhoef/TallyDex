@@ -863,8 +863,14 @@ private struct CatalogSeriesRow: View {
     }
 
     private var seriesArtwork: some View {
-        CatalogArtwork(reference: group.preferredArtworkReference)
-            .accessibilityHidden(true)
+        Group {
+            if group.series.id == "mc", group.preferredArtworkReference == nil {
+                McDonaldsCollectionBadge()
+            } else {
+                CatalogArtwork(reference: group.preferredArtworkReference)
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     private var seriesDetails: some View {
@@ -878,6 +884,32 @@ private struct CatalogSeriesRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// A small bundled, code-drawn label for the McDonald's catalogue group. TCGdex
+/// does not publish a generic series logo and campaign artwork differs by year,
+/// so this remains recognizable without copying or depending on a remote image.
+private struct McDonaldsCollectionBadge: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "fork.knife.circle.fill")
+                .font(.title2)
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Pokémon")
+                    .font(.caption2.weight(.bold))
+                Text("McDonald's Collection")
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.blue.gradient, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -3956,6 +3988,7 @@ private struct CustomCollectionFolderDetailView: View {
     let folder: CustomCollectionFolder
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
@@ -3971,6 +4004,10 @@ private struct CustomCollectionFolderDetailView: View {
     @State private var selectedSetName = ""
     @State private var selectedReleaseYear = 0
     @State private var sort = CollectionCardSort.releaseNewest
+
+    private var artworkWarmKey: String {
+        "collection-\(folder.id.uuidString.lowercased())"
+    }
 
     private var columns: [GridItem] {
         dynamicTypeSize.isAccessibilitySize
@@ -4094,6 +4131,14 @@ private struct CustomCollectionFolderDetailView: View {
                     if !ownedMatchIDs.isEmpty {
                         CollectionValueSummaryView(summary: valueSummary, title: "Collection value")
                             .padding(.top, 4)
+                    }
+
+                    if let cacheProgress = artworkCacheStore.cacheWarmProgress[artworkWarmKey] {
+                        ProgressView(value: cacheProgress) {
+                            Text("Downloading and caching images · \(Int(cacheProgress * 100))%")
+                        }
+                        .font(.caption)
+                        .padding(.top, 4)
                     }
                 }
 
@@ -4343,6 +4388,13 @@ private struct CustomCollectionFolderDetailView: View {
         defer { isLoading = false }
         do {
             matches = try await catalogStore.cards(matchingName: folder.cardNameQuery)
+            let loadedCards = matches.map(\.card)
+            Task {
+                await artworkCacheStore.warmImagesIfNeeded(
+                    cacheKey: artworkWarmKey,
+                    cards: loadedCards
+                )
+            }
             variantsByCardID = await catalogStore.prepareVariants(
                 for: matches.map(\.card), refreshCachedDetails: false
             )

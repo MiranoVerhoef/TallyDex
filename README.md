@@ -191,6 +191,22 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.11:
+
+1. Scarlet & Violet series and set logos load from TCGdex's WebP assets instead
+   of assuming every extensionless logo has a PNG copy. Existing complete image
+   URLs and PNG expansion symbols remain unchanged.
+2. McDonald's Collection has a small bundled native badge on the series screen.
+   TCGdex does not provide a generic series logo, so the badge has no remote image
+   dependency and does not reuse a year-specific campaign graphic.
+3. TallyDex checks announced and recently released sets once per hour while the app
+   launches or returns to the foreground. Exact provider IDs or exact normalized
+   names can replace an announcement with its real cover and cards; near matches
+   are rejected, and unmatched announcements remain visible after release day.
+4. Opening a Collection now warms and compresses its grid artwork with the same
+   visible **Downloading and caching images** progress and fingerprinting used by
+   set pages.
+
 Completed in v0.9.10:
 
 1. The first visit to a released set now warms every grid image into the automatic

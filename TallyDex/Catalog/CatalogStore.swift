@@ -48,12 +48,15 @@ final class CatalogStore {
     @ObservationIgnored private let bundle: Bundle
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var repository: (any CatalogRepository)?
+    @ObservationIgnored private var bundledSeriesByID: [String: CatalogSeries] = [:]
     @ObservationIgnored private var bundledSetsByID: [String: CatalogSet] = [:]
     @ObservationIgnored private var hasStarted = false
 
     private static let lastCatalogRefreshKey = "catalog.lastRefresh"
     private static let lastSearchIndexRefreshKey = "catalog.searchIndex.lastRefresh"
+    private static let lastUpcomingAvailabilityCheckKey = "catalog.upcoming.lastAvailabilityCheck"
     private static let staleInterval: TimeInterval = 6 * 60 * 60
+    private static let upcomingAvailabilityInterval: TimeInterval = 60 * 60
     private static let pricingStaleInterval: TimeInterval = 18 * 60 * 60
     private static let maximumVariantSearchCandidates = 500
 
@@ -77,6 +80,10 @@ final class CatalogStore {
             let repository = try resolveRepository()
             let bundledSnapshot = try? BundledCatalogLoader(bundle: bundle).load()
             if let bundledSnapshot {
+                bundledSeriesByID = Dictionary(
+                    uniqueKeysWithValues: bundledSnapshot.series
+                        .map { ($0.series.id, $0.series) }
+                )
                 bundledSetsByID = Dictionary(
                     uniqueKeysWithValues: bundledSnapshot.series
                         .flatMap(\.sets)
@@ -101,8 +108,11 @@ final class CatalogStore {
             )
             if needsRefresh(lastUpdated) {
                 await refresh()
-            } else if needsRefresh(searchIndexUpdated) {
-                await refreshSearchIndex(in: repository)
+            } else {
+                if needsRefresh(searchIndexUpdated) {
+                    await refreshSearchIndex(in: repository)
+                }
+                await refreshUpcomingAvailabilityIfNeeded(in: repository)
             }
         } catch {
             isInitialLoading = false
@@ -127,6 +137,7 @@ final class CatalogStore {
             try await repository.setMetadataDate(refreshDate, forKey: Self.lastCatalogRefreshKey)
             try await loadCachedCatalog(from: repository)
             lastUpdated = refreshDate
+            await refreshUpcomingAvailabilityIfNeeded(in: repository, force: true)
         } catch {
             refreshMessage = groups.isEmpty
                 ? "The catalog could not be downloaded. Pull down to try again."
@@ -141,8 +152,11 @@ final class CatalogStore {
         guard hasStarted else { return }
         if needsRefresh(lastUpdated) {
             await refresh()
-        } else if needsRefresh(searchIndexUpdated), let repository = try? resolveRepository() {
-            await refreshSearchIndex(in: repository)
+        } else if let repository = try? resolveRepository() {
+            if needsRefresh(searchIndexUpdated) {
+                await refreshSearchIndex(in: repository)
+            }
+            await refreshUpcomingAvailabilityIfNeeded(in: repository)
         }
     }
 
@@ -450,7 +464,9 @@ final class CatalogStore {
     }
 
     private func loadCachedCatalog(from repository: any CatalogRepository) async throws {
-        let series = try await repository.fetchSeries()
+        let series = try await repository.fetchSeries().map { item in
+            item.fillingMissingMetadata(from: bundledSeriesByID[item.id])
+        }
         let cachedSets = try await repository.fetchSets(seriesID: nil).map { set in
             set.fillingMissingMetadata(from: bundledSetsByID[set.id])
         }
@@ -458,8 +474,7 @@ final class CatalogStore {
         let cachedNames = Set(cachedSets.map { $0.name.lowercased() })
         let announcedSets = bundledSetsByID.values
             .filter { set in
-                set.isUpcoming(relativeTo: now())
-                    && !cachedIDs.contains(set.id)
+                !cachedIDs.contains(set.id)
                     && !cachedNames.contains(set.name.lowercased())
             }
             .sorted { ($0.releaseDate ?? "") > ($1.releaseDate ?? "") }
@@ -467,6 +482,79 @@ final class CatalogStore {
         let setsBySeries = Dictionary(grouping: sets, by: \.seriesID)
         groups = series.map { item in
             CatalogSeriesGroup(series: item, sets: setsBySeries[item.id] ?? [])
+        }
+    }
+
+    /// Rechecks announced and recently released sets more frequently than the
+    /// complete catalogue. This lets a placeholder acquire its real provider ID,
+    /// logo and cards soon after TCGdex publishes them without repeatedly
+    /// downloading every historical series.
+    private func refreshUpcomingAvailabilityIfNeeded(
+        in repository: any CatalogRepository,
+        force: Bool = false
+    ) async {
+        let previousCheck = try? await repository.metadataDate(
+            forKey: Self.lastUpcomingAvailabilityCheckKey
+        )
+        guard force || needsUpcomingAvailabilityCheck(previousCheck) else { return }
+
+        let candidates = CatalogUpcomingAvailability.candidates(
+            in: groups,
+            relativeTo: now()
+        )
+        guard !candidates.isEmpty else {
+            try? await repository.setMetadataDate(
+                now(),
+                forKey: Self.lastUpcomingAvailabilityCheckKey
+            )
+            return
+        }
+
+        let provider = self.provider
+        let seriesIDs = Set(candidates.map(\.seriesID))
+        let remoteSeries = await withTaskGroup(
+            of: CatalogSeriesSnapshot?.self,
+            returning: [String: CatalogSeriesSnapshot].self
+        ) { group in
+            for seriesID in seriesIDs {
+                group.addTask { try? await provider.fetchSeries(id: seriesID) }
+            }
+            var snapshots: [String: CatalogSeriesSnapshot] = [:]
+            for await snapshot in group {
+                if let snapshot { snapshots[snapshot.series.id] = snapshot }
+            }
+            return snapshots
+        }
+
+        let resolvedIDs = Set(candidates.compactMap { candidate in
+            remoteSeries[candidate.seriesID].flatMap {
+                CatalogUpcomingAvailability.providerSet(for: candidate, in: $0)
+            }?.id
+        })
+        let setSnapshots = await withTaskGroup(of: CatalogSetSnapshot?.self) { group in
+            for setID in resolvedIDs {
+                group.addTask { try? await provider.fetchSet(id: setID) }
+            }
+            var snapshots: [CatalogSetSnapshot] = []
+            for await snapshot in group {
+                if let snapshot { snapshots.append(snapshot) }
+            }
+            return snapshots
+        }
+
+        for snapshot in setSnapshots {
+            try? await repository.replaceSet(snapshot)
+            try? await repository.setMetadataDate(
+                now(),
+                forKey: setRefreshKey(snapshot.set.id)
+            )
+        }
+        try? await repository.setMetadataDate(
+            now(),
+            forKey: Self.lastUpcomingAvailabilityCheckKey
+        )
+        if !setSnapshots.isEmpty {
+            try? await loadCachedCatalog(from: repository)
         }
     }
 
@@ -562,7 +650,9 @@ final class CatalogStore {
         let fallbackSetsByID = bundledSetsByID.merging(cachedSetsByID) { _, cached in cached }
         let initiallyEnriched = snapshots.map { snapshot in
             CatalogSeriesSnapshot(
-                series: snapshot.series,
+                series: snapshot.series.fillingMissingMetadata(
+                    from: bundledSeriesByID[snapshot.series.id]
+                ),
                 sets: snapshot.sets.map { set in
                     set.fillingMissingMetadata(from: fallbackSetsByID[set.id])
                 }
@@ -605,7 +695,47 @@ final class CatalogStore {
         return now().timeIntervalSince(lastUpdated) >= Self.staleInterval
     }
 
+    private func needsUpcomingAvailabilityCheck(_ lastChecked: Date?) -> Bool {
+        guard let lastChecked else { return true }
+        return now().timeIntervalSince(lastChecked) >= Self.upcomingAvailabilityInterval
+    }
+
     private func setRefreshKey(_ setID: String) -> String {
         "catalog.set.\(setID).lastRefresh"
+    }
+}
+
+enum CatalogUpcomingAvailability {
+    private static let recentlyReleasedWindow: TimeInterval = 30 * 24 * 60 * 60
+
+    static func candidates(
+        in groups: [CatalogSeriesGroup],
+        relativeTo date: Date
+    ) -> [CatalogSet] {
+        groups.flatMap(\.sets).filter { set in
+            if set.id.hasPrefix("upcoming-") { return true }
+            guard let releaseDate = set.releaseDateValue else { return false }
+            return releaseDate >= date.addingTimeInterval(-recentlyReleasedWindow)
+        }
+    }
+
+    static func providerSet(
+        for candidate: CatalogSet,
+        in snapshot: CatalogSeriesSnapshot
+    ) -> CatalogSet? {
+        if let exactID = snapshot.sets.first(where: { $0.id == candidate.id }) {
+            return exactID
+        }
+        guard candidate.id.hasPrefix("upcoming-") else { return nil }
+        let expectedName = normalizedName(candidate.name)
+        return snapshot.sets.first { normalizedName($0.name) == expectedName }
+    }
+
+    private static func normalizedName(_ name: String) -> String {
+        name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .unicodeScalars
+            .filter(CharacterSet.alphanumerics.contains)
+            .map(String.init)
+            .joined()
     }
 }
