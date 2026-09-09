@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.13/TallyDex-v0.9.13-restore-preview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.12/TallyDex-v0.9.12-mcdonalds-badges.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.11/TallyDex-v0.9.11-series-art.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.10/TallyDex-v0.9.10-cache-progress.png",
@@ -77,6 +78,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.13",
+          "buildVersion": "49",
+          "date": "2026-09-09",
+          "localizedDescription": "Automatic and local backups now open the same detailed restore preview as imported files, showing additions, changes, skipped records, removals, and the exact affected items before confirmation. Restoring still creates a safety backup first. Browser Editor cards now use natural row heights instead of stretching every card to the tallest result, with responsive artwork, readable two-line labels, modern actions, and stacked controls in narrow six-column layouts to prevent clipped text.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.13/TallyDex-v0.9.13.ipa",
+          "size": 8503448,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.12",
           "buildVersion": "48",

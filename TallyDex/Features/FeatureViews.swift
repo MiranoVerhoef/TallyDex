@@ -5389,11 +5389,127 @@ private struct CatalogIssueReportingView: View {
     }
 }
 
+private struct PreparedCollectionBackupRestore: Identifiable {
+    let backup: CollectionBackup
+    let preview: CollectionImportPreview
+
+    var id: UUID { backup.id }
+}
+
+private struct CollectionBackupRestorePreviewView: View {
+    @Environment(CollectionStore.self) private var collectionStore
+    let prepared: PreparedCollectionBackupRestore
+    let onFinish: (String?) -> Void
+    @State private var isRestoring = false
+    @State private var isConfirmingRestore = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Backup") {
+                    LabeledContent("Reason", value: prepared.backup.reason)
+                    LabeledContent(
+                        "Saved",
+                        value: prepared.backup.createdAt.formatted(date: .abbreviated, time: .shortened)
+                    )
+                }
+
+                Section {
+                    previewRow("Additions", count: prepared.preview.additions, color: .green)
+                    previewRow("Changes", count: prepared.preview.changes, color: .blue)
+                    previewRow("Skipped or unchanged", count: prepared.preview.skipped, color: .secondary)
+                    previewRow("Removals", count: prepared.preview.removals, color: .red)
+
+                    if !prepared.preview.items.isEmpty {
+                        NavigationLink {
+                            CollectionImportChangeListView(items: prepared.preview.items)
+                        } label: {
+                            Label("Review exact changes", systemImage: "list.bullet.rectangle")
+                        }
+                    }
+                } header: {
+                    Text("Restore Preview")
+                } footer: {
+                    Text("Restore replaces ownership, set settings, Collections, wishlist, and notes so this iPhone matches the saved snapshot exactly.")
+                }
+
+                if !prepared.preview.hasChanges {
+                    Section {
+                        Label("Your collection already matches this backup.", systemImage: "checkmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                Section {
+                    Button("Restore Collection", role: .destructive) {
+                        isConfirmingRestore = true
+                    }
+                    .disabled(isRestoring || !prepared.preview.hasChanges)
+                } footer: {
+                    Text("Before restoring, TallyDex saves the current collection as another automatic backup so you can undo this restore.")
+                }
+            }
+            .navigationTitle("Restore Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onFinish(nil) }
+                        .disabled(isRestoring)
+                }
+            }
+            .confirmationDialog(
+                "Restore the saved collection?",
+                isPresented: $isConfirmingRestore,
+                titleVisibility: .visible
+            ) {
+                Button("Restore Collection", role: .destructive) { restore() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This applies \(prepared.preview.additions) addition(s), \(prepared.preview.changes) change(s), and \(prepared.preview.removals) removal(s). A rollback backup is created first.")
+            }
+        }
+        .interactiveDismissDisabled(isRestoring)
+    }
+
+    @ViewBuilder
+    private func previewRow(_ title: String, count: Int, color: Color) -> some View {
+        LabeledContent(title) {
+            Text(count.formatted())
+                .monospacedDigit()
+                .foregroundStyle(color)
+        }
+    }
+
+    private func restore() {
+        guard !isRestoring else { return }
+        isRestoring = true
+        errorMessage = nil
+        Task {
+            do {
+                try await collectionStore.restoreBackup(prepared.backup)
+                onFinish("Collection restored. A rollback backup is available.")
+            } catch {
+                isRestoring = false
+                errorMessage = "That backup couldn’t be restored. No collection data was changed."
+            }
+        }
+    }
+}
+
 private struct CollectionBackupsView: View {
     @Environment(CollectionStore.self) private var collectionStore
-    @State private var selectedBackup: CollectionBackup?
-    @State private var isRestoring = false
+    @State private var pendingRestore: PreparedCollectionBackupRestore?
+    @State private var isPreparingPreview = false
     @State private var message: String?
+    @State private var messageIsError = false
 
     var body: some View {
         Form {
@@ -5407,7 +5523,7 @@ private struct CollectionBackupsView: View {
                 Section {
                     ForEach(collectionStore.backups) { backup in
                         Button {
-                            selectedBackup = backup
+                            prepareRestore(backup)
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(backup.reason)
@@ -5418,7 +5534,7 @@ private struct CollectionBackupsView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .disabled(isRestoring)
+                        .disabled(isPreparingPreview)
                     }
                 } header: {
                     Text("Automatic Backups")
@@ -5427,47 +5543,46 @@ private struct CollectionBackupsView: View {
                 }
             }
 
+            if isPreparingPreview {
+                Section {
+                    ProgressView("Comparing backup with your collection…")
+                }
+            }
+
             if let message {
                 Section {
-                    Label(message, systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
+                    Label(message, systemImage: messageIsError ? "exclamationmark.triangle" : "checkmark.circle")
+                        .foregroundStyle(messageIsError ? .red : .secondary)
                 }
             }
         }
         .navigationTitle("Collection Backups")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog(
-            "Restore this collection backup?",
-            isPresented: Binding(
-                get: { selectedBackup != nil },
-                set: { if !$0 { selectedBackup = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Restore Backup", role: .destructive) {
-                guard let backup = selectedBackup else { return }
-                selectedBackup = nil
-                restore(backup)
+        .sheet(item: $pendingRestore) { prepared in
+            CollectionBackupRestorePreviewView(prepared: prepared) { resultMessage in
+                pendingRestore = nil
+                if let resultMessage {
+                    message = resultMessage
+                    messageIsError = false
+                }
             }
-            Button("Cancel", role: .cancel) {
-                selectedBackup = nil
-            }
-        } message: {
-            Text("This replaces current ownership, set goals, collections, wishlist, and notes with the saved snapshot. TallyDex will back up the current collection before restoring.")
         }
     }
 
-    private func restore(_ backup: CollectionBackup) {
-        guard !isRestoring else { return }
-        isRestoring = true
+    private func prepareRestore(_ backup: CollectionBackup) {
+        guard !isPreparingPreview else { return }
+        isPreparingPreview = true
         message = nil
         Task {
-            defer { isRestoring = false }
+            defer { isPreparingPreview = false }
             do {
-                try await collectionStore.restoreBackup(backup)
-                message = "Collection restored."
+                pendingRestore = PreparedCollectionBackupRestore(
+                    backup: backup,
+                    preview: try await collectionStore.previewBackupRestore(backup)
+                )
             } catch {
-                message = "That backup couldn’t be restored. No collection data was changed."
+                message = "That backup couldn’t be compared with your collection. No data was changed."
+                messageIsError = true
             }
         }
     }

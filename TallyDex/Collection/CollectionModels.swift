@@ -446,6 +446,7 @@ protocol CollectionRepository: Sendable {
         importedAt: Date
     ) async throws
     func createBackup(reason: String, createdAt: Date) async throws -> CollectionBackup
+    func previewBackupRestore(id: UUID) async throws -> CollectionImportPreview
     func restoreBackup(
         id: UUID,
         safetyBackupReason: String,

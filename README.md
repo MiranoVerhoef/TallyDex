@@ -191,6 +191,19 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.13:
+
+1. Restoring an automatic collection backup now opens a full impact preview before
+   confirmation, matching file-import restores with additions, changes, unchanged
+   records, removals, and an exact change list. The current collection is still
+   saved first so every restore remains reversible.
+2. Browser Editor cards now size naturally per grid row instead of stretching every
+   card to the tallest item in the complete result set. Compact six-column layouts
+   use responsive artwork, two-line titles, concise Details and Market actions, and
+   hover text for full names without clipping words.
+3. Card tiles use lighter borders, responsive spacing, and compact action icons while
+   keeping controls aligned and cards in each row a consistent height.
+
 Completed in v0.9.12:
 
 1. Cache verification is now invisible when every requested image is already on

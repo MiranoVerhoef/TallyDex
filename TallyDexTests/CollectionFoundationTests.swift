@@ -271,6 +271,19 @@ final class CollectionFoundationTests: XCTestCase {
             )
         )
 
+        let restorePreview = try await repository.previewBackupRestore(id: backup.id)
+        XCTAssertEqual(restorePreview.additions, 1)
+        XCTAssertEqual(restorePreview.changes, 3)
+        XCTAssertEqual(restorePreview.conflicts, 0)
+        XCTAssertEqual(restorePreview.removals, 1)
+        XCTAssertEqual(restorePreview.items.count, 5)
+        XCTAssertTrue(restorePreview.items.contains {
+            $0.action == .removal && $0.title == "me01-001 · Holo"
+        })
+        let entriesAfterPreview = try await repository.fetchEntries(cardID: "me01-001")
+        XCTAssertEqual(entriesAfterPreview.map(\.variant), [.holo])
+        XCTAssertEqual(entriesAfterPreview.first?.quantity, 3)
+
         try await repository.restoreBackup(
             id: backup.id,
             safetyBackupReason: "Before restore",
