@@ -191,6 +191,20 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.10:
+
+1. The first visit to a released set now warms every grid image into the automatic
+   cache and shows live **Downloading and caching images** progress. A catalogue
+   fingerprint prevents repeat downloads, while newly added cards automatically
+   trigger another warm-up.
+2. Card images are resized and JPEG-compressed on the device before storage when
+   the optimized copy is smaller. Grid thumbnails use a 480-pixel ceiling and full
+   artwork uses a 1,600-pixel ceiling with higher quality.
+3. Existing uncompressed automatic artwork is replaced by the new optimized cache
+   on upgrade. Offline-set downloads remain separate and are never silently removed.
+4. Clearing thumbnail or all automatic artwork also resets set warm-up records, so
+   the next set visit repopulates the cleared cache.
+
 Research and later builds:
 
 1. Store Pokédex IDs so Pokémon-focused Collections can match reliably without

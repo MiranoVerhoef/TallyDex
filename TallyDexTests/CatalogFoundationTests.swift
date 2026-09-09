@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import UIKit
 import XCTest
 @testable import TallyDex
 
@@ -940,7 +941,7 @@ final class CatalogFoundationTests: XCTestCase {
             rarity: nil
         )
         XCTAssertNotNil(lowOnly.thumbnailArtworkReference)
-        XCTAssertEqual(lowOnly.fullArtworkReference?.category, .cardThumbnails)
+        XCTAssertEqual(lowOnly.fullArtworkReference?.category, .cardArtwork)
 
         let unrelated = CatalogCard(
             id: "tk-example-1",
@@ -1012,7 +1013,7 @@ final class CatalogFoundationTests: XCTestCase {
                 },
                 expected
             )
-            XCTAssertEqual(card.fullArtworkReference?.category, .cardThumbnails)
+            XCTAssertEqual(card.fullArtworkReference?.category, .cardArtwork)
         }
     }
 
@@ -1079,6 +1080,77 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(resolved, imageData)
         let requestCount = await stub.requestCount
         XCTAssertEqual(requestCount, 2)
+    }
+
+    func testArtworkCacheCompressesLargeCardImagesOnDevice() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = try makeNoisyPNG(width: 720, height: 1_008)
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: original, statusCode: 200, retryAfter: nil),
+        ])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub)
+        let reference = CatalogArtworkReference(
+            url: URL(string: "https://assets.example/card.png")!,
+            category: .cardThumbnails
+        )
+
+        let optimized = try await cache.data(for: reference)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(optimized as CFData, nil))
+        let properties = try XCTUnwrap(
+            CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        )
+        let width = try XCTUnwrap(properties[kCGImagePropertyPixelWidth] as? Int)
+        let height = try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? Int)
+
+        XCTAssertLessThan(optimized.count, original.count)
+        XCTAssertLessThanOrEqual(max(width, height), 480)
+    }
+
+    @MainActor
+    func testFirstSetVisitWarmsEveryThumbnailOnlyOnce() async throws {
+        let suiteName = "TallyDexTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let imageData = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+            HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
+        ])
+        let store = ArtworkCacheStore(
+            cache: CatalogArtworkCache(rootDirectory: root, httpClient: stub),
+            userDefaults: defaults
+        )
+        let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
+        let cards = ["001", "002"].map { localID in
+            CatalogCard(
+                id: "sv01-\(localID)",
+                setID: "sv01",
+                localID: localID,
+                name: "Card \(localID)",
+                imageURL: URL(string: "https://assets.example/\(localID).png"),
+                category: nil,
+                illustrator: nil,
+                rarity: nil
+            )
+        }
+
+        await store.warmImagesIfNeeded(set: catalogSet, cards: cards)
+        await store.warmImagesIfNeeded(set: catalogSet, cards: cards)
+
+        let requestCount = await stub.requestCount
+        let signatures = defaults.dictionary(
+            forKey: ArtworkCacheStore.warmedSetSignaturesKey
+        ) as? [String: String]
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertNotNil(signatures?[catalogSet.id])
+        XCTAssertNil(store.cacheWarmProgress[catalogSet.id])
     }
 
     func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {
@@ -2018,6 +2090,32 @@ final class CatalogFoundationTests: XCTestCase {
             releaseDate: nil,
             rarityCounts: rarityCounts
         )
+    }
+
+    private func makeNoisyPNG(width: Int, height: Int) throws -> Data {
+        var pixels = [UInt8](repeating: 255, count: width * height * 4)
+        var state: UInt32 = 0x12345678
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            state = 1_664_525 &* state &+ 1_013_904_223
+            pixels[offset] = UInt8(truncatingIfNeeded: state)
+            pixels[offset + 1] = UInt8(truncatingIfNeeded: state >> 8)
+            pixels[offset + 2] = UInt8(truncatingIfNeeded: state >> 16)
+        }
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+        let image = try XCTUnwrap(CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: true,
+            intent: .defaultIntent
+        ))
+        return try XCTUnwrap(UIImage(cgImage: image).pngData())
     }
 }
 
