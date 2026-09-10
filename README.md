@@ -191,6 +191,17 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.17:
+
+1. New Collections now use a searchable catalogue-backed Pokémon picker instead
+   of an unchecked name field, preventing spelling mistakes.
+2. Pokémon card labels and forms are grouped into one species rule. Choosing
+   Lucario includes Lucario-GX, Lucario V, Lucario ex, Mega Lucario, Lucario C/GL,
+   and tag-team cards containing Lucario, while excluding Trainer cards such as
+   Lucario Spirit Link.
+3. Existing free-text Collection rules retain their original behavior. Species
+   selections survive automatic backups and portable JSON/CSV exports.
+
 Completed in v0.9.16:
 
 1. Completing the introduction on a fresh install now uses an explicit completion
@@ -410,8 +421,8 @@ needed. **Browser Editor → Allow access while app is minimized** is off by def
 When enabled, the server remains available while iOS permits background execution;
 return to TallyDex if iOS suspends it.
 
-Next-version backlog: use stored Pokédex IDs in Pokémon-focused Collection rules,
-then continue the verified missing-art audit.
+Next-version backlog: continue the verified missing-art audit, then use stored
+Pokédex IDs to strengthen species matching beyond the catalogue’s card titles.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average

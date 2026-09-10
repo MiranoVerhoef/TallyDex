@@ -10,7 +10,7 @@ extension UTType {
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     let format: String
     let schemaVersion: Int
@@ -90,6 +90,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         let id: UUID
         let name: String
         let cardNameQuery: String
+        let pokemonName: String?
         let displayMode: CustomCollectionFolderDisplayMode
         let iconName: String?
         let coverCardID: String?
@@ -100,6 +101,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
             id: UUID,
             name: String,
             cardNameQuery: String,
+            pokemonName: String? = nil,
             displayMode: CustomCollectionFolderDisplayMode,
             iconName: String? = nil,
             coverCardID: String? = nil,
@@ -109,6 +111,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
             self.id = id
             self.name = name
             self.cardNameQuery = cardNameQuery
+            self.pokemonName = pokemonName
             self.displayMode = displayMode
             self.iconName = iconName
             self.coverCardID = coverCardID
@@ -213,35 +216,36 @@ enum CollectionTransferCodec {
         var rows = [[
             "record_type", "card_id", "variant", "quantity", "set_id", "status", "goal",
             "included_variants", "includes_secret_cards", "folder_id", "folder_name",
-            "card_name_query", "display_mode", "cover_card_id", "wishlisted", "notes",
+            "card_name_query", "pokemon_name", "display_mode", "cover_card_id", "wishlisted", "notes",
             "printing_id", "created_at", "updated_at",
         ]]
         let formatter = ISO8601DateFormatter()
 
         for item in document.ownership {
             rows.append(["ownership", item.cardID, item.variant.rawValue, String(item.quantity)]
-                + Array(repeating: "", count: 14)
+                + Array(repeating: "", count: 15)
                 + [formatter.string(from: item.updatedAt)])
         }
         for item in document.exactOwnership {
             rows.append(["exact_ownership", item.cardID, item.variant.rawValue, String(item.quantity)]
-                + Array(repeating: "", count: 12)
+                + Array(repeating: "", count: 13)
                 + [item.printingID, "", formatter.string(from: item.updatedAt)])
         }
         for item in document.setPreferences {
             rows.append(["set_preference", "", "", "", item.setID, item.status.rawValue,
                          item.goal.rawValue, item.includedVariants.map(\.rawValue).sorted().joined(separator: "|"),
                          String(item.includesSecretCards)]
-                + Array(repeating: "", count: 9)
+                + Array(repeating: "", count: 10)
                 + [formatter.string(from: item.updatedAt)])
         }
         for item in document.folders {
             rows.append(["folder", "", "", "", "", "", "", "", "", item.id.uuidString,
-                         item.name, item.cardNameQuery, item.displayMode.rawValue, item.coverCardID ?? "", "", "",
+                         item.name, item.cardNameQuery, item.pokemonName ?? "", item.displayMode.rawValue,
+                         item.coverCardID ?? "", "", "",
                          "", formatter.string(from: item.createdAt), formatter.string(from: item.updatedAt)])
         }
         for item in document.cardMetadata {
-            rows.append(["card_metadata", item.cardID, "", "", "", "", "", "", "", "", "", "", "", "",
+            rows.append(["card_metadata", item.cardID, "", "", "", "", "", "", "", "", "", "", "", "", "",
                          String(item.isWishlisted), item.notes, "", "", formatter.string(from: item.updatedAt)])
         }
 

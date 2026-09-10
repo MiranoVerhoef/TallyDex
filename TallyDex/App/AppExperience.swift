@@ -52,13 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.16",
-        headline: "A smoother first launch",
+        version: "0.9.17",
+        headline: "Build collections without name mistakes",
         notes: [
             AppReleaseNote(
-                systemImage: "checkmark.circle.fill",
-                title: "Setup appears only once",
-                detail: "A fresh install now presents one introduction and then opens TallyDex. It no longer repeats setup or immediately presents the current version’s What’s New screen. Future app updates still show their release notes once."
+                systemImage: "magnifyingglass",
+                title: "Search and select a Pokémon",
+                detail: "New Collections use a searchable catalogue picker instead of an unchecked card-name field, helping prevent spelling mistakes."
+            ),
+            AppReleaseNote(
+                systemImage: "pawprint.fill",
+                title: "Every form stays together",
+                detail: "Choose Lucario once to match Lucario, Lucario-GX, Lucario V, Lucario ex, Mega Lucario, tag-team cards containing Lucario, and other labelled forms—without including Trainer cards such as Lucario Spirit Link."
+            ),
+            AppReleaseNote(
+                systemImage: "archivebox.fill",
+                title: "Existing collections stay intact",
+                detail: "Older free-text rules keep their original matching behavior, and the new Pokémon selection is preserved in exports, imports, and automatic backups."
             ),
         ]
     )

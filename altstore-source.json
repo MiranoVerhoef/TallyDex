@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.17/TallyDex-v0.9.17-pokemon-collections.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.16/TallyDex-v0.9.16-first-launch-complete.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.15/TallyDex-v0.9.15-collapsed-card-details.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.14/TallyDex-v0.9.14-card-details.png",
@@ -81,6 +82,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.17",
+          "buildVersion": "53",
+          "date": "2026-09-11",
+          "localizedDescription": "New Collections use a searchable catalogue-backed Pokémon picker instead of unchecked free text. Species-level rules group Lucario, Lucario-GX, Lucario V, Lucario ex, Mega Lucario, Lucario C/GL, and tag-team cards containing Lucario under one selection while excluding Trainer cards such as Lucario Spirit Link. Existing free-text collections keep their original behavior, and new species selections are preserved in automatic backups and portable exports.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.17/TallyDex-v0.9.17.ipa",
+          "size": 8801260,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.16",
           "buildVersion": "52",
