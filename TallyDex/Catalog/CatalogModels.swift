@@ -335,6 +335,16 @@ enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum CardDisplaySettings {
+    static let detailsExpandedByDefaultKey = "cards.details.expandedByDefault"
+    static let defaultDetailsExpanded = false
+
+    static var detailsExpandedByDefault: Bool {
+        UserDefaults.standard.object(forKey: detailsExpandedByDefaultKey) as? Bool
+            ?? defaultDetailsExpanded
+    }
+}
+
 enum PricingSettings {
     static let sourceKey = "pricing.preferredSource"
     static let cardmarketCountryKey = "pricing.cardmarket.country"

@@ -191,6 +191,14 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.15:
+
+1. The optional rich Card details block now starts collapsed, keeping card pages
+   compact while leaving artwork, identity, Printings, prices, personal notes, and
+   collection controls unchanged.
+2. Settings → Card Pages can make that block expanded by default. Each card page
+   can still be expanded or collapsed independently.
+
 Completed in v0.9.14:
 
 1. First launch now presents a four-page introduction to browsing, scanning,

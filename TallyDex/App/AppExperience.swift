@@ -38,28 +38,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.14",
-        headline: "A friendlier start, and clearer updates",
+        version: "0.9.15",
+        headline: "Cleaner card pages",
         notes: [
             AppReleaseNote(
-                systemImage: "sparkles",
-                title: "Set up TallyDex your way",
-                detail: "A new introduction explains the main tools and lets you choose your browsing, appearance, and collection defaults before you begin."
-            ),
-            AppReleaseNote(
-                systemImage: "slider.horizontal.3",
-                title: "Preferences from the start",
-                detail: "Choose how sets are organized, your collection goal, exact copy counts, and whether prices use Cardmarket in EUR or TCGplayer in USD."
-            ),
-            AppReleaseNote(
-                systemImage: "list.bullet.rectangle.portrait.fill",
-                title: "Richer, cleaner card details",
-                detail: "Card pages now store and organize Pokédex numbers, HP, type, evolution, attacks, abilities, weaknesses, resistance, retreat cost, regulation marks, legality, and card text when TCGdex supplies them."
-            ),
-            AppReleaseNote(
-                systemImage: "megaphone.fill",
-                title: "Never miss an update",
-                detail: "TallyDex now presents What’s New once after each app update. The latest notes and the introduction can also be opened again from Settings."
+                systemImage: "rectangle.compress.vertical",
+                title: "Details stay out of the way",
+                detail: "The optional Card details block now starts collapsed. Expand it on any card, or change the default under Settings → Card Pages. Printings, prices, notes, and collection controls are unchanged."
             ),
         ]
     )

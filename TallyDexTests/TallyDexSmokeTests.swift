@@ -157,8 +157,8 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.14")
-        XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 3)
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.15")
+        XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
             AppReleaseNotes.current.notes.count
@@ -204,6 +204,11 @@ final class TallyDexSmokeTests: XCTestCase {
             ["EUR", "USD"]
         )
         XCTAssertEqual(PricingSettings.defaultCardmarketCurrency, .eur)
+    }
+
+    func testRichCardDetailsAreCollapsedByDefault() {
+        XCTAssertFalse(CardDisplaySettings.defaultDetailsExpanded)
+        XCTAssertFalse(CardDisplaySettings.detailsExpandedByDefaultKey.isEmpty)
     }
 
     func testFutureCardmarketCountryMappingUsesOfficialSellerIdentifiers() {
