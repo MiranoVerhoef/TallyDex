@@ -175,6 +175,94 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
     }
 
+    func testTCGdexDecodesRichCardMetadataWithoutFlatteningIt() async throws {
+        let response = #"""
+        {
+          "id": "base1-4",
+          "localId": "4",
+          "name": "Charizard",
+          "category": "Pokemon",
+          "dexId": [6],
+          "hp": 120,
+          "types": ["Fire"],
+          "evolveFrom": "Charmeleon",
+          "stage": "Stage2",
+          "attacks": [{
+            "cost": ["Fire", "Fire", "Colorless"],
+            "name": "Fire Spin",
+            "damage": 100,
+            "effect": "Discard 2 Energy."
+          }],
+          "abilities": [{
+            "type": "Pokemon Power",
+            "name": "Energy Burn",
+            "effect": "Attached Energy becomes Fire Energy."
+          }],
+          "weaknesses": [{"type": "Water", "value": "×2"}],
+          "resistances": [{"type": "Fighting", "value": "-30"}],
+          "retreat": 3,
+          "regulationMark": "G",
+          "legal": {"standard": false, "expanded": true},
+          "description": "Spits fire hot enough to melt boulders.",
+          "updated": "2026-08-20T08:25:49+01:00",
+          "set": {"id": "base1"},
+          "variants": {"holo": true}
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "base1-4")
+        let metadata = try XCTUnwrap(snapshot.card.metadata)
+
+        XCTAssertEqual(metadata.dexIDs, [6])
+        XCTAssertEqual(metadata.hp, 120)
+        XCTAssertEqual(metadata.types, ["Fire"])
+        XCTAssertEqual(metadata.evolvesFrom, "Charmeleon")
+        XCTAssertEqual(metadata.stage, "Stage2")
+        XCTAssertEqual(metadata.attacks.first?.damage, "100")
+        XCTAssertEqual(metadata.attacks.first?.cost, ["Fire", "Fire", "Colorless"])
+        XCTAssertEqual(metadata.abilities.first?.name, "Energy Burn")
+        XCTAssertEqual(metadata.weaknesses.first, CatalogTypeModifier(type: "Water", value: "×2"))
+        XCTAssertEqual(metadata.resistances.first, CatalogTypeModifier(type: "Fighting", value: "-30"))
+        XCTAssertEqual(metadata.retreatCost, 3)
+        XCTAssertEqual(metadata.regulationMark, "G")
+        XCTAssertEqual(metadata.legality, CatalogCardLegality(standard: false, expanded: true))
+        XCTAssertEqual(metadata.flavorText, "Spits fire hot enough to melt boulders.")
+        XCTAssertNotNil(metadata.updatedAt)
+    }
+
+    func testRepositoryPersistsRichCardMetadata() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "base", name: "Original", logoURL: nil)
+        let catalogSet = set(id: "base1", seriesID: "base", name: "Base Set")
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [catalogSet]),
+        ])
+        let metadata = CatalogCardMetadata(
+            dexIDs: [6], hp: 120, types: ["Fire"], evolvesFrom: "Charmeleon",
+            stage: "Stage2", suffix: nil,
+            attacks: [CatalogCardAttack(name: "Fire Spin", cost: ["Fire"], damage: "100", effect: nil)],
+            abilities: [], weaknesses: [], resistances: [], retreatCost: 3,
+            regulationMark: nil, legality: nil, rulesText: nil, trainerType: nil,
+            energyType: nil, flavorText: nil, updatedAt: nil
+        )
+        let card = CatalogCard(
+            id: "base1-4", setID: "base1", localID: "4", name: "Charizard",
+            imageURL: nil, category: "Pokemon", illustrator: nil, rarity: "Rare Holo",
+            metadata: metadata
+        )
+
+        try await repository.replaceCard(CatalogCardSnapshot(card: card, variants: [.holo]))
+
+        let storedCard = try await repository.fetchCard(id: card.id)
+        XCTAssertEqual(storedCard?.metadata, metadata)
+    }
+
     func testTCGdexPreservesExactDetailedPrintingMetadata() async throws {
         let response = #"""
         {
@@ -1822,6 +1910,10 @@ final class CatalogFoundationTests: XCTestCase {
         try await repository.setMetadataDate(
             refreshDate,
             forKey: "catalog.card.\(card.id).detailedPrintingsChecked"
+        )
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.card.\(card.id).richMetadataChecked.v1"
         )
         let provider = CatalogProviderSpy(cardSnapshot: snapshot)
         let store = CatalogStore(

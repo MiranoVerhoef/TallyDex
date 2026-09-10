@@ -28,6 +28,7 @@
 		A20000000000000000000013 /* CollectionTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* CollectionTransfer.swift */; };
 		A20000000000000000000014 /* LocalCollectionSharing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000014 /* LocalCollectionSharing.swift */; };
 		A20000000000000000000015 /* BundledSetLogos in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000015 /* BundledSetLogos */; };
+		A20000000000000000000016 /* AppExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000016 /* AppExperience.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +64,7 @@
 		B20000000000000000000013 /* CollectionTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionTransfer.swift; sourceTree = "<group>"; };
 		B20000000000000000000014 /* LocalCollectionSharing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCollectionSharing.swift; sourceTree = "<group>"; };
 		B20000000000000000000015 /* BundledSetLogos */ = {isa = PBXFileReference; lastKnownFileType = folder; path = BundledSetLogos; sourceTree = "<group>"; };
+		B20000000000000000000016 /* AppExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExperience.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,6 +112,7 @@
 			children = (
 				B20000000000000000000001 /* TallyDexApp.swift */,
 				B20000000000000000000002 /* RootTabView.swift */,
+				B20000000000000000000016 /* AppExperience.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -289,6 +292,7 @@
 			files = (
 				A20000000000000000000001 /* TallyDexApp.swift in Sources */,
 				A20000000000000000000002 /* RootTabView.swift in Sources */,
+				A20000000000000000000016 /* AppExperience.swift in Sources */,
 				A20000000000000000000003 /* FeatureViews.swift in Sources */,
 				A20000000000000000000007 /* CatalogModels.swift in Sources */,
 				A20000000000000000000008 /* TCGdexClient.swift in Sources */,
@@ -362,7 +366,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 49;
+				CURRENT_PROJECT_VERSION = 50;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TallyDex/Resources/Info.plist;
@@ -371,7 +375,7 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.9.13;
+				MARKETING_VERSION = 0.9.14;
 				PRODUCT_BUNDLE_IDENTIFIER = com.miranoverhoef.TallyDex;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -386,7 +390,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 49;
+				CURRENT_PROJECT_VERSION = 50;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = TallyDex/Resources/Info.plist;
@@ -395,7 +399,7 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.9.13;
+				MARKETING_VERSION = 0.9.14;
 				PRODUCT_BUNDLE_IDENTIFIER = com.miranoverhoef.TallyDex;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

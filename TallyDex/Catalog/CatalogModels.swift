@@ -76,6 +76,50 @@ struct CatalogSet: Codable, Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
+struct CatalogCardAttack: Codable, Equatable, Hashable, Sendable {
+    let name: String
+    let cost: [String]
+    let damage: String?
+    let effect: String?
+}
+
+struct CatalogCardAbility: Codable, Equatable, Hashable, Sendable {
+    let type: String?
+    let name: String
+    let effect: String
+}
+
+struct CatalogTypeModifier: Codable, Equatable, Hashable, Sendable {
+    let type: String
+    let value: String?
+}
+
+struct CatalogCardLegality: Codable, Equatable, Hashable, Sendable {
+    let standard: Bool
+    let expanded: Bool
+}
+
+struct CatalogCardMetadata: Codable, Equatable, Hashable, Sendable {
+    let dexIDs: [Int]
+    let hp: Int?
+    let types: [String]
+    let evolvesFrom: String?
+    let stage: String?
+    let suffix: String?
+    let attacks: [CatalogCardAttack]
+    let abilities: [CatalogCardAbility]
+    let weaknesses: [CatalogTypeModifier]
+    let resistances: [CatalogTypeModifier]
+    let retreatCost: Int?
+    let regulationMark: String?
+    let legality: CatalogCardLegality?
+    let rulesText: String?
+    let trainerType: String?
+    let energyType: String?
+    let flavorText: String?
+    let updatedAt: Date?
+}
+
 struct CatalogCard: Codable, Equatable, Hashable, Identifiable, Sendable {
     let id: String
     let setID: String
@@ -85,6 +129,29 @@ struct CatalogCard: Codable, Equatable, Hashable, Identifiable, Sendable {
     let category: String?
     let illustrator: String?
     let rarity: String?
+    let metadata: CatalogCardMetadata?
+
+    init(
+        id: String,
+        setID: String,
+        localID: String,
+        name: String,
+        imageURL: URL?,
+        category: String?,
+        illustrator: String?,
+        rarity: String?,
+        metadata: CatalogCardMetadata? = nil
+    ) {
+        self.id = id
+        self.setID = setID
+        self.localID = localID
+        self.name = name
+        self.imageURL = imageURL
+        self.category = category
+        self.illustrator = illustrator
+        self.rarity = rarity
+        self.metadata = metadata
+    }
 }
 
 enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {

@@ -191,6 +191,24 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.14:
+
+1. First launch now presents a four-page introduction to browsing, scanning,
+   collection tracking, and price preferences. The setup includes live choices for
+   the starting Sets view, set organization, appearance, default collection goal,
+   and exact copy counts.
+2. Every future app version can present its own What’s New sheet once after update.
+   Release notes are stored by version, and a completed version is not shown again.
+3. Settings → Help & Updates keeps the current What’s New notes available and adds
+   Reset Introduction so setup can be replayed without resetting collection data.
+4. Setup now includes a truthful EUR or USD price preference: EUR selects native
+   Cardmarket data and USD selects native TCGplayer data. TallyDex does not silently
+   convert one marketplace’s values into the other currency.
+5. Detailed card responses now preserve Pokédex IDs, HP, types, evolution, attacks,
+   abilities, weakness, resistance, retreat cost, regulation mark, legality, rules
+   text, flavor text, and TCGdex’s card-data timestamp. Card pages group these into
+   compact facts and readable mechanic cards, and omit unavailable fields.
+
 Completed in v0.9.13:
 
 1. Restoring an automatic collection backup now opens a full impact preview before
@@ -248,37 +266,33 @@ Completed in v0.9.10:
 
 Research and later builds:
 
-1. Store Pokédex IDs so Pokémon-focused Collections can match reliably without
+1. Use the stored Pokédex IDs for reliable Pokémon-focused Collection rules without
    depending only on names; support cards containing multiple Pokémon IDs.
 2. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
    Treat them as market statistics, never as substitutes for a missing exact
    printing price.
 3. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
    refresh dates because tournament legality changes over time.
-4. Store and display TCGdex's card-data update timestamp separately from pricing
-   timestamps.
-5. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
+4. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
    clearly labelled as TCGdex totals.
-6. Enrich card details and optional filters with HP, type, evolution stage,
-   attacks, abilities, weaknesses, resistance, retreat cost, and flavor text.
-   Scanner ranking may use this only as supporting evidence.
-7. Add optional booster membership and pack artwork where TCGdex supplies it;
+5. Add optional filters for the stored HP, type, evolution, regulation, legality,
+   attacks, abilities, and other rich card fields. Scanner ranking may use this
+   only as supporting evidence.
+6. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-8. Continue the missing-art audit for the remaining 1,001 genuine provider gaps. Add a
+7. Continue the missing-art audit for the remaining 1,001 genuine provider gaps. Add a
    fallback only where set, collector number, source permission, and image identity
    can all be verified; otherwise keep the honest TallyDex placeholder.
-9. Add first-run introduction and preference setup, plus Reset Introduction in
-   Settings.
-10. Research another permitted card/catalogue/price API, including its licence,
+8. Research another permitted card/catalogue/price API, including its licence,
    attribution, rate limits, coverage, and whether it can be an optional provider
    without weakening TCGdex correctness.
-11. Activate country-specific Cardmarket listings only if permitted official API
+9. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-12. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
+10. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
     optional StoreKit Tip Jar, and—only with an independently controlled HTTPS
     domain—true universal card links with rich previews.
-13. Binder planner.
-14. Finish automatic live card scanning after the remaining catalogue and
+11. Binder planner.
+12. Finish automatic live card scanning after the remaining catalogue and
     collection work: improve live-frame OCR, confidence ranking, glare handling,
     top-loader detection, and real-device validation. Promote Auto from Beta to the
     default camera mode once it reliably identifies a varied real-card test set and
@@ -381,8 +395,8 @@ needed. **Browser Editor → Allow access while app is minimized** is off by def
 When enabled, the server remains available while iOS permits background execution;
 return to TallyDex if iOS suspends it.
 
-Next-version backlog: continue the verified missing-art audit and add introductory
-setup with collection preferences and an option to repeat it.
+Next-version backlog: use stored Pokédex IDs in Pokémon-focused Collection rules,
+then continue the verified missing-art audit.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average

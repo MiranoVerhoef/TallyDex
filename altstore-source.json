@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.14/TallyDex-v0.9.14-card-details.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.13/TallyDex-v0.9.13-restore-preview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.12/TallyDex-v0.9.12-mcdonalds-badges.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.11/TallyDex-v0.9.11-series-art.png",
@@ -78,6 +79,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.14",
+          "buildVersion": "50",
+          "date": "2026-09-10",
+          "localizedDescription": "Adds a clean first-launch setup for browsing, collection, appearance, and native EUR or USD price-market preferences. Every future update can now present a one-time What's New sheet, also available from Settings alongside Reset Introduction. Card details now preserve and neatly present TCGdex metadata such as Pokédex IDs, HP, types, evolution, attacks, abilities, weakness, resistance, retreat cost, legality, rules, flavor text, and data dates while hiding unavailable fields.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.14/TallyDex-v0.9.14.ipa",
+          "size": 8737635,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.13",
           "buildVersion": "49",
