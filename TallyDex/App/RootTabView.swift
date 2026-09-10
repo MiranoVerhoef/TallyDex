@@ -225,11 +225,15 @@ struct RootTabView: View {
         } message: {
             Text(deepLinkError ?? "The shared card couldn’t be opened.")
         }
-        .sheet(item: $appExperience, onDismiss: presentNextAppExperience) { destination in
+        .sheet(item: $appExperience) { destination in
             switch destination {
             case .introduction:
                 IntroductionView {
-                    introductionCompleted = true
+                    let completedState = AppExperienceSettings.stateAfterCompletingIntroduction(
+                        currentVersion: AppReleaseNotes.current.version
+                    )
+                    lastSeenReleaseVersion = completedState.lastSeenReleaseVersion
+                    introductionCompleted = completedState.introductionCompleted
                     appExperience = nil
                 }
                 .interactiveDismissDisabled()

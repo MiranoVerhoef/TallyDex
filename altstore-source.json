@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.16/TallyDex-v0.9.16-first-launch-complete.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.15/TallyDex-v0.9.15-collapsed-card-details.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.14/TallyDex-v0.9.14-card-details.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.13/TallyDex-v0.9.13-restore-preview.png",
@@ -80,6 +81,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.16",
+          "buildVersion": "52",
+          "date": "2026-09-10",
+          "localizedDescription": "Fixes first launch so onboarding appears exactly once and then opens TallyDex. Completing the introduction now acknowledges the installed build’s release notes, and setup is no longer re-evaluated during sheet dismissal. Genuine future app updates still present their What’s New notes once.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.16/TallyDex-v0.9.16.ipa",
+          "size": 8744206,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.15",
           "buildVersion": "51",
