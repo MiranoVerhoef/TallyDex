@@ -101,6 +101,11 @@ struct RootTabView: View {
     @State private var selection: AppTab = .sets
     @State private var deepLinkedCard: CatalogCard?
     @State private var deepLinkError: String?
+    @AppStorage(AppExperienceSettings.introductionCompletedKey)
+    private var introductionCompleted = false
+    @AppStorage(AppExperienceSettings.lastSeenReleaseVersionKey)
+    private var lastSeenReleaseVersion = ""
+    @State private var appExperience: AppExperienceDestination?
 
     init() {
 #if DEBUG
@@ -144,6 +149,14 @@ struct RootTabView: View {
         }
         .onChange(of: collectionStore.pendingExternalImport?.id) { _, id in
             if id != nil { selection = .settings }
+        }
+        .task {
+            presentNextAppExperience()
+        }
+        .onChange(of: introductionCompleted) { _, isCompleted in
+            if !isCompleted, appExperience == nil {
+                appExperience = .introduction
+            }
         }
         .task(id: appNavigation.requestedCardID) {
             guard let cardID = appNavigation.requestedCardID else { return }
@@ -212,6 +225,31 @@ struct RootTabView: View {
         } message: {
             Text(deepLinkError ?? "The shared card couldn’t be opened.")
         }
+        .sheet(item: $appExperience, onDismiss: presentNextAppExperience) { destination in
+            switch destination {
+            case .introduction:
+                IntroductionView {
+                    introductionCompleted = true
+                    appExperience = nil
+                }
+                .interactiveDismissDisabled()
+            case .whatsNew:
+                WhatsNewView(release: AppReleaseNotes.current) {
+                    lastSeenReleaseVersion = AppReleaseNotes.current.version
+                    appExperience = nil
+                }
+                .interactiveDismissDisabled()
+            }
+        }
+    }
+
+    private func presentNextAppExperience() {
+        guard appExperience == nil else { return }
+        appExperience = AppExperienceSettings.nextDestination(
+            introductionCompleted: introductionCompleted,
+            lastSeenReleaseVersion: lastSeenReleaseVersion,
+            currentVersion: AppReleaseNotes.current.version
+        )
     }
 }
 

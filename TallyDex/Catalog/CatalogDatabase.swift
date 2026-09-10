@@ -168,6 +168,12 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v9-rich-card-metadata") { database in
+            try database.alter(table: "catalogCard") { table in
+                table.add(column: "metadataJSON", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -797,8 +803,9 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             try database.execute(
                 sql: """
                 INSERT INTO catalogCard
-                    (id, setID, localID, name, imageURL, category, illustrator, rarity, sortIndex)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    (id, setID, localID, name, imageURL, category, illustrator, rarity,
+                     metadataJSON, sortIndex)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                 ON CONFLICT(id) DO UPDATE SET
                     setID = excluded.setID,
                     localID = excluded.localID,
@@ -806,7 +813,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     imageURL = excluded.imageURL,
                     category = excluded.category,
                     illustrator = excluded.illustrator,
-                    rarity = excluded.rarity
+                    rarity = excluded.rarity,
+                    metadataJSON = excluded.metadataJSON
                 """,
                 arguments: [
                     card.id,
@@ -817,6 +825,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     card.category,
                     card.illustrator,
                     card.rarity,
+                    Self.encodeMetadata(card.metadata),
                 ]
             )
             let knownVariants = snapshot.variants.union(snapshot.prices.map(\.variant))
@@ -1075,7 +1084,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             imageURL: url(row["imageURL"]),
             category: row["category"],
             illustrator: row["illustrator"],
-            rarity: row["rarity"]
+            rarity: row["rarity"],
+            metadata: decodeMetadata(row["metadataJSON"])
         )
     }
 
@@ -1103,6 +1113,18 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         guard let data = try? JSONEncoder().encode(values),
               let string = String(data: data, encoding: .utf8) else { return "[]" }
         return string
+    }
+
+    private static func encodeMetadata(_ metadata: CatalogCardMetadata?) -> String? {
+        guard let metadata,
+              let data = try? JSONEncoder().encode(metadata) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func decodeMetadata(_ string: String?) -> CatalogCardMetadata? {
+        guard let string,
+              let data = string.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(CatalogCardMetadata.self, from: data)
     }
 
     private static func decodeStrings(_ string: String?) -> [String] {

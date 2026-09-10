@@ -338,6 +338,10 @@ final class CatalogStore {
                         refreshDate,
                         forKey: rollingAverageRefreshKey(snapshot.card.id)
                     )
+                    try? await repository.setMetadataDate(
+                        refreshDate,
+                        forKey: richMetadataCheckKey(snapshot.card.id)
+                    )
                 }
                 if let card = remaining.next() {
                     group.addTask { try? await provider.fetchCard(id: card.id) }
@@ -377,10 +381,14 @@ final class CatalogStore {
         let lastDetailedPrintingCheck = try await repository.metadataDate(
             forKey: detailedPrintingCheckKey(card.id)
         )
+        let lastRichMetadataCheck = try await repository.metadataDate(
+            forKey: richMetadataCheckKey(card.id)
+        )
         if !forceRefresh,
            !needsPricingRefresh(lastPriceRefresh),
            lastRollingAverageRefresh != nil,
-           lastDetailedPrintingCheck != nil {
+           lastDetailedPrintingCheck != nil,
+           lastRichMetadataCheck != nil {
             return try await cachedSnapshot(for: card, in: repository)
         }
         do {
@@ -396,6 +404,10 @@ final class CatalogStore {
                 refreshDate,
                 forKey: detailedPrintingCheckKey(card.id)
             )
+            try await repository.setMetadataDate(
+                refreshDate,
+                forKey: richMetadataCheckKey(card.id)
+            )
             _ = try? await enforcePriceHistoryLimits(in: repository)
             return try await cachedSnapshot(for: snapshot.card, in: repository)
         } catch {
@@ -404,6 +416,7 @@ final class CatalogStore {
             if cached.card.category != nil
                 || cached.card.illustrator != nil
                 || cached.card.rarity != nil
+                || cached.card.metadata != nil
                 || !variants.isEmpty {
                 return cached
             }
@@ -456,6 +469,10 @@ final class CatalogStore {
 
     private func detailedPrintingCheckKey(_ cardID: String) -> String {
         "catalog.card.\(cardID).detailedPrintingsChecked"
+    }
+
+    private func richMetadataCheckKey(_ cardID: String) -> String {
+        "catalog.card.\(cardID).richMetadataChecked.v1"
     }
 
     private func needsPricingRefresh(_ date: Date?) -> Bool {

@@ -338,6 +338,24 @@ private struct CardDTO: Decodable, Sendable {
     let category: String?
     let illustrator: String?
     let rarity: String?
+    let dexId: [Int]?
+    let hp: Int?
+    let types: [String]?
+    let evolveFrom: String?
+    let stage: String?
+    let suffix: String?
+    let attacks: [CardAttackDTO]?
+    let abilities: [CardAbilityDTO]?
+    let weaknesses: [CardTypeModifierDTO]?
+    let resistances: [CardTypeModifierDTO]?
+    let retreat: Int?
+    let regulationMark: String?
+    let legal: CardLegalityDTO?
+    let effect: String?
+    let trainerType: String?
+    let energyType: String?
+    let description: String?
+    let updated: String?
     let set: SetReferenceDTO
     let variants: VariantsDTO?
     let variantsDetailed: [DetailedVariantDTO]?
@@ -345,6 +363,9 @@ private struct CardDTO: Decodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, localId, name, image, category, illustrator, rarity, set, variants, pricing
+        case dexId, hp, types, evolveFrom, stage, suffix, attacks, abilities
+        case weaknesses, resistances, retreat, regulationMark, legal, effect
+        case trainerType, energyType, description, updated
         case variantsDetailed = "variants_detailed"
     }
 
@@ -357,7 +378,27 @@ private struct CardDTO: Decodable, Sendable {
             imageURL: image,
             category: category,
             illustrator: illustrator,
-            rarity: rarity
+            rarity: rarity,
+            metadata: CatalogCardMetadata(
+                dexIDs: dexId ?? [],
+                hp: hp,
+                types: types ?? [],
+                evolvesFrom: evolveFrom,
+                stage: stage,
+                suffix: suffix,
+                attacks: attacks?.map(\.catalogAttack) ?? [],
+                abilities: abilities?.map(\.catalogAbility) ?? [],
+                weaknesses: weaknesses?.map(\.catalogModifier) ?? [],
+                resistances: resistances?.map(\.catalogModifier) ?? [],
+                retreatCost: retreat,
+                regulationMark: regulationMark,
+                legality: legal?.catalogLegality,
+                rulesText: effect,
+                trainerType: trainerType,
+                energyType: energyType,
+                flavorText: description,
+                updatedAt: tcgdexDate(updated)
+            )
         )
     }
 
@@ -387,6 +428,65 @@ private struct CardDTO: Decodable, Sendable {
             }
             return $0.source.rawValue < $1.source.rawValue
         }
+    }
+}
+
+private struct CardAttackDTO: Decodable, Sendable {
+    let cost: [String]?
+    let name: String
+    let effect: String?
+    let damage: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case cost, name, effect, damage
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        cost = try values.decodeIfPresent([String].self, forKey: .cost)
+        name = try values.decode(String.self, forKey: .name)
+        effect = try values.decodeIfPresent(String.self, forKey: .effect)
+        if let string = try? values.decode(String.self, forKey: .damage) {
+            damage = string
+        } else if let integer = try? values.decode(Int.self, forKey: .damage) {
+            damage = String(integer)
+        } else if let decimal = try? values.decode(Double.self, forKey: .damage) {
+            damage = decimal.formatted(.number.precision(.fractionLength(0...2)))
+        } else {
+            damage = nil
+        }
+    }
+
+    var catalogAttack: CatalogCardAttack {
+        CatalogCardAttack(name: name, cost: cost ?? [], damage: damage, effect: effect)
+    }
+}
+
+private struct CardAbilityDTO: Decodable, Sendable {
+    let type: String?
+    let name: String
+    let effect: String
+
+    var catalogAbility: CatalogCardAbility {
+        CatalogCardAbility(type: type, name: name, effect: effect)
+    }
+}
+
+private struct CardTypeModifierDTO: Decodable, Sendable {
+    let type: String
+    let value: String?
+
+    var catalogModifier: CatalogTypeModifier {
+        CatalogTypeModifier(type: type, value: value)
+    }
+}
+
+private struct CardLegalityDTO: Decodable, Sendable {
+    let standard: Bool
+    let expanded: Bool
+
+    var catalogLegality: CatalogCardLegality {
+        CatalogCardLegality(standard: standard, expanded: expanded)
     }
 }
 

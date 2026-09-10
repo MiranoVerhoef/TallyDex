@@ -729,6 +729,7 @@ private struct CatalogSetLink: View {
                         )
                     }
                 }
+
             } else {
                 Button("Keep Offline", systemImage: "arrow.down.circle") {
                     isConfirmingOfflineDownload = true
@@ -2063,6 +2064,10 @@ struct CatalogCardDetailView: View {
                     }
                 }
 
+                if let metadata = displayedCard.metadata {
+                    richMetadataSection(metadata)
+                }
+
                 if let variants = snapshot?.variants, !variants.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Printings:")
@@ -2159,6 +2164,178 @@ struct CatalogCardDetailView: View {
             message = forceRefresh
                 ? "The card couldn’t be refreshed. Cached details remain available."
                 : "Detailed card data will be retried the next time you open this card."
+        }
+    }
+
+    private func richMetadataSection(_ metadata: CatalogCardMetadata) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Card details")
+                .font(.headline)
+
+            if !metadata.dexIDs.isEmpty || metadata.hp != nil || !metadata.types.isEmpty || metadata.stage != nil {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(metadata.dexIDs, id: \.self) { dexID in
+                        cardFact("Pokédex", "#\(dexID)", "number")
+                    }
+                    if let hp = metadata.hp {
+                        cardFact("HP", "\(hp)", "heart.fill")
+                    }
+                    ForEach(metadata.types, id: \.self) { type in
+                        cardFact("Type", type, "circle.hexagongrid.fill")
+                    }
+                    if let stage = metadata.stage {
+                        cardFact("Stage", readableStage(stage), "arrow.up.right.circle.fill")
+                    }
+                }
+            }
+
+            if let evolvesFrom = metadata.evolvesFrom {
+                Label("Evolves from \(evolvesFrom)", systemImage: "arrow.triangle.branch")
+                    .font(.subheadline.weight(.medium))
+            }
+
+            ForEach(Array(metadata.abilities.enumerated()), id: \.offset) { _, ability in
+                mechanicCard(
+                    label: ability.type ?? "Ability",
+                    name: ability.name,
+                    detail: ability.effect,
+                    trailing: nil,
+                    tint: .purple
+                )
+            }
+
+            ForEach(Array(metadata.attacks.enumerated()), id: \.offset) { _, attack in
+                mechanicCard(
+                    label: attack.cost.isEmpty ? "Attack" : attack.cost.joined(separator: " · "),
+                    name: attack.name,
+                    detail: attack.effect,
+                    trailing: attack.damage,
+                    tint: .orange
+                )
+            }
+
+            if let rulesText = metadata.rulesText, !rulesText.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(metadata.trainerType ?? metadata.energyType ?? "Card text")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                    Text(rulesText)
+                        .font(.subheadline)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+            }
+
+            if !metadata.weaknesses.isEmpty || !metadata.resistances.isEmpty || metadata.retreatCost != nil {
+                HStack(alignment: .top, spacing: 18) {
+                    if !metadata.weaknesses.isEmpty {
+                        combatFact("Weakness", metadata.weaknesses)
+                    }
+                    if !metadata.resistances.isEmpty {
+                        combatFact("Resistance", metadata.resistances)
+                    }
+                    if let retreatCost = metadata.retreatCost {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Retreat").font(.caption).foregroundStyle(.secondary)
+                            Text("\(retreatCost)").font(.subheadline.bold())
+                        }
+                    }
+                }
+            }
+
+            if metadata.regulationMark != nil || metadata.legality != nil {
+                Divider()
+                HStack(spacing: 16) {
+                    if let regulationMark = metadata.regulationMark {
+                        Label("Regulation \(regulationMark)", systemImage: "checkmark.seal")
+                    }
+                    if let legality = metadata.legality {
+                        Text("Standard \(legality.standard ? "Legal" : "Not legal")")
+                        Text("Expanded \(legality.expanded ? "Legal" : "Not legal")")
+                    }
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            }
+
+            if let flavorText = metadata.flavorText, !flavorText.isEmpty {
+                Text(flavorText)
+                    .font(.footnote.italic())
+                    .foregroundStyle(.secondary)
+            }
+
+            if let updatedAt = metadata.updatedAt {
+                Text("Card data updated \(updatedAt.formatted(date: .abbreviated, time: .omitted)) by TCGdex")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func cardFact(
+        _ label: String,
+        _ value: String,
+        _ systemImage: String
+    ) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label).font(.caption2).foregroundStyle(.secondary)
+                Text(value).font(.subheadline.bold()).lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func mechanicCard(
+        label: String,
+        name: String,
+        detail: String?,
+        trailing: String?,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(tint)
+                    Text(name).font(.headline)
+                }
+                Spacer()
+                if let trailing, !trailing.isEmpty {
+                    Text(trailing).font(.headline.monospacedDigit())
+                }
+            }
+            if let detail, !detail.isEmpty {
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func combatFact(_ label: String, _ values: [CatalogTypeModifier]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(values.map { [$0.type, $0.value].compactMap { $0 }.joined(separator: " ") }.joined(separator: ", "))
+                .font(.subheadline.bold())
+        }
+    }
+
+    private func readableStage(_ stage: String) -> String {
+        switch stage.lowercased() {
+        case "stage1": "Stage 1"
+        case "stage2": "Stage 2"
+        case "basic": "Basic"
+        default: stage
         }
     }
 
@@ -4564,6 +4741,8 @@ struct SettingsView: View {
     @AppStorage(PricingSettings.cardmarketCurrencyKey)
     private var cardmarketCurrency = PricingSettings.defaultCardmarketCurrency.rawValue
     @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
+    @AppStorage(AppExperienceSettings.introductionCompletedKey)
+    private var introductionCompleted = false
 
     var body: some View {
         NavigationStack {
@@ -4783,6 +4962,20 @@ struct SettingsView: View {
 
                 Section("iCloud") {
                     LabeledContent("Sync", value: "Off")
+                }
+
+                Section("Help & Updates") {
+                    NavigationLink {
+                        WhatsNewView(release: AppReleaseNotes.current)
+                    } label: {
+                        Label("What’s New", systemImage: "sparkles")
+                    }
+
+                    Button {
+                        introductionCompleted = false
+                    } label: {
+                        Label("Reset Introduction", systemImage: "arrow.counterclockwise")
+                    }
                 }
 
                 Section {

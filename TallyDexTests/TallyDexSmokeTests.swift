@@ -130,6 +130,48 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertEqual(SetsBrowsingStyle.resolve("unsupported"), .seriesFirst)
     }
 
+    func testAppExperiencePresentsIntroductionBeforeReleaseNotes() {
+        XCTAssertEqual(
+            AppExperienceSettings.nextDestination(
+                introductionCompleted: false,
+                lastSeenReleaseVersion: "",
+                currentVersion: "0.9.14"
+            ),
+            .introduction
+        )
+        XCTAssertEqual(
+            AppExperienceSettings.nextDestination(
+                introductionCompleted: true,
+                lastSeenReleaseVersion: "0.9.13",
+                currentVersion: "0.9.14"
+            ),
+            .whatsNew
+        )
+        XCTAssertNil(
+            AppExperienceSettings.nextDestination(
+                introductionCompleted: true,
+                lastSeenReleaseVersion: "0.9.14",
+                currentVersion: "0.9.14"
+            )
+        )
+    }
+
+    func testCurrentReleaseNotesAreUsefulAndUnique() {
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.14")
+        XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 3)
+        XCTAssertEqual(
+            Set(AppReleaseNotes.current.notes.map(\.id)).count,
+            AppReleaseNotes.current.notes.count
+        )
+        XCTAssertTrue(AppReleaseNotes.current.notes.allSatisfy { !$0.detail.isEmpty })
+    }
+
+    func testPricePreferenceOffersNativeEURAndUSDMarkets() {
+        XCTAssertEqual(CatalogPriceSource.cardmarket.currencyCode, "EUR")
+        XCTAssertEqual(CatalogPriceSource.tcgplayer.currencyCode, "USD")
+        XCTAssertEqual(Set(CatalogPriceSource.allCases.map(\.currencyCode)), ["EUR", "USD"])
+    }
+
     func testCollectionBackupTypeIsRegisteredAsJSON() {
         XCTAssertEqual(UTType.tallyDexCollection.identifier, PortableCollectionDocument.formatIdentifier)
         XCTAssertTrue(UTType.tallyDexCollection.conforms(to: .json))
