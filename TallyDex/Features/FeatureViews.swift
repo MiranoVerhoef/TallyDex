@@ -4022,7 +4022,9 @@ private struct CustomCollectionFolderRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(folder.name)
                     .font(.body.weight(.semibold))
-                Text("Matches “\(folder.cardNameQuery)” · \(folder.displayMode.displayName)")
+                Text(folder.pokemonName.map {
+                    "All \($0) cards · \(folder.displayMode.displayName)"
+                } ?? "Matches “\(folder.cardNameQuery)” · \(folder.displayMode.displayName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -4046,11 +4048,13 @@ private struct CustomCollectionFolderEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var cardNameQuery: String
+    @State private var pokemonName: String?
     @State private var displayMode: CustomCollectionFolderDisplayMode
     @State private var icon: CollectionFolderIcon
     @State private var coverCardID: String?
     @State private var coverCandidates: [CatalogCardSearchResult] = []
     @State private var isLoadingCoverCandidates = false
+    @State private var isChoosingPokemon = false
     @State private var isSaving = false
     @State private var isConfirmingDelete = false
     @State private var message: String?
@@ -4067,6 +4071,7 @@ private struct CustomCollectionFolderEditorView: View {
         self.folder = folder
         _name = State(initialValue: folder?.name ?? "")
         _cardNameQuery = State(initialValue: folder?.cardNameQuery ?? "")
+        _pokemonName = State(initialValue: folder?.pokemonName)
         _displayMode = State(initialValue: folder?.displayMode ?? .allMatching)
         _icon = State(initialValue: CollectionFolderIcon.validated(folder?.iconName))
         _coverCardID = State(initialValue: folder?.coverCardID)
@@ -4075,12 +4080,31 @@ private struct CustomCollectionFolderEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Collection") {
+                Section {
                     TextField("Name, e.g. All Lucario", text: $name)
                         .textInputAutocapitalization(.words)
-                    TextField("Card name, e.g. Lucario", text: $cardNameQuery)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
+
+                    Button {
+                        isChoosingPokemon = true
+                    } label: {
+                        LabeledContent {
+                            HStack(spacing: 6) {
+                                Text(trimmedQuery.isEmpty ? "Choose" : trimmedQuery)
+                                    .foregroundStyle(trimmedQuery.isEmpty ? .secondary : .primary)
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        } label: {
+                            Label("Pokémon", systemImage: "magnifyingglass")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } header: {
+                    Text("Collection")
+                } footer: {
+                    Text("Choose one Pokémon from the catalogue. Special card labels such as GX, V, ex, and Mega are grouped under the Pokémon’s name.")
                 }
 
                 Section("Collection image") {
@@ -4195,6 +4219,16 @@ private struct CustomCollectionFolderEditorView: View {
             .task(id: "\(trimmedQuery)|\(displayMode.rawValue)") {
                 await loadCoverCandidates()
             }
+            .sheet(isPresented: $isChoosingPokemon) {
+                PokemonRulePickerView(selectedName: pokemonName ?? trimmedQuery) { selectedName in
+                    cardNameQuery = selectedName
+                    pokemonName = selectedName
+                    coverCardID = nil
+                    if folder == nil, trimmedName.isEmpty {
+                        name = "All \(selectedName)"
+                    }
+                }
+            }
         }
     }
 
@@ -4208,7 +4242,12 @@ private struct CustomCollectionFolderEditorView: View {
         isLoadingCoverCandidates = true
         defer { isLoadingCoverCandidates = false }
         do {
-            let matches = try await catalogStore.cards(matchingName: trimmedQuery)
+            var matches = try await catalogStore.cards(matchingName: trimmedQuery)
+            if let pokemonName {
+                matches = matches.filter {
+                    PokemonRuleSearch.matches(cardName: $0.card.name, pokemonName: pokemonName)
+                }
+            }
             coverCandidates = displayMode == .ownedOnly
                 ? matches.filter { collectionStore.owns(cardID: $0.card.id) }
                 : matches
@@ -4230,6 +4269,7 @@ private struct CustomCollectionFolderEditorView: View {
             id: folder?.id ?? UUID(),
             name: trimmedName,
             cardNameQuery: trimmedQuery,
+            pokemonName: pokemonName,
             displayMode: displayMode,
             iconName: icon.rawValue,
             coverCardID: coverCardID,
@@ -4259,6 +4299,123 @@ private struct CustomCollectionFolderEditorView: View {
                 message = "That collection couldn’t be deleted. Please try again."
                 isSaving = false
             }
+        }
+    }
+}
+
+private struct PokemonRulePickerView: View {
+    let selectedName: String
+    let onSelect: (String) -> Void
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String
+    @State private var choices: [PokemonRuleChoice] = []
+    @State private var isSearching = false
+    @State private var searchFailed = false
+
+    private var trimmedSearch: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    init(selectedName: String, onSelect: @escaping (String) -> Void) {
+        self.selectedName = selectedName
+        self.onSelect = onSelect
+        _searchText = State(initialValue: selectedName)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if trimmedSearch.count < 2 {
+                    ContentUnavailableView(
+                        "Search for a Pokémon",
+                        systemImage: "magnifyingglass",
+                        description: Text("Enter at least two characters, then choose a name from the catalogue.")
+                    )
+                } else if isSearching && choices.isEmpty {
+                    ProgressView("Searching catalogue…")
+                } else if searchFailed {
+                    ContentUnavailableView(
+                        "Search Unavailable",
+                        systemImage: "exclamationmark.magnifyingglass",
+                        description: Text("The catalogue couldn’t be searched. Please try again.")
+                    )
+                } else if choices.isEmpty {
+                    ContentUnavailableView(
+                        "No Matching Pokémon",
+                        systemImage: "questionmark.app",
+                        description: Text("Try another spelling, or pre-index the complete catalogue in Settings.")
+                    )
+                } else {
+                    List(choices) { choice in
+                        Button {
+                            onSelect(choice.name)
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "pawprint.fill")
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(width: 34, height: 34)
+                                    .background(
+                                        Color.accentColor.opacity(0.11),
+                                        in: RoundedRectangle(cornerRadius: 10)
+                                    )
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(choice.name)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text("\(choice.matchingCardCount) indexed card\(choice.matchingCardCount == 1 ? "" : "s")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 8)
+                                if choice.name.caseInsensitiveCompare(selectedName) == .orderedSame {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .navigationTitle("Choose Pokémon")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Lucario, Pikachu, Mew…")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .task(id: trimmedSearch) {
+                await search()
+            }
+        }
+    }
+
+    @MainActor
+    private func search() async {
+        guard trimmedSearch.count >= 2 else {
+            choices = []
+            searchFailed = false
+            isSearching = false
+            return
+        }
+        isSearching = true
+        searchFailed = false
+        defer { isSearching = false }
+        do {
+            let results = try await catalogStore.cards(matchingName: trimmedSearch)
+            guard !Task.isCancelled else { return }
+            choices = PokemonRuleSearch.choices(from: results, query: trimmedSearch)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            choices = []
+            searchFailed = true
         }
     }
 }
@@ -4419,7 +4576,11 @@ private struct CustomCollectionFolderDetailView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Matches card names containing “\(folder.cardNameQuery)”", systemImage: "text.magnifyingglass")
+                    Label(
+                        folder.pokemonName.map { "Every \($0) card, including GX, V, ex, and other forms" }
+                            ?? "Matches card names containing “\(folder.cardNameQuery)”",
+                        systemImage: folder.pokemonName == nil ? "text.magnifyingglass" : "pawprint.fill"
+                    )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
@@ -4462,7 +4623,7 @@ private struct CustomCollectionFolderDetailView: View {
                     ContentUnavailableView(
                         "No Matching Cards",
                         systemImage: "rectangle.stack.badge.questionmark",
-                        description: Text("Long-press this collection and edit its card-name rule.")
+                        description: Text("Long-press this collection and choose its Pokémon again.")
                     )
                 } else if visibleMatches.isEmpty {
                     ContentUnavailableView(
@@ -4694,7 +4855,14 @@ private struct CustomCollectionFolderDetailView: View {
         message = nil
         defer { isLoading = false }
         do {
-            matches = try await catalogStore.cards(matchingName: folder.cardNameQuery)
+            let candidates = try await catalogStore.cards(matchingName: folder.cardNameQuery)
+            if let pokemonName = folder.pokemonName {
+                matches = candidates.filter {
+                    PokemonRuleSearch.matches(cardName: $0.card.name, pokemonName: pokemonName)
+                }
+            } else {
+                matches = candidates
+            }
             let loadedCards = matches.map(\.card)
             Task {
                 await artworkCacheStore.warmImagesIfNeeded(

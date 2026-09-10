@@ -361,10 +361,135 @@ enum CustomCollectionFolderDisplayMode: String, Codable, CaseIterable, Sendable 
     }
 }
 
+struct PokemonRuleChoice: Equatable, Identifiable, Sendable {
+    let name: String
+    let matchingCardCount: Int
+    let exampleCard: CatalogCard
+    let exampleSetName: String
+
+    var id: String { name.lowercased() }
+}
+
+enum PokemonRuleSearch {
+    static func choices(
+        from results: [CatalogCardSearchResult],
+        query: String
+    ) -> [PokemonRuleChoice] {
+        let normalizedQuery = normalized(query)
+        var grouped: [String: (name: String, matches: [CatalogCardSearchResult])] = [:]
+        for result in results {
+            for speciesName in speciesNames(in: result.card.name) {
+                let key = normalized(speciesName)
+                guard key.contains(normalizedQuery) else { continue }
+                if var existing = grouped[key] {
+                    if !existing.matches.contains(where: { $0.card.id == result.card.id }) {
+                        existing.matches.append(result)
+                    }
+                    grouped[key] = existing
+                } else {
+                    grouped[key] = (speciesName, [result])
+                }
+            }
+        }
+
+        return grouped.compactMap { _, group in
+            guard let example = group.matches.first else { return nil }
+            return PokemonRuleChoice(
+                name: group.name,
+                matchingCardCount: group.matches.count,
+                exampleCard: example.card,
+                exampleSetName: example.setName
+            )
+        }.sorted { left, right in
+            let leftName = normalized(left.name)
+            let rightName = normalized(right.name)
+            let leftExact = leftName == normalizedQuery
+            let rightExact = rightName == normalizedQuery
+            if leftExact != rightExact { return leftExact }
+            let leftPrefix = leftName.hasPrefix(normalizedQuery)
+            let rightPrefix = rightName.hasPrefix(normalizedQuery)
+            if leftPrefix != rightPrefix { return leftPrefix }
+            if left.name.count != right.name.count { return left.name.count < right.name.count }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
+    }
+
+    static func matches(cardName: String, pokemonName: String) -> Bool {
+        let expected = normalized(pokemonName)
+        guard !expected.isEmpty else { return false }
+        return speciesNames(in: cardName).contains { normalized($0) == expected }
+    }
+
+    private static func speciesNames(in cardName: String) -> [String] {
+        cardName.components(separatedBy: " & ").compactMap { component in
+            var name = component.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nonPokemonSuffixes = [" Spirit Link", " Doll"]
+            guard !nonPokemonSuffixes.contains(where: {
+                name.range(of: $0, options: [.caseInsensitive, .anchored, .backwards]) != nil
+            }) else { return nil }
+
+            let suffixes = [
+                " V-UNION", " VSTAR", " VMAX", " LEGEND", " BREAK", " LV.X",
+                " Prime", " Star", "-GX", " GX", "-EX", " EX", " ex", " V",
+                " GL", " FB", " E4", " C", " G", " δ", " ☆",
+            ]
+            var removedSuffix = true
+            while removedSuffix {
+                removedSuffix = false
+                for suffix in suffixes where name.range(
+                    of: suffix,
+                    options: [.caseInsensitive, .anchored, .backwards]
+                ) != nil {
+                    name.removeLast(suffix.count)
+                    name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    removedSuffix = true
+                    break
+                }
+            }
+
+            if let ownerRange = name.range(of: "'s ", options: [.caseInsensitive, .backwards]) {
+                name = String(name[ownerRange.upperBound...])
+            }
+
+            let prefixes = [
+                "Mega ", "M ", "Hisuian ", "Galarian ", "Alolan ", "Paldean ",
+                "Dark ", "Light ", "Rocket's ",
+            ]
+            var removedPrefix = true
+            while removedPrefix {
+                removedPrefix = false
+                for prefix in prefixes where name.hasPrefix(prefix, options: .caseInsensitive) {
+                    name.removeFirst(prefix.count)
+                    name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    removedPrefix = true
+                    break
+                }
+            }
+            return name.isEmpty ? nil : name
+        }
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
+}
+
+private extension String {
+    func hasPrefix(_ prefix: String, options: String.CompareOptions) -> Bool {
+        range(of: prefix, options: options.union(.anchored)) != nil
+    }
+}
+
 struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
     let id: UUID
     let name: String
     let cardNameQuery: String
+    /// A canonical species selected from the catalogue. `nil` identifies a
+    /// legacy free-text rule, which retains its original substring behavior.
+    let pokemonName: String?
     let displayMode: CustomCollectionFolderDisplayMode
     let iconName: String
     let coverCardID: String?
@@ -375,6 +500,7 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
         id: UUID,
         name: String,
         cardNameQuery: String,
+        pokemonName: String? = nil,
         displayMode: CustomCollectionFolderDisplayMode,
         iconName: String = CollectionFolderIcon.defaultIcon.rawValue,
         coverCardID: String? = nil,
@@ -384,6 +510,7 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
         self.id = id
         self.name = name
         self.cardNameQuery = cardNameQuery
+        self.pokemonName = pokemonName
         self.displayMode = displayMode
         self.iconName = CollectionFolderIcon.validated(iconName).rawValue
         self.coverCardID = coverCardID

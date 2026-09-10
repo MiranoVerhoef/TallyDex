@@ -222,6 +222,7 @@ final class CollectionFoundationTests: XCTestCase {
                 id: folderID,
                 name: "Before",
                 cardNameQuery: "Lucario",
+                pokemonName: "Lucario",
                 displayMode: .allMatching,
                 createdAt: before,
                 updatedAt: before
@@ -298,6 +299,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(restoredPreferences["me01"]?.goal, .custom)
         XCTAssertEqual(restoredPreferences["me01"]?.includedVariants, [.reverseHolo])
         XCTAssertEqual(restoredFolders.first?.name, "Before")
+        XCTAssertEqual(restoredFolders.first?.pokemonName, "Lucario")
         XCTAssertEqual(restoredMetadata.notes, "Before")
         let backups = try await repository.fetchBackups()
         XCTAssertEqual(backups.count, 2)
@@ -313,6 +315,7 @@ final class CollectionFoundationTests: XCTestCase {
             id: id,
             name: "All Lucario",
             cardNameQuery: "Lucario",
+            pokemonName: "Lucario",
             displayMode: .allMatching,
             iconName: CollectionFolderIcon.heart.rawValue,
             coverCardID: "smp-SM95",
@@ -325,6 +328,7 @@ final class CollectionFoundationTests: XCTestCase {
             id: id,
             name: "Owned Lucario",
             cardNameQuery: "Lucario",
+            pokemonName: "Lucario",
             displayMode: .ownedOnly,
             iconName: CollectionFolderIcon.crown.rawValue,
             coverCardID: "swshp-SWSH186",
@@ -731,7 +735,8 @@ final class CollectionFoundationTests: XCTestCase {
             includedVariants: [.holo, .reverseHolo], includesSecretCards: false, updatedAt: update
         ))
         try await source.saveCustomFolder(.init(
-            id: folderID, name: "Lucario", cardNameQuery: "Lucario", displayMode: .ownedOnly,
+            id: folderID, name: "Lucario", cardNameQuery: "Lucario", pokemonName: "Lucario",
+            displayMode: .ownedOnly,
             iconName: CollectionFolderIcon.star.rawValue,
             coverCardID: "smp-SM95",
             createdAt: update, updatedAt: update
@@ -756,6 +761,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(exactEntries.first?.quantity, 1)
         XCTAssertEqual(preferences["me01"]?.includedVariants, [.holo, .reverseHolo])
         XCTAssertEqual(folders.first?.id, folderID)
+        XCTAssertEqual(folders.first?.pokemonName, "Lucario")
         XCTAssertEqual(folders.first?.iconName, CollectionFolderIcon.star.rawValue)
         XCTAssertEqual(folders.first?.coverCardID, "smp-SM95")
         XCTAssertEqual(metadata.notes, "Binder page 3")
@@ -892,6 +898,40 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertTrue(csv.contains("\"Mint, signed\""))
     }
 
+    func testPokemonRuleChoicesUseRealNamesWithoutDuplicates() {
+        let results = [
+            searchResult(id: "a", name: "Lucario V", setName: "One"),
+            searchResult(id: "b", name: "Lucario", setName: "Two"),
+            searchResult(id: "c", name: "Lucario-GX", setName: "Three"),
+            searchResult(id: "d", name: "Mega Lucario ex", setName: "Four"),
+            searchResult(id: "e", name: "Lucario & Melmetal-GX", setName: "Five"),
+            searchResult(id: "f", name: "Lucario C LV.X", setName: "Six"),
+            searchResult(id: "g", name: "Lucario GL", setName: "Seven"),
+            searchResult(id: "h", name: "Lucario Spirit Link", setName: "Eight"),
+        ]
+
+        let choices = PokemonRuleSearch.choices(from: results, query: "Lucario")
+
+        XCTAssertEqual(choices.map(\.name), ["Lucario"])
+        XCTAssertEqual(choices.first?.matchingCardCount, 7)
+        XCTAssertTrue(PokemonRuleSearch.matches(cardName: "Lucario-GX", pokemonName: "Lucario"))
+        XCTAssertTrue(PokemonRuleSearch.matches(cardName: "Lucario & Melmetal-GX", pokemonName: "Lucario"))
+        XCTAssertTrue(PokemonRuleSearch.matches(cardName: "Lucario C LV.X", pokemonName: "Lucario"))
+        XCTAssertFalse(PokemonRuleSearch.matches(cardName: "Lucario Spirit Link", pokemonName: "Lucario"))
+        XCTAssertFalse(PokemonRuleSearch.matches(cardName: "Riolu", pokemonName: "Lucario"))
+    }
+
+    func testPokemonRuleSearchKeepsMewAndMewtwoDistinct() {
+        let results = [
+            searchResult(id: "a", name: "Mew ex", setName: "One"),
+            searchResult(id: "b", name: "Mewtwo VSTAR", setName: "Two"),
+        ]
+
+        let choices = PokemonRuleSearch.choices(from: results, query: "Mew")
+
+        XCTAssertEqual(choices.map(\.name), ["Mew", "Mewtwo"])
+    }
+
     func testLocalHTTPRequestParsesEncodedValuesCookiesAndBodyLength() throws {
         let body = "code=123456&note=Binder+page+%233"
         let raw = """
@@ -940,6 +980,27 @@ final class CollectionFoundationTests: XCTestCase {
             category: nil,
             illustrator: nil,
             rarity: nil
+        )
+    }
+
+    private func searchResult(
+        id: String,
+        name: String,
+        setName: String
+    ) -> CatalogCardSearchResult {
+        CatalogCardSearchResult(
+            card: CatalogCard(
+                id: id,
+                setID: "set-\(id)",
+                localID: "1",
+                name: name,
+                imageURL: nil,
+                category: nil,
+                illustrator: nil,
+                rarity: nil
+            ),
+            setName: setName,
+            setReleaseDate: nil
         )
     }
 
