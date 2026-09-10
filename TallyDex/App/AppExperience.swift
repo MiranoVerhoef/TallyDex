@@ -13,6 +13,20 @@ enum AppExperienceSettings {
         guard lastSeenReleaseVersion != currentVersion else { return nil }
         return .whatsNew
     }
+
+    static func stateAfterCompletingIntroduction(
+        currentVersion: String
+    ) -> AppExperienceState {
+        AppExperienceState(
+            introductionCompleted: true,
+            lastSeenReleaseVersion: currentVersion
+        )
+    }
+}
+
+struct AppExperienceState: Equatable {
+    let introductionCompleted: Bool
+    let lastSeenReleaseVersion: String
 }
 
 enum AppExperienceDestination: String, Identifiable {
@@ -38,13 +52,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.15",
-        headline: "Cleaner card pages",
+        version: "0.9.16",
+        headline: "A smoother first launch",
         notes: [
             AppReleaseNote(
-                systemImage: "rectangle.compress.vertical",
-                title: "Details stay out of the way",
-                detail: "The optional Card details block now starts collapsed. Expand it on any card, or change the default under Settings → Card Pages. Printings, prices, notes, and collection controls are unchanged."
+                systemImage: "checkmark.circle.fill",
+                title: "Setup appears only once",
+                detail: "A fresh install now presents one introduction and then opens TallyDex. It no longer repeats setup or immediately presents the current version’s What’s New screen. Future app updates still show their release notes once."
             ),
         ]
     )

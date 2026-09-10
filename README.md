@@ -191,6 +191,13 @@ Completed in v0.9.9:
 4. The automatic resolver uses TCGdex and Pokémon's official asset host only. It
    does not depend on GitHub or the deprecated community Pokémon TCG API.
 
+Completed in v0.9.16:
+
+1. Completing the introduction on a fresh install now uses an explicit completion
+   transition instead of re-evaluating setup during sheet dismissal. Onboarding
+   appears once, and the current build’s What’s New sheet no longer follows it;
+   later app updates still present their notes once.
+
 Completed in v0.9.15:
 
 1. The optional rich Card details block now starts collapsed, keeping card pages

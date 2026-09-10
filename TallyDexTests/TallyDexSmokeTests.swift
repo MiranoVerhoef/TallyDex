@@ -154,10 +154,23 @@ final class TallyDexSmokeTests: XCTestCase {
                 currentVersion: "0.9.14"
             )
         )
+
+        let completedState = AppExperienceSettings.stateAfterCompletingIntroduction(
+            currentVersion: "0.9.16"
+        )
+        XCTAssertTrue(completedState.introductionCompleted)
+        XCTAssertEqual(completedState.lastSeenReleaseVersion, "0.9.16")
+        XCTAssertNil(
+            AppExperienceSettings.nextDestination(
+                introductionCompleted: completedState.introductionCompleted,
+                lastSeenReleaseVersion: completedState.lastSeenReleaseVersion,
+                currentVersion: "0.9.16"
+            )
+        )
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.15")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.16")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
