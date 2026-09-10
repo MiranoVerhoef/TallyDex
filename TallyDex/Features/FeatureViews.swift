@@ -2009,6 +2009,8 @@ struct CatalogCardDetailView: View {
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(CardDisplaySettings.detailsExpandedByDefaultKey)
+    private var detailsExpandedByDefault = CardDisplaySettings.defaultDetailsExpanded
     @State private var snapshot: CatalogCardSnapshot?
     @State private var isLoadingDetails = true
     @State private var message: String?
@@ -2021,6 +2023,7 @@ struct CatalogCardDetailView: View {
     @State private var savedNotes = ""
     @State private var isSavingMetadata = false
     @State private var isConfirmingRefresh = false
+    @State private var isRichMetadataExpanded = CardDisplaySettings.detailsExpandedByDefault
 
     private var displayedCard: CatalogCard { snapshot?.card ?? card }
     private var availableVariants: [CatalogVariantKind] {
@@ -2131,6 +2134,9 @@ struct CatalogCardDetailView: View {
         .task(id: card.id) {
             await loadDetails()
         }
+        .onChange(of: detailsExpandedByDefault) { _, isExpanded in
+            isRichMetadataExpanded = isExpanded
+        }
         .task(id: card.id) {
             isLoadingCollection = true
             defer { isLoadingCollection = false }
@@ -2168,108 +2174,111 @@ struct CatalogCardDetailView: View {
     }
 
     private func richMetadataSection(_ metadata: CatalogCardMetadata) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Card details")
-                .font(.headline)
-
-            if !metadata.dexIDs.isEmpty || metadata.hp != nil || !metadata.types.isEmpty || metadata.stage != nil {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
-                    ForEach(metadata.dexIDs, id: \.self) { dexID in
-                        cardFact("Pokédex", "#\(dexID)", "number")
-                    }
-                    if let hp = metadata.hp {
-                        cardFact("HP", "\(hp)", "heart.fill")
-                    }
-                    ForEach(metadata.types, id: \.self) { type in
-                        cardFact("Type", type, "circle.hexagongrid.fill")
-                    }
-                    if let stage = metadata.stage {
-                        cardFact("Stage", readableStage(stage), "arrow.up.right.circle.fill")
-                    }
-                }
-            }
-
-            if let evolvesFrom = metadata.evolvesFrom {
-                Label("Evolves from \(evolvesFrom)", systemImage: "arrow.triangle.branch")
-                    .font(.subheadline.weight(.medium))
-            }
-
-            ForEach(Array(metadata.abilities.enumerated()), id: \.offset) { _, ability in
-                mechanicCard(
-                    label: ability.type ?? "Ability",
-                    name: ability.name,
-                    detail: ability.effect,
-                    trailing: nil,
-                    tint: .purple
-                )
-            }
-
-            ForEach(Array(metadata.attacks.enumerated()), id: \.offset) { _, attack in
-                mechanicCard(
-                    label: attack.cost.isEmpty ? "Attack" : attack.cost.joined(separator: " · "),
-                    name: attack.name,
-                    detail: attack.effect,
-                    trailing: attack.damage,
-                    tint: .orange
-                )
-            }
-
-            if let rulesText = metadata.rulesText, !rulesText.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(metadata.trainerType ?? metadata.energyType ?? "Card text")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                    Text(rulesText)
-                        .font(.subheadline)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-            }
-
-            if !metadata.weaknesses.isEmpty || !metadata.resistances.isEmpty || metadata.retreatCost != nil {
-                HStack(alignment: .top, spacing: 18) {
-                    if !metadata.weaknesses.isEmpty {
-                        combatFact("Weakness", metadata.weaknesses)
-                    }
-                    if !metadata.resistances.isEmpty {
-                        combatFact("Resistance", metadata.resistances)
-                    }
-                    if let retreatCost = metadata.retreatCost {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Retreat").font(.caption).foregroundStyle(.secondary)
-                            Text("\(retreatCost)").font(.subheadline.bold())
+        DisclosureGroup(isExpanded: $isRichMetadataExpanded) {
+            VStack(alignment: .leading, spacing: 14) {
+                if !metadata.dexIDs.isEmpty || metadata.hp != nil || !metadata.types.isEmpty || metadata.stage != nil {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
+                        ForEach(metadata.dexIDs, id: \.self) { dexID in
+                            cardFact("Pokédex", "#\(dexID)", "number")
+                        }
+                        if let hp = metadata.hp {
+                            cardFact("HP", "\(hp)", "heart.fill")
+                        }
+                        ForEach(metadata.types, id: \.self) { type in
+                            cardFact("Type", type, "circle.hexagongrid.fill")
+                        }
+                        if let stage = metadata.stage {
+                            cardFact("Stage", readableStage(stage), "arrow.up.right.circle.fill")
                         }
                     }
                 }
-            }
 
-            if metadata.regulationMark != nil || metadata.legality != nil {
-                Divider()
-                HStack(spacing: 16) {
-                    if let regulationMark = metadata.regulationMark {
-                        Label("Regulation \(regulationMark)", systemImage: "checkmark.seal")
+                if let evolvesFrom = metadata.evolvesFrom {
+                    Label("Evolves from \(evolvesFrom)", systemImage: "arrow.triangle.branch")
+                        .font(.subheadline.weight(.medium))
+                }
+
+                ForEach(Array(metadata.abilities.enumerated()), id: \.offset) { _, ability in
+                    mechanicCard(
+                        label: ability.type ?? "Ability",
+                        name: ability.name,
+                        detail: ability.effect,
+                        trailing: nil,
+                        tint: .purple
+                    )
+                }
+
+                ForEach(Array(metadata.attacks.enumerated()), id: \.offset) { _, attack in
+                    mechanicCard(
+                        label: attack.cost.isEmpty ? "Attack" : attack.cost.joined(separator: " · "),
+                        name: attack.name,
+                        detail: attack.effect,
+                        trailing: attack.damage,
+                        tint: .orange
+                    )
+                }
+
+                if let rulesText = metadata.rulesText, !rulesText.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(metadata.trainerType ?? metadata.energyType ?? "Card text")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(rulesText)
+                            .font(.subheadline)
                     }
-                    if let legality = metadata.legality {
-                        Text("Standard \(legality.standard ? "Legal" : "Not legal")")
-                        Text("Expanded \(legality.expanded ? "Legal" : "Not legal")")
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+                }
+
+                if !metadata.weaknesses.isEmpty || !metadata.resistances.isEmpty || metadata.retreatCost != nil {
+                    HStack(alignment: .top, spacing: 18) {
+                        if !metadata.weaknesses.isEmpty {
+                            combatFact("Weakness", metadata.weaknesses)
+                        }
+                        if !metadata.resistances.isEmpty {
+                            combatFact("Resistance", metadata.resistances)
+                        }
+                        if let retreatCost = metadata.retreatCost {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Retreat").font(.caption).foregroundStyle(.secondary)
+                                Text("\(retreatCost)").font(.subheadline.bold())
+                            }
+                        }
                     }
                 }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            }
 
-            if let flavorText = metadata.flavorText, !flavorText.isEmpty {
-                Text(flavorText)
-                    .font(.footnote.italic())
+                if metadata.regulationMark != nil || metadata.legality != nil {
+                    Divider()
+                    HStack(spacing: 16) {
+                        if let regulationMark = metadata.regulationMark {
+                            Label("Regulation \(regulationMark)", systemImage: "checkmark.seal")
+                        }
+                        if let legality = metadata.legality {
+                            Text("Standard \(legality.standard ? "Legal" : "Not legal")")
+                            Text("Expanded \(legality.expanded ? "Legal" : "Not legal")")
+                        }
+                    }
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-            }
+                }
 
-            if let updatedAt = metadata.updatedAt {
-                Text("Card data updated \(updatedAt.formatted(date: .abbreviated, time: .omitted)) by TCGdex")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                if let flavorText = metadata.flavorText, !flavorText.isEmpty {
+                    Text(flavorText)
+                        .font(.footnote.italic())
+                        .foregroundStyle(.secondary)
+                }
+
+                if let updatedAt = metadata.updatedAt {
+                    Text("Card data updated \(updatedAt.formatted(date: .abbreviated, time: .omitted)) by TCGdex")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .padding(.top, 14)
+        } label: {
+            Label("Card details", systemImage: "list.bullet.rectangle.portrait")
+                .font(.headline)
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -4728,6 +4737,8 @@ struct SettingsView: View {
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(CardDisplaySettings.detailsExpandedByDefaultKey)
+    private var detailsExpandedByDefault = CardDisplaySettings.defaultDetailsExpanded
     @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(CollectionSettings.defaultGoalKey)
@@ -4777,6 +4788,14 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                }
+
+                Section {
+                    Toggle("Expand card details by default", isOn: $detailsExpandedByDefault)
+                } header: {
+                    Text("Card Pages")
+                } footer: {
+                    Text("Only the optional Card details block is affected. Printings, prices, notes, and collection controls stay visible as usual.")
                 }
 
                 Section {

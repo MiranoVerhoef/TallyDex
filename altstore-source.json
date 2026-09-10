@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.15/TallyDex-v0.9.15-collapsed-card-details.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.14/TallyDex-v0.9.14-card-details.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.13/TallyDex-v0.9.13-restore-preview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.12/TallyDex-v0.9.12-mcdonalds-badges.png",
@@ -79,6 +80,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.15",
+          "buildVersion": "51",
+          "date": "2026-09-10",
+          "localizedDescription": "The optional rich Card details block now starts collapsed to keep card pages compact. A new Settings → Card Pages preference can make it expanded by default, while each page remains individually expandable. Artwork, identity fields, Printings, prices, personal notes, and collection controls are unchanged and remain visible as before.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.15/TallyDex-v0.9.15.ipa",
+          "size": 8744925,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.14",
           "buildVersion": "50",
