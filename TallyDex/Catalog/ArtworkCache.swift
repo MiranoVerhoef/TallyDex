@@ -4,6 +4,35 @@ import ImageIO
 import Observation
 import UniformTypeIdentifiers
 
+enum ArtworkCacheSizeLimit: Int, CaseIterable, Identifiable, Sendable {
+    case mb100 = 100
+    case mb250 = 250
+    case mb400 = 400
+    case mb500 = 500
+    case gb1 = 1_024
+    case gb2 = 2_048
+
+    var id: Int { rawValue }
+    var byteCount: Int64 { Int64(rawValue) * 1_024 * 1_024 }
+    var title: String {
+        switch self {
+        case .gb1: "1 GB"
+        case .gb2: "2 GB"
+        case .mb400: "400 MB (Default)"
+        default: "\(rawValue) MB"
+        }
+    }
+}
+
+enum ArtworkCacheSettings {
+    static let limitKey = "catalog.artworkCache.sizeLimitMB"
+    static let defaultLimit = ArtworkCacheSizeLimit.mb400
+
+    static func preferredLimit(defaults: UserDefaults = .standard) -> ArtworkCacheSizeLimit {
+        ArtworkCacheSizeLimit(rawValue: defaults.integer(forKey: limitKey)) ?? defaultLimit
+    }
+}
+
 enum CatalogArtworkCategory: String, CaseIterable, Identifiable, Sendable {
     case seriesLogos = "series-logos"
     case setLogos = "set-logos"
@@ -227,7 +256,11 @@ actor CatalogArtworkCache {
     private let fileManager: FileManager
     private let rootDirectory: URL
     private let offlineRootDirectory: URL
-    private let maximumByteCount: Int64
+    private let maximumByteCountOverride: Int64?
+    private let limitDefaults: UserDefaults
+    private var maximumByteCount: Int64 {
+        maximumByteCountOverride ?? ArtworkCacheSettings.preferredLimit(defaults: limitDefaults).byteCount
+    }
     private let httpClient: any HTTPClient
     private let imageDirectory: TCGdexImageDirectory
     private var missingAssetsUntil: [URL: Date] = [:]
@@ -236,12 +269,14 @@ actor CatalogArtworkCache {
         rootDirectory: URL? = nil,
         offlineRootDirectory: URL? = nil,
         fileManager: FileManager = .default,
-        maximumByteCount: Int64 = CatalogArtworkCache.maximumByteCount,
+        maximumByteCount: Int64? = nil,
+        preferencesSuiteName: String? = nil,
         httpClient: any HTTPClient = URLSessionHTTPClient(),
         imageDirectory: TCGdexImageDirectory = .shared
     ) {
         self.fileManager = fileManager
-        self.maximumByteCount = maximumByteCount
+        self.maximumByteCountOverride = maximumByteCount
+        self.limitDefaults = preferencesSuiteName.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         self.httpClient = httpClient
         self.imageDirectory = imageDirectory
         let automaticCacheBase = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]

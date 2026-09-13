@@ -43,6 +43,12 @@ SOFTWARE.
 
 ## Bundled card thumbnails
 
+The matching Scarlet & Violet Promo and Energy set logos are bundled as
+`BundledSetLogos/svp.png` and `BundledSetLogos/sve.png`. Source artwork:
+[Scarlet & Violet Promos](https://den-media.pokellector.com/logos/Scarlet-Violet-Promos.logo.364.png)
+and [Scarlet & Violet Energies](https://den-media.pokellector.com/logos/Scarlet-Violet-Energies.logo.404.png).
+Their respective owners retain all artwork and trademark rights.
+
 The owner-supplied thumbnail handoff contains 839 primary card images and 48
 separately mapped My First Battle variant files. Exact card IDs, source pages,
 variant mappings, image dimensions, and SHA-256 checksums are retained in

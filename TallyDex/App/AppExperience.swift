@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.19",
-        headline: "More cards, fewer missing images",
+        version: "0.9.20",
+        headline: "Artwork, under your control",
         notes: [
             AppReleaseNote(
                 systemImage: "server.rack",
-                title: "Your TCGdex API first",
-                detail: "The TallyDex API is now the first source, with automatic fallback to official TCGdex. Change its HTTPS address or check its connection in Settings → Advanced."
+                title: "About the TallyDex API",
+                detail: "Advanced settings now clearly label the TallyDex API. Tap its info button to learn about the development version of TCGdex used for faster card updates."
             ),
             AppReleaseNote(
                 systemImage: "photo.stack",
-                title: "839 bundled card thumbnails",
-                detail: "Previously missing card thumbnails are included in the app, matched by exact card ID. Verified parent-set paths and Pokémon’s official image host remain additional fallbacks."
+                title: "Choose your artwork cache limit",
+                detail: "Settings → Artwork Cache lets you choose a limit from 100 MB to 2 GB. The default stays 400 MB, and kept-offline sets and bundled images remain separate."
             ),
             AppReleaseNote(
                 systemImage: "archivebox.fill",
-                title: "Local-first artwork",
-                detail: "Your collections, backups, and kept-offline sets stay intact when switching API sources. Bundled artwork is thumbnail-sized; high-resolution artwork is used when supplied by the earlier sources."
+                title: "Scarlet & Violet set logos",
+                detail: "The Energy and Black Star Promo sets now include their matching logos, even when the API does not provide them. Collection data and card-detail preferences stay unchanged."
             ),
         ]
     )

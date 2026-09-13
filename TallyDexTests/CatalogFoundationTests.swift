@@ -2465,6 +2465,62 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(remaining.statistics(for: .expansionSymbols).fileCount, 1)
     }
 
+    func testArtworkCachePreferenceDefaultsAndPersistsKnownLimits() {
+        let suite = "TallyDexTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(ArtworkCacheSettings.preferredLimit(defaults: defaults), .mb400)
+        for limit in ArtworkCacheSizeLimit.allCases {
+            defaults.set(limit.rawValue, forKey: ArtworkCacheSettings.limitKey)
+            XCTAssertEqual(ArtworkCacheSettings.preferredLimit(defaults: UserDefaults(suiteName: suite)!), limit)
+            XCTAssertGreaterThan(limit.byteCount, 0)
+        }
+        defaults.set(-1, forKey: ArtworkCacheSettings.limitKey)
+        XCTAssertEqual(ArtworkCacheSettings.preferredLimit(defaults: defaults), .mb400)
+        XCTAssertEqual(ArtworkCacheSizeLimit.allCases.count, 6)
+    }
+
+    func testArtworkCacheReadsChangedLimitWithoutRestartAndPreservesOfflineData() async throws {
+        let suite = "TallyDexTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cardDirectory = root.appendingPathComponent("card-artwork", isDirectory: true)
+        let logoDirectory = root.appendingPathComponent("set-logos", isDirectory: true)
+        try FileManager.default.createDirectory(at: cardDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: logoDirectory, withIntermediateDirectories: true)
+        let cardFile = cardDirectory.appendingPathComponent("sparse-test.webp")
+        XCTAssertTrue(FileManager.default.createFile(atPath: cardFile.path, contents: Data()))
+        let handle = try FileHandle(forWritingTo: cardFile)
+        try handle.truncate(atOffset: UInt64(101 * 1_024 * 1_024))
+        try handle.close()
+        try Data([1]).write(to: logoDirectory.appendingPathComponent("test.png"))
+        defaults.set(ArtworkCacheSizeLimit.mb250.rawValue, forKey: ArtworkCacheSettings.limitKey)
+        let cache = CatalogArtworkCache(rootDirectory: root, preferencesSuiteName: suite)
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+        let offline = CatalogArtworkReference(url: URL(string: "https://example.com/test.png")!, category: .cardArtwork, offlineSetID: "test")
+        try await cache.storeOffline(png, for: offline, setID: "test")
+        try await cache.enforceLimit()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cardFile.path))
+        defaults.set(ArtworkCacheSizeLimit.mb100.rawValue, forKey: ArtworkCacheSettings.limitKey)
+        try await cache.enforceLimit()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cardFile.path))
+        let remaining = await cache.snapshot()
+        XCTAssertEqual(remaining.statistics(for: .setLogos).fileCount, 1)
+        let preserved = try await cache.data(for: offline)
+        XCTAssertEqual(preserved, png)
+    }
+
+    @MainActor
+    func testScarletVioletSupplementalSetsHaveBundledLogos() throws {
+        for (id, name) in [("svp", "SVP Black Star Promos"), ("sve", "Scarlet & Violet Energy")] {
+            let image = try XCTUnwrap(BundledSetLogo.image(for: set(id: id, seriesID: "sv", name: name)))
+            XCTAssertEqual(image.size.width, 420)
+            XCTAssertEqual(image.size.height, 160)
+        }
+    }
+
     func testArtworkCacheLimitRemovesCardImagesBeforeCoreArtwork() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
