@@ -72,7 +72,49 @@ Offline badge when the set is complete. Explicit downloads live separately from
 the automatic artwork cache, so its 400 MB cleanup never removes them. Manage
 individual downloads in Settings → Offline Sets.
 
+## API and card images
+
+Settings → Advanced configures the first TCGdex API source. It defaults to
+`https://tcgdex.tallydex.nl/v2/en/`, accepts an HTTPS origin or the English API
+root, and provides a connection check against the series list and an exact card.
+Disabling **Use My API First** starts with official TCGdex. API metadata requests
+fall back to `https://api.tcgdex.net/v2/en/` when the custom source fails. Failed
+hosts back off briefly; source-specific ETags prevent cross-provider 304 mistakes.
+
+For uncached card images, the ordered sources are: custom API's exact-card image
+field, official API's exact-card image field, verified parent-set paths, bundled
+thumbnails, Pokémon's official exact-set/collector-number host, then placeholder.
+No image CDN path is inferred from an API hostname. Existing cached artwork and
+kept-offline downloads are reused without a network lookup. The 839 primary
+bundled WebP thumbnails have exact-ID mappings in
+`TallyDex/Resources/BundledCardThumbnails/manifest.json`. Its 48 My First Battle
+variant files retain their original mappings and do not create new printings or
+duplicate card counts. All 887 supplied checksums were validated before import;
+these are thumbnail-sized fallbacks, not new high-resolution scans.
+
 ## Roadmap order
+
+### Next fixes requested — 2026-09-13
+
+- [ ] Add missing Trick or Trade sets and check yearly coverage. Keep their exact
+  card identities and special printings separate from the original expansion cards.
+- [ ] Group McDonald's releases inside their corresponding main series/era,
+  alongside the regular expansions, rather than a separate top-level McDonald's
+  listing. Use [Pokellector's set catalogue](https://www.pokellector.com/sets) as the
+  browsing reference: XY collections under XY, 2017–2019 collections under Sun &
+  Moon, 25th Anniversary/Match Battle under Sword & Shield, and Match Battle 2023/
+  Dragon Discovery under Scarlet & Violet. Each release remains its own set with
+  unchanged IDs, ownership, goals, and backups; this is grouping, not merging cards
+  into an unrelated expansion or changing Master completion requirements.
+- [ ] Add missing Energy cards and supplemental Energy sets under the appropriate
+  series/era. Audit which cards belong to an expansion versus a separate Energy
+  release, preserving exact identities and avoiding duplicate collection totals.
+- [x] Custom TCGdex API channel at `tcgdex.tallydex.nl`, configurable and checkable
+  in Advanced settings, with official-provider fallback and bundled thumbnails.
+
+Keep these catalogue fixes clean in the UI. Verify coverage and exact mappings
+before implementation; Pokellector is an organization reference, not a new runtime
+API or permission to copy its card artwork.
 
 Completed foundations:
 
@@ -460,6 +502,18 @@ Settings already saves an All Countries or official seller-country preference
 plus EUR or USD, so enabling the provider later will not require a data
 migration. These choices do not filter or convert TCGdex's current Europe-wide
 aggregate.
+
+Completed in v0.9.19:
+
+- Configurable custom TCGdex API, defaulting to `tcgdex.tallydex.nl`, with an
+  Advanced connection check and automatic official-provider fallback.
+- Exact-ID artwork routing through both APIs, verified parent paths, bundled
+  thumbnails, Pokémon's official asset host, and finally a placeholder.
+- 839 primary thumbnails and 48 separately mapped variant files from the supplied
+  handoff; all 887 SHA-256 checksums validated before bundling.
+- Source-scoped catalogue ETags and automatic artwork caches; explicitly kept
+  offline API images use exact-card keys so changing hosts preserves availability.
+- Updated What's New notes; card-details preferences and printings stay unchanged.
 
 ## Reporting catalog data
 

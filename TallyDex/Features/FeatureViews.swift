@@ -1862,11 +1862,13 @@ private struct CatalogCardTile: View {
 }
 
 private struct CachedCardImage: View {
-    let references: [CatalogArtworkReference]
+    let card: CatalogCard
+    @AppStorage(CatalogAPISettings.urlKey) private var apiURL = CatalogAPISettings.defaultURL
+    @AppStorage(CatalogAPISettings.enabledKey) private var apiEnabled = true
     @State private var imageData: Data?
 
     init(card: CatalogCard) {
-        references = card.thumbnailArtworkReferences
+        self.card = card
     }
 
     var body: some View {
@@ -1885,14 +1887,18 @@ private struct CachedCardImage: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .task(id: references) {
-            imageData = try? await CatalogArtworkCache.shared.bestAvailableData(for: references)
+        .task(id: "\(card.id)|\(card.imageURL?.absoluteString ?? "")|\(apiURL)|\(apiEnabled)") {
+            let data = try? await CatalogArtworkCache.shared.bestAvailableData(for: card.thumbnailArtworkReferences)
+            guard !Task.isCancelled else { return }
+            imageData = data
         }
     }
 }
 
 private struct CardDetailArtworkView: View {
     let card: CatalogCard
+    @AppStorage(CatalogAPISettings.urlKey) private var apiURL = CatalogAPISettings.defaultURL
+    @AppStorage(CatalogAPISettings.enabledKey) private var apiEnabled = true
     @State private var imageData: Data?
     @State private var saveResult: String?
     @State private var isSharing = false
@@ -1929,10 +1935,12 @@ private struct CardDetailArtworkView: View {
                 Label("Share Card", systemImage: "square.and.arrow.up")
             }
         }
-        .task(id: card.fullArtworkReference) {
+        .task(id: "\(card.id)|\(card.imageURL?.absoluteString ?? "")|\(apiURL)|\(apiEnabled)") {
             imageData = nil
             didFinishLoading = false
-            imageData = try? await CatalogArtworkCache.shared.bestAvailableData(for: card)
+            let data = try? await CatalogArtworkCache.shared.bestAvailableData(for: card)
+            guard !Task.isCancelled else { return }
+            imageData = data
             didFinishLoading = true
         }
         .alert(
@@ -5248,6 +5256,14 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink {
+                        AdvancedAPISettingsView()
+                    } label: {
+                        Label("Advanced", systemImage: "slider.horizontal.3")
+                    }
+                }
+
+                Section {
+                    NavigationLink {
                         AboutTallyDexView()
                     } label: {
                         Label("About TallyDex", systemImage: "info.circle")
@@ -6049,6 +6065,97 @@ private struct CollectionBackupsView: View {
     }
 }
 
+private struct AdvancedAPISettingsView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @AppStorage(CatalogAPISettings.urlKey) private var savedURL = CatalogAPISettings.defaultURL
+    @AppStorage(CatalogAPISettings.enabledKey) private var customEnabled = true
+    @State private var draftURL = ""
+    @State private var isChecking = false
+    @State private var checkResult: String?
+    @State private var checkSucceeded = false
+    @State private var validationMessage: String?
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Use My API First", isOn: $customEnabled)
+                TextField("HTTPS API URL", text: $draftURL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Custom TCGdex API URL")
+                HStack {
+                    Button("Save") { save() }
+                        .disabled(isChecking || draftURL == savedURL)
+                    Spacer()
+                    Button { Task { await check() } } label: {
+                        if isChecking { ProgressView() } else { Text("Check Connection") }
+                    }
+                    .disabled(isChecking || CatalogAPISettings.normalizedURL(draftURL) == nil)
+                }
+                if let validationMessage { Text(validationMessage).font(.footnote).foregroundStyle(.red) }
+                if let checkResult {
+                    Label(checkResult, systemImage: checkSucceeded ? "checkmark.circle" : "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(checkSucceeded ? Color.green : Color.orange)
+                }
+            } header: { Text("TCGdex API") } footer: {
+                Text("Use an HTTPS hostname or /v2/en API root. The official API is always the fallback. Saving does not change your collection or remove offline downloads.")
+            }
+            Section {
+                LabeledContent("1", value: "My API")
+                LabeledContent("2", value: "Official TCGdex API")
+                LabeledContent("3", value: "Verified parent set")
+                LabeledContent("4", value: "Bundled thumbnails")
+                LabeledContent("5", value: "Pokémon official image host")
+                LabeledContent("6", value: "Placeholder")
+            } header: { Text("Card Image Fallback Order") } footer: {
+                Text("Only exact card IDs and collector numbers are used. Bundled images are thumbnails, not high-resolution artwork. Cached and kept-offline images remain available without a connection.")
+            }
+        }
+        .navigationTitle("Advanced")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { draftURL = savedURL }
+        .onChange(of: draftURL) { _, _ in checkResult = nil; validationMessage = nil }
+        .onChange(of: customEnabled) { _, _ in Task { await catalogStore.refresh() } }
+    }
+
+    private func save() {
+        guard CatalogAPISettings.normalizedURL(draftURL) != nil else {
+            validationMessage = "Enter an HTTPS origin or an English /v2/en API root, without a query or credentials."
+            return
+        }
+        savedURL = draftURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { await catalogStore.refresh() }
+    }
+
+    @MainActor private func check() async {
+        guard let url = CatalogAPISettings.normalizedURL(draftURL) else { return }
+        let checkedDraft = draftURL
+        isChecking = true
+        checkResult = nil
+        defer { isChecking = false }
+        do {
+            let client = TCGdexClient(
+                httpClient: URLSessionHTTPClient(), baseURL: url,
+                retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero), timeout: 6
+            )
+            let series = try await client.fetchSeriesIndex()
+            let card = try await client.fetchCard(id: "smp-SM95")
+            guard !series.isEmpty else { throw TCGdexError.invalidResponse }
+            guard draftURL == checkedDraft else { return }
+            checkSucceeded = true
+            checkResult = "API connected · \(series.count) series. Image host: \(card.card.imageURL?.host ?? "not supplied for test card")."
+        } catch is CancellationError {
+            return
+        } catch {
+            guard draftURL == checkedDraft else { return }
+            checkSucceeded = false
+            checkResult = "Connection check failed: \(error.localizedDescription). The official API remains available as fallback."
+        }
+    }
+}
+
 private struct PriceDataSettingsView: View {
     private enum RemovalAction {
         case history
@@ -6470,8 +6577,8 @@ private struct AboutTallyDexView: View {
             }
 
             Section("Data & Artwork") {
-                Text("Catalog metadata, set logos, and expansion symbols are supplied by TCGdex and cached locally by TallyDex.")
-                Text("When TCGdex omits an exactly identified card image, TallyDex may load the matching set and collector number from Pokémon’s official asset service and cache it locally.")
+                Text("Catalog metadata comes from the configured TCGdex API, with official TCGdex as fallback. Set logos and expansion symbols are cached locally by TallyDex.")
+                Text("Missing card images fall back through verified parent-set paths, 839 bundled exact-ID thumbnails, and Pokémon’s official asset service. API settings and a connection check are available under Settings → Advanced.")
                 Text("Missing or incorrect catalog data can be reported from Settings → Missing or Incorrect Card.")
                 Link("Visit TCGdex", destination: URL(string: "https://www.tcgdex.net")!)
             }

@@ -38,15 +38,21 @@ struct CatalogArtworkReference: Hashable, Sendable {
     let url: URL
     let category: CatalogArtworkCategory
     let offlineSetID: String?
+    let apiCardID: String?
+    let cachedAssetURL: URL?
 
     init(
         url: URL,
         category: CatalogArtworkCategory,
-        offlineSetID: String? = nil
+        offlineSetID: String? = nil,
+        apiCardID: String? = nil,
+        cachedAssetURL: URL? = nil
     ) {
         self.url = url
         self.category = category
         self.offlineSetID = offlineSetID
+        self.apiCardID = apiCardID
+        self.cachedAssetURL = cachedAssetURL
     }
 }
 
@@ -82,6 +88,31 @@ struct CatalogArtworkCacheSnapshot: Equatable, Sendable {
 /// table handles legacy IDs whose official asset directory uses a different but
 /// verified code. A card name or nearby collector number is never guessed.
 enum TCGdexArtworkFallbacks {
+    static func references(for card: CatalogCard, category: CatalogArtworkCategory) -> [CatalogArtworkReference] {
+        var references: [CatalogArtworkReference] = []
+        let roots = (CatalogAPISettings.customEnabled ? [CatalogAPISettings.customURL] : [])
+            + [CatalogAPISettings.officialURL]
+        for root in roots {
+            let reference = CatalogArtworkReference(
+                url: root.appending(path: "cards/\(card.id)"), category: category,
+                offlineSetID: card.setID, apiCardID: card.id, cachedAssetURL: card.imageURL
+            )
+            if !references.contains(reference) { references.append(reference) }
+        }
+        // The legacy helper remains an exact-identity URL builder, not an API priority list.
+        let fallbackURLs = cardImageURLs(for: card, category: category, includeProviderImage: false)
+        for url in fallbackURLs where url.host == "assets.tcgdex.net" {
+            references.append(.init(url: url, category: category, offlineSetID: card.setID))
+        }
+        if let bundled = BundledCardThumbnails.url(for: card.id) {
+            // Supplied assets are thumbnails, including when used as a detail fallback.
+            references.append(.init(url: bundled, category: .cardThumbnails, offlineSetID: card.setID))
+        }
+        for url in fallbackURLs where url.host == "assets.pokemon.com" {
+            references.append(.init(url: url, category: category, offlineSetID: card.setID))
+        }
+        return references
+    }
     private static let parentSetBySetID: [String: String] = [
         "swsh4.5sv": "swsh4.5",
         "swsh9tg": "swsh9",
@@ -89,31 +120,6 @@ enum TCGdexArtworkFallbacks {
         "swsh11tg": "swsh11",
         "swsh12tg": "swsh12",
         "swsh12.5gg": "swsh12.5",
-    ]
-
-    private static let knownUnavailableCardIDs: Set<String> = [
-        "swsh4.5sv-SV028",
-        "swsh4.5sv-SV046",
-        "swsh4.5sv-SV078",
-        "swsh12.5gg-GG48",
-        "swsh12.5gg-GG63",
-    ]
-
-    private static let knownUnavailableHighResolutionCardIDs: Set<String> = [
-        "swsh4.5sv-SV011",
-        "swsh4.5sv-SV067",
-        "swsh9tg-TG23",
-        "swsh10tg-TG19",
-        "swsh10tg-TG28",
-        "swsh12tg-TG04",
-        "swsh12tg-TG24",
-        "swsh12tg-TG29",
-        "swsh12.5gg-GG06",
-        "swsh12.5gg-GG34",
-        "swsh12.5gg-GG62",
-        "swsh12.5gg-GG64",
-        "swsh12.5gg-GG67",
-        "swsh12.5gg-GG69",
     ]
 
     private static let officialAssetCodeBySetID: [String: String] = [
@@ -141,15 +147,13 @@ enum TCGdexArtworkFallbacks {
 
     static func cardImageURLs(
         for card: CatalogCard,
-        category: CatalogArtworkCategory
+        category: CatalogArtworkCategory,
+        includeProviderImage: Bool = true
     ) -> [URL] {
         var urls: [URL] = []
-        if let imageURL = card.imageURL { urls.append(imageURL) }
+        if includeProviderImage, let imageURL = card.imageURL { urls.append(imageURL) }
 
-        if !knownUnavailableCardIDs.contains(card.id),
-           !(category == .cardArtwork
-             && knownUnavailableHighResolutionCardIDs.contains(card.id)),
-           let parentSetID = parentSetBySetID[card.setID] {
+        if let parentSetID = parentSetBySetID[card.setID] {
             if let correctedURL = URL(
                 string: "https://assets.tcgdex.net/en/swsh/\(parentSetID)/\(card.localID)"
             ) {
@@ -170,6 +174,27 @@ enum TCGdexArtworkFallbacks {
         return urls.reduce(into: []) { result, url in
             if !result.contains(url) { result.append(url) }
         }
+    }
+}
+
+enum BundledCardThumbnails {
+    private struct Manifest: Decodable { let cards: [Card] }
+    private struct Card: Decodable { let id: String; let file: String }
+    static let filesByCardID: [String: String] = {
+        guard let url = Bundle.main.url(forResource: "manifest", withExtension: "json", subdirectory: "BundledCardThumbnails"),
+              let data = try? Data(contentsOf: url),
+              let manifest = try? JSONDecoder().decode(Manifest.self, from: data) else { return [:] }
+        return manifest.cards.reduce(into: [:]) { result, card in
+            guard card.file.hasPrefix("images/"), !card.file.split(separator: "/").contains("..") else { return }
+            result[card.id] = card.file
+        }
+    }()
+
+    static func url(for cardID: String) -> URL? {
+        guard let file = filesByCardID[cardID],
+              let root = Bundle.main.resourceURL else { return nil }
+        let url = root.appending(path: "BundledCardThumbnails/\(file)")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 }
 
@@ -204,17 +229,21 @@ actor CatalogArtworkCache {
     private let offlineRootDirectory: URL
     private let maximumByteCount: Int64
     private let httpClient: any HTTPClient
+    private let imageDirectory: TCGdexImageDirectory
+    private var missingAssetsUntil: [URL: Date] = [:]
 
     init(
         rootDirectory: URL? = nil,
         offlineRootDirectory: URL? = nil,
         fileManager: FileManager = .default,
         maximumByteCount: Int64 = CatalogArtworkCache.maximumByteCount,
-        httpClient: any HTTPClient = URLSessionHTTPClient()
+        httpClient: any HTTPClient = URLSessionHTTPClient(),
+        imageDirectory: TCGdexImageDirectory = .shared
     ) {
         self.fileManager = fileManager
         self.maximumByteCount = maximumByteCount
         self.httpClient = httpClient
+        self.imageDirectory = imageDirectory
         let automaticCacheBase = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TallyDexArtwork", isDirectory: true)
         let resolvedRootDirectory = rootDirectory
@@ -321,11 +350,18 @@ actor CatalogArtworkCache {
     }
 
     func data(for reference: CatalogArtworkReference) async throws -> Data {
+        try Task.checkCancellation()
         if let offlineSetID = reference.offlineSetID {
             let offlineURL = offlineFileURL(for: reference, setID: offlineSetID)
             if let offline = validCachedData(at: offlineURL, category: reference.category) {
                 return offline
             }
+        }
+
+        if reference.url.isFileURL {
+            let data = try Data(contentsOf: reference.url)
+            guard Self.isValidImageData(data) else { throw CatalogArtworkCacheError.invalidImageData }
+            return data
         }
 
         let fileURL = cachedFileURL(for: reference)
@@ -337,11 +373,45 @@ actor CatalogArtworkCache {
             return cached
         }
 
+        if let cardID = reference.apiCardID {
+            // Reuse pre-update local artwork, but never request this hint over the network.
+            if let url = reference.cachedAssetURL {
+                let hint = CatalogArtworkReference(url: url, category: reference.category, offlineSetID: reference.offlineSetID)
+                if let setID = hint.offlineSetID,
+                   let data = validCachedData(at: offlineFileURL(for: hint, setID: setID), category: hint.category) {
+                    return data
+                }
+                let hintURL = cachedFileURL(for: hint)
+                if let data = validCachedData(at: hintURL, category: hint.category) {
+                    try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: hintURL.path)
+                    return data
+                }
+            }
+            guard let imageURL = try await imageDirectory.imageURL(
+                endpoint: reference.url, cardID: cardID, httpClient: httpClient
+            ) else { throw CatalogArtworkCacheError.invalidResponse }
+            let data = try await data(for: .init(
+                url: imageURL, category: reference.category, offlineSetID: reference.offlineSetID
+            ))
+            // Keep a source-scoped cache copy so a cold offline launch needs no API lookup.
+            try fileManager.createDirectory(at: directory(for: reference.category), withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+            try trimIfNeeded()
+            return data
+        }
+
         let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
+        if (missingAssetsUntil[sourceURL] ?? .distantPast) > Date() {
+            throw CatalogArtworkCacheError.invalidResponse
+        }
         var request = URLRequest(url: sourceURL)
         request.timeoutInterval = 20
         request.setValue("image/*", forHTTPHeaderField: "Accept")
         let response = try await httpClient.send(request)
+        try Task.checkCancellation()
+        if response.statusCode == 404 || response.statusCode == 410 {
+            missingAssetsUntil[sourceURL] = Date().addingTimeInterval(30 * 60)
+        }
         guard (200..<300).contains(response.statusCode) else {
             throw CatalogArtworkCacheError.invalidResponse
         }
@@ -366,6 +436,8 @@ actor CatalogArtworkCache {
         for reference in references {
             do {
                 return try await data(for: reference)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 lastError = error
             }
@@ -376,13 +448,27 @@ actor CatalogArtworkCache {
     /// Returns whether at least one exact alternative is already present locally.
     /// This performs no network request and lets the UI avoid presenting cached
     /// verification work as a new download.
-    func hasBestAvailableCachedData(for references: [CatalogArtworkReference]) -> Bool {
+    func hasBestAvailableCachedData(for references: [CatalogArtworkReference]) async -> Bool {
         for reference in references {
+            if let url = reference.cachedAssetURL {
+                let hint = CatalogArtworkReference(url: url, category: reference.category, offlineSetID: reference.offlineSetID)
+                if let setID = hint.offlineSetID,
+                   validCachedData(at: offlineFileURL(for: hint, setID: setID), category: hint.category) != nil { return true }
+                if validCachedData(at: cachedFileURL(for: hint), category: hint.category) != nil { return true }
+            }
             if let offlineSetID = reference.offlineSetID,
                validCachedData(
                    at: offlineFileURL(for: reference, setID: offlineSetID),
                    category: reference.category
                ) != nil {
+                return true
+            }
+            if reference.url.isFileURL, Self.isValidImageData((try? Data(contentsOf: reference.url)) ?? Data()) {
+                return true
+            }
+            if reference.apiCardID != nil,
+               let url = await imageDirectory.cachedURL(for: reference.url),
+               validCachedData(at: cachedFileURL(for: .init(url: url, category: reference.category)), category: reference.category) != nil {
                 return true
             }
             if validCachedData(
@@ -442,20 +528,7 @@ actor CatalogArtworkCache {
             return Int64(offline.count)
         }
 
-        let cachedURL = cachedFileURL(for: reference)
-        if let cached = validCachedData(at: cachedURL, category: reference.category) {
-            return try writeOffline(cached, for: reference, setID: setID)
-        }
-
-        let sourceURL = Self.resolvedAssetURL(reference.url, category: reference.category)
-        var request = URLRequest(url: sourceURL)
-        request.timeoutInterval = 20
-        request.setValue("image/*", forHTTPHeaderField: "Accept")
-        let response = try await httpClient.send(request)
-        guard (200..<300).contains(response.statusCode) else {
-            throw CatalogArtworkCacheError.invalidResponse
-        }
-        return try storeOffline(response.data, for: reference, setID: setID)
+        return try storeOffline(try await data(for: reference), for: reference, setID: setID)
     }
 
     func offlineStatistics(setID: String) -> CatalogOfflineSetStatistics {
@@ -555,7 +628,13 @@ actor CatalogArtworkCache {
         for reference: CatalogArtworkReference,
         setID: String
     ) -> URL {
-        offlineDirectory(for: setID).appendingPathComponent(cacheFileName(for: reference))
+        if let cardID = reference.apiCardID {
+            // Explicit downloads belong to the card, not the API that supplied it.
+            let digest = SHA256.hash(data: Data("exact-card:\(cardID)".utf8))
+                .map { String(format: "%02x", $0) }.joined()
+            return offlineDirectory(for: setID).appendingPathComponent("\(reference.category.rawValue)-\(digest).webp")
+        }
+        return offlineDirectory(for: setID).appendingPathComponent(cacheFileName(for: reference))
     }
 
     private func cachedFileURL(for reference: CatalogArtworkReference) -> URL {
@@ -958,9 +1037,7 @@ extension CatalogSet {
 
 extension CatalogCard {
     var thumbnailArtworkReferences: [CatalogArtworkReference] {
-        TCGdexArtworkFallbacks.cardImageURLs(for: self, category: .cardThumbnails).map {
-            .init(url: $0, category: .cardThumbnails, offlineSetID: setID)
-        }
+        TCGdexArtworkFallbacks.references(for: self, category: .cardThumbnails)
     }
 
     var thumbnailArtworkReference: CatalogArtworkReference? {
@@ -968,13 +1045,7 @@ extension CatalogCard {
     }
 
     var fullArtworkReferences: [CatalogArtworkReference] {
-        let fullReferences = TCGdexArtworkFallbacks.cardImageURLs(
-            for: self,
-            category: .cardArtwork
-        ).map { url in
-            CatalogArtworkReference(url: url, category: .cardArtwork, offlineSetID: setID)
-        }
-        return fullReferences.isEmpty ? thumbnailArtworkReferences : fullReferences
+        TCGdexArtworkFallbacks.references(for: self, category: .cardArtwork)
     }
 
     var fullArtworkReference: CatalogArtworkReference? {

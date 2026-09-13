@@ -59,9 +59,14 @@ final class CatalogStore {
     private static let upcomingAvailabilityInterval: TimeInterval = 60 * 60
     private static let pricingStaleInterval: TimeInterval = 18 * 60 * 60
     private static let maximumVariantSearchCandidates = 500
+    private static let apiConfigurationKey = "catalog.lastAPIConfiguration"
+    private var configuredAPIFingerprint: String? {
+        guard provider is ConfiguredCatalogProvider else { return nil }
+        return "\(CatalogAPISettings.customEnabled)|\(CatalogAPISettings.customURL.absoluteString)"
+    }
 
     init(
-        provider: any CatalogProvider = TCGdexClient(),
+        provider: any CatalogProvider = ConfiguredCatalogProvider(),
         repository: (any CatalogRepository)? = nil,
         bundle: Bundle = .main,
         now: @escaping @Sendable () -> Date = Date.init
@@ -106,7 +111,10 @@ final class CatalogStore {
             searchIndexUpdated = try await repository.metadataDate(
                 forKey: Self.lastSearchIndexRefreshKey
             )
-            if needsRefresh(lastUpdated) {
+            let sourceChanged = configuredAPIFingerprint.map {
+                UserDefaults.standard.string(forKey: Self.apiConfigurationKey) != $0
+            } ?? false
+            if sourceChanged || needsRefresh(lastUpdated) {
                 await refresh()
             } else {
                 if needsRefresh(searchIndexUpdated) {
@@ -122,6 +130,7 @@ final class CatalogStore {
 
     func refresh() async {
         guard !isRefreshing else { return }
+        let fingerprint = configuredAPIFingerprint
         isRefreshing = true
         refreshMessage = nil
         defer { isRefreshing = false }
@@ -137,6 +146,9 @@ final class CatalogStore {
             try await repository.setMetadataDate(refreshDate, forKey: Self.lastCatalogRefreshKey)
             try await loadCachedCatalog(from: repository)
             lastUpdated = refreshDate
+            if let fingerprint {
+                UserDefaults.standard.set(fingerprint, forKey: Self.apiConfigurationKey)
+            }
             await refreshUpcomingAvailabilityIfNeeded(in: repository, force: true)
         } catch {
             refreshMessage = groups.isEmpty

@@ -14,6 +14,10 @@ associated rights remain the property of their respective owners.
 
 ## TCGdex cards database
 
+TallyDex can use the owner's compatible development API at
+`https://tcgdex.tallydex.nl/v2/en/`, with official TCGdex as fallback. This mirror
+does not change attribution or ownership of the underlying catalogue or artwork.
+
 Catalog data and associated asset links are provided by TCGdex. The TCGdex
 cards database is licensed under the MIT License:
 
@@ -36,6 +40,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Bundled card thumbnails
+
+The owner-supplied thumbnail handoff contains 839 primary card images and 48
+separately mapped My First Battle variant files. Exact card IDs, source pages,
+variant mappings, image dimensions, and SHA-256 checksums are retained in
+`TallyDex/Resources/BundledCardThumbnails/manifest.json`. These WebP files are
+thumbnail-sized fallback artwork, not original high-resolution scans. Pokémon
+card artwork remains copyrighted by its respective owners; neither this handoff
+nor TallyDex's proprietary license grants rights to third-party imagery.
 
 ## GRDB.swift
 

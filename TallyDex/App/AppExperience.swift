@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.18",
-        headline: "Your favourite Pokémon, together",
+        version: "0.9.19",
+        headline: "More cards, fewer missing images",
         notes: [
             AppReleaseNote(
-                systemImage: "magnifyingglass",
-                title: "Two Pokémon, one collection",
-                detail: "Choose up to two Pokémon, such as Lucario and Riolu. Your collection includes cards featuring either Pokémon, and shared cards appear only once."
+                systemImage: "server.rack",
+                title: "Your TCGdex API first",
+                detail: "The TallyDex API is now the first source, with automatic fallback to official TCGdex. Change its HTTPS address or check its connection in Settings → Advanced."
             ),
             AppReleaseNote(
-                systemImage: "pawprint.fill",
-                title: "More reliable Pokémon matching",
-                detail: "Verified Pokédex IDs keep Pokémon and their special forms together, including cards featuring multiple Pokémon. When the catalogue lacks those IDs, the familiar species-name matching remains available."
+                systemImage: "photo.stack",
+                title: "839 bundled card thumbnails",
+                detail: "Previously missing card thumbnails are included in the app, matched by exact card ID. Verified parent-set paths and Pokémon’s official image host remain additional fallbacks."
             ),
             AppReleaseNote(
                 systemImage: "archivebox.fill",
-                title: "Existing collections stay intact",
-                detail: "Existing one-Pokémon and free-text collections stay intact. Both Pokémon selections and their verified IDs are preserved in exports, imports, and automatic backups."
+                title: "Local-first artwork",
+                detail: "Your collections, backups, and kept-offline sets stay intact when switching API sources. Bundled artwork is thumbnail-sized; high-resolution artwork is used when supplied by the earlier sources."
             ),
         ]
     )
