@@ -10,7 +10,7 @@ extension UTType {
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
-    static let currentSchemaVersion = 3
+    static let currentSchemaVersion = 4
 
     let format: String
     let schemaVersion: Int
@@ -91,6 +91,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         let name: String
         let cardNameQuery: String
         let pokemonName: String?
+        let pokemonRules: [PokemonCollectionRule]?
         let displayMode: CustomCollectionFolderDisplayMode
         let iconName: String?
         let coverCardID: String?
@@ -102,6 +103,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
             name: String,
             cardNameQuery: String,
             pokemonName: String? = nil,
+            pokemonRules: [PokemonCollectionRule]? = nil,
             displayMode: CustomCollectionFolderDisplayMode,
             iconName: String? = nil,
             coverCardID: String? = nil,
@@ -112,6 +114,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
             self.name = name
             self.cardNameQuery = cardNameQuery
             self.pokemonName = pokemonName
+            self.pokemonRules = pokemonRules
             self.displayMode = displayMode
             self.iconName = iconName
             self.coverCardID = coverCardID
@@ -217,7 +220,7 @@ enum CollectionTransferCodec {
             "record_type", "card_id", "variant", "quantity", "set_id", "status", "goal",
             "included_variants", "includes_secret_cards", "folder_id", "folder_name",
             "card_name_query", "pokemon_name", "display_mode", "cover_card_id", "wishlisted", "notes",
-            "printing_id", "created_at", "updated_at",
+            "printing_id", "created_at", "updated_at", "pokemon_rules",
         ]]
         let formatter = ISO8601DateFormatter()
 
@@ -249,6 +252,13 @@ enum CollectionTransferCodec {
                          String(item.isWishlisted), item.notes, "", "", formatter.string(from: item.updatedAt)])
         }
 
+        // Append a lossless rules column without changing existing column positions.
+        let folderRules = Dictionary(uniqueKeysWithValues: document.folders.map {
+            ($0.id.uuidString, (try? PokemonCollectionRule.encode($0.pokemonRules)) ?? "")
+        })
+        for index in rows.indices.dropFirst() {
+            rows[index].append(rows[index][0] == "folder" ? folderRules[rows[index][9]] ?? "" : "")
+        }
         let csv = rows.map { $0.map(escapeCSV).joined(separator: ",") }.joined(separator: "\r\n") + "\r\n"
         return Data(csv.utf8)
     }

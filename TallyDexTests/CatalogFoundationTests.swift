@@ -2175,6 +2175,93 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertTrue(results.allSatisfy { $0.card.name.localizedCaseInsensitiveContains("lucario") })
     }
 
+    @MainActor
+    func testPokemonCollectionMatchesCachedIDsAndDeduplicatesTwoSpecies() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        try await repository.replaceCatalog([
+            CatalogSeriesSnapshot(series: series, sets: [set(id: "sv01", seriesID: "sv", name: "Test")]),
+        ])
+        let cards = [
+            pokemonCollectionCard(id: "1", name: "Lucario V", ids: [448]),
+            pokemonCollectionCard(id: "2", name: "Riolu", ids: [447]),
+            pokemonCollectionCard(id: "3", name: "Riolu & Lucario-GX", ids: [447, 448]),
+            pokemonCollectionCard(id: "4", name: "An unusual labelled form", ids: [448]),
+            pokemonCollectionCard(id: "5", name: "Lucario", ids: [25]),
+            pokemonCollectionCard(id: "6", name: "Lucario Spirit Link", ids: nil, category: "Trainer"),
+            pokemonCollectionCard(id: "7", name: "Mega Lucario ex", ids: nil),
+            pokemonCollectionCard(id: "8", name: "Pikachu", ids: [25]),
+        ]
+        try await repository.replaceSearchIndex(cards)
+        for card in cards where card.metadata != nil || card.category == "Trainer" {
+            try await repository.replaceCard(.init(card: card, variants: [.normal]))
+        }
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: cards[0], variants: [.normal]))
+        let store = CatalogStore(provider: provider, repository: repository)
+        let rules = [PokemonCollectionRule(name: "Lucario", dexID: 448), .init(name: "Riolu", dexID: 447)]
+        let matches = try await store.cards(matchingPokemonRules: rules)
+        XCTAssertEqual(Set(matches.map(\.card.id)), Set(["sv01-1", "sv01-2", "sv01-3", "sv01-4", "sv01-7"]))
+        XCTAssertEqual(matches.count, 5)
+        XCTAssertEqual(matches.first(where: { $0.card.id == "sv01-3" })?.card.metadata?.dexIDs, [447, 448])
+        let requests = await provider.cardRequestCount
+        XCTAssertEqual(requests, 0)
+    }
+
+    @MainActor
+    func testExistingSingleSpeciesCanResolveIDFromCachedMetadataWithoutNetwork() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.replaceCatalog([
+            .init(series: .init(id: "sv", name: "Test", logoURL: nil), sets: [set(id: "sv01", seriesID: "sv", name: "Test")]),
+        ])
+        let lucario = pokemonCollectionCard(id: "1", name: "Lucario", ids: [448])
+        let renamed = pokemonCollectionCard(id: "2", name: "A different title", ids: [448])
+        try await repository.replaceSearchIndex([lucario, renamed])
+        try await repository.replaceCard(.init(card: lucario, variants: [.normal]))
+        try await repository.replaceCard(.init(card: renamed, variants: [.normal]))
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: lucario, variants: [.normal]))
+        let store = CatalogStore(provider: provider, repository: repository)
+        let matches = try await store.cards(matchingPokemonRules: [.init(name: "Lucario")])
+        XCTAssertEqual(matches.count, 2)
+        let choices = PokemonRuleSearch.choices(from: try await repository.fetchCards(matchingName: "Lucario"), query: "Lucario")
+        let resolved = await store.pokemonRule(for: try XCTUnwrap(choices.first))
+        XCTAssertEqual(resolved.dexID, 448)
+        let requests = await provider.cardRequestCount
+        XCTAssertEqual(requests, 0)
+    }
+
+    @MainActor
+    func testPickerVerifiesOneRepresentativeAndDoesNotGuessTagTeamIDs() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.replaceCatalog([
+            .init(series: .init(id: "sv", name: "Test", logoURL: nil), sets: [set(id: "sv01", seriesID: "sv", name: "Test")]),
+        ])
+        let summary = pokemonCollectionCard(id: "1", name: "Lucario V", ids: nil)
+        let detailed = pokemonCollectionCard(id: "1", name: "Lucario V", ids: [448])
+        try await repository.replaceSearchIndex([summary])
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: detailed, variants: [.normal]))
+        let store = CatalogStore(provider: provider, repository: repository)
+        let choices = PokemonRuleSearch.choices(from: [.init(card: summary, setName: "Test", setReleaseDate: nil)], query: "Lucario")
+        let resolved = await store.pokemonRule(for: try XCTUnwrap(choices.first))
+        XCTAssertEqual(resolved, .init(name: "Lucario", dexID: 448))
+        let requests = await provider.cardRequestCount
+        XCTAssertEqual(requests, 1)
+    }
+
+    private func pokemonCollectionCard(id: String, name: String, ids: [Int]?, category: String? = "Pokémon") -> CatalogCard {
+        CatalogCard(
+            id: "sv01-\(id)", setID: "sv01", localID: id, name: name, imageURL: nil,
+            category: category, illustrator: nil, rarity: nil,
+            metadata: ids.map {
+                CatalogCardMetadata(
+                    dexIDs: $0, hp: nil, types: [], evolvesFrom: nil, stage: nil, suffix: nil,
+                    attacks: [], abilities: [], weaknesses: [], resistances: [], retreatCost: nil,
+                    regulationMark: nil, legality: nil, rulesText: nil, trainerType: nil, energyType: nil,
+                    flavorText: nil, updatedAt: nil
+                )
+            }
+        )
+    }
+
     func testArtworkCacheReportsAndSelectivelyClearsCategories() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

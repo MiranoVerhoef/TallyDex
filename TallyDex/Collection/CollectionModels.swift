@@ -361,13 +361,44 @@ enum CustomCollectionFolderDisplayMode: String, Codable, CaseIterable, Sendable 
     }
 }
 
+struct PokemonCollectionRule: Codable, Equatable, Hashable, Identifiable, Sendable {
+    let name: String
+    let dexID: Int?
+
+    init(name: String, dexID: Int? = nil) {
+        self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.dexID = dexID
+    }
+
+    var id: String { name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current) }
+
+    static func isValid(_ rules: [Self]) -> Bool {
+        (1...2).contains(rules.count)
+            && rules.allSatisfy { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && ($0.dexID.map { $0 > 0 } ?? true) }
+            && Set(rules.map(\.id)).count == rules.count
+            && Set(rules.compactMap(\.dexID)).count == rules.compactMap(\.dexID).count
+    }
+
+    static func decode(_ json: String?) -> [Self]? {
+        guard let data = json?.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([Self].self, from: data)
+    }
+
+    static func encode(_ rules: [Self]?) throws -> String? {
+        guard let rules else { return nil }
+        return String(data: try JSONEncoder().encode(rules), encoding: .utf8)
+    }
+}
+
 struct PokemonRuleChoice: Equatable, Identifiable, Sendable {
     let name: String
     let matchingCardCount: Int
     let exampleCard: CatalogCard
     let exampleSetName: String
+    let dexID: Int?
 
     var id: String { name.lowercased() }
+    var rule: PokemonCollectionRule { .init(name: name, dexID: dexID) }
 }
 
 enum PokemonRuleSearch {
@@ -378,6 +409,7 @@ enum PokemonRuleSearch {
         let normalizedQuery = normalized(query)
         var grouped: [String: (name: String, matches: [CatalogCardSearchResult])] = [:]
         for result in results {
+            guard isPokemon(result.card) else { continue }
             for speciesName in speciesNames(in: result.card.name) {
                 let key = normalized(speciesName)
                 guard key.contains(normalizedQuery) else { continue }
@@ -393,12 +425,16 @@ enum PokemonRuleSearch {
         }
 
         return grouped.compactMap { _, group in
-            guard let example = group.matches.first else { return nil }
+            // Never infer which ID belongs to which name from a multi-Pokémon card.
+            guard let example = group.matches.first(where: {
+                speciesNames(in: $0.card.name).count == 1
+            }) ?? group.matches.first else { return nil }
             return PokemonRuleChoice(
                 name: group.name,
                 matchingCardCount: group.matches.count,
                 exampleCard: example.card,
-                exampleSetName: example.setName
+                exampleSetName: example.setName,
+                dexID: verifiedDexID(for: group.name, from: group.matches)
             )
         }.sorted { left, right in
             let leftName = normalized(left.name)
@@ -418,6 +454,33 @@ enum PokemonRuleSearch {
         let expected = normalized(pokemonName)
         guard !expected.isEmpty else { return false }
         return speciesNames(in: cardName).contains { normalized($0) == expected }
+    }
+
+    static func matches(card: CatalogCard, rules: [PokemonCollectionRule]) -> Bool {
+        guard isPokemon(card) else { return false }
+        return rules.contains { rule in
+            if let dexID = rule.dexID, let ids = card.metadata?.dexIDs, !ids.isEmpty {
+                return ids.contains(dexID)
+            }
+            return matches(cardName: card.name, pokemonName: rule.name)
+        }
+    }
+
+    static func verifiedDexID(for name: String, from results: [CatalogCardSearchResult]) -> Int? {
+        let ids = Set(results.compactMap { result -> Int? in
+            let species = speciesNames(in: result.card.name)
+            guard isPokemon(result.card), species.count == 1,
+                  normalized(species[0]) == normalized(name),
+                  let dexIDs = result.card.metadata?.dexIDs, dexIDs.count == 1,
+                  let id = dexIDs.first, id > 0 else { return nil }
+            return id
+        })
+        return ids.count == 1 ? ids.first : nil
+    }
+
+    private static func isPokemon(_ card: CatalogCard) -> Bool {
+        guard let category = card.category else { return true }
+        return normalized(category) == "pokemon"
     }
 
     private static func speciesNames(in cardName: String) -> [String] {
@@ -490,6 +553,8 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
     /// A canonical species selected from the catalogue. `nil` identifies a
     /// legacy free-text rule, which retains its original substring behavior.
     let pokemonName: String?
+    /// Up to two verified species rules. Absent on older folders/backups.
+    let pokemonRules: [PokemonCollectionRule]?
     let displayMode: CustomCollectionFolderDisplayMode
     let iconName: String
     let coverCardID: String?
@@ -501,6 +566,7 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
         name: String,
         cardNameQuery: String,
         pokemonName: String? = nil,
+        pokemonRules: [PokemonCollectionRule]? = nil,
         displayMode: CustomCollectionFolderDisplayMode,
         iconName: String = CollectionFolderIcon.defaultIcon.rawValue,
         coverCardID: String? = nil,
@@ -511,11 +577,21 @@ struct CustomCollectionFolder: Equatable, Identifiable, Sendable {
         self.name = name
         self.cardNameQuery = cardNameQuery
         self.pokemonName = pokemonName
+        self.pokemonRules = pokemonRules
         self.displayMode = displayMode
         self.iconName = CollectionFolderIcon.validated(iconName).rawValue
         self.coverCardID = coverCardID
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+
+    var effectivePokemonRules: [PokemonCollectionRule] {
+        pokemonRules ?? pokemonName.map { [.init(name: $0)] } ?? []
+    }
+
+    var pokemonSummary: String? {
+        let rules = effectivePokemonRules
+        return rules.isEmpty ? nil : rules.map(\.name).joined(separator: " + ")
     }
 }
 

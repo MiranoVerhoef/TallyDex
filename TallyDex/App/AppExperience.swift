@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.17",
-        headline: "Build collections without name mistakes",
+        version: "0.9.18",
+        headline: "Your favourite Pokémon, together",
         notes: [
             AppReleaseNote(
                 systemImage: "magnifyingglass",
-                title: "Search and select a Pokémon",
-                detail: "New Collections use a searchable catalogue picker instead of an unchecked card-name field, helping prevent spelling mistakes."
+                title: "Two Pokémon, one collection",
+                detail: "Choose up to two Pokémon, such as Lucario and Riolu. Your collection includes cards featuring either Pokémon, and shared cards appear only once."
             ),
             AppReleaseNote(
                 systemImage: "pawprint.fill",
-                title: "Every form stays together",
-                detail: "Choose Lucario once to match Lucario, Lucario-GX, Lucario V, Lucario ex, Mega Lucario, tag-team cards containing Lucario, and other labelled forms—without including Trainer cards such as Lucario Spirit Link."
+                title: "More reliable Pokémon matching",
+                detail: "Verified Pokédex IDs keep Pokémon and their special forms together, including cards featuring multiple Pokémon. When the catalogue lacks those IDs, the familiar species-name matching remains available."
             ),
             AppReleaseNote(
                 systemImage: "archivebox.fill",
                 title: "Existing collections stay intact",
-                detail: "Older free-text rules keep their original matching behavior, and the new Pokémon selection is preserved in exports, imports, and automatic backups."
+                detail: "Existing one-Pokémon and free-text collections stay intact. Both Pokémon selections and their verified IDs are preserved in exports, imports, and automatic backups."
             ),
         ]
     )

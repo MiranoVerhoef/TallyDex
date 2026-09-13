@@ -861,6 +861,7 @@ protocol CatalogRepository: Sendable {
     func searchCards(query: String, limit: Int?) async throws -> [CatalogCardSearchResult]
     func searchCards(requiredVariants: Set<CatalogVariantKind>) async throws -> [CatalogCardSearchResult]
     func fetchCards(matchingName query: String) async throws -> [CatalogCardSearchResult]
+    func fetchCards(matchingPokemonRules rules: [PokemonCollectionRule]) async throws -> [CatalogCardSearchResult]
     func fetchSearchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult]
     func fetchVariants(cardID: String) async throws -> Set<CatalogVariantKind>
     func fetchVariants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>]

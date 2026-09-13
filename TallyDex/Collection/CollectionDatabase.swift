@@ -163,6 +163,12 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v12-multiple-pokemon-rules") { database in
+            try database.alter(table: "customCollectionFolder") { table in
+                table.add(column: "pokemonRulesJSON", .text)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -344,7 +350,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try Row.fetchAll(
                 database,
                 sql: """
-                SELECT id, name, cardNameQuery, pokemonName, displayMode, iconName, coverCardID, createdAt, updatedAt
+                SELECT id, name, cardNameQuery, pokemonName, pokemonRulesJSON, displayMode, iconName, coverCardID, createdAt, updatedAt
                 FROM customCollectionFolder
                 ORDER BY name COLLATE NOCASE, createdAt, id
                 """
@@ -580,7 +586,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
     func saveCustomFolder(_ folder: CustomCollectionFolder) async throws {
         let name = folder.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let query = folder.cardNameQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, !query.isEmpty else {
+        guard !name.isEmpty, !query.isEmpty,
+              folder.pokemonRules.map(PokemonCollectionRule.isValid) ?? true else {
             throw CollectionRepositoryError.invalidCustomFolder
         }
 
@@ -588,12 +595,13 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try database.execute(
                 sql: """
                 INSERT INTO customCollectionFolder
-                    (id, name, cardNameQuery, pokemonName, displayMode, iconName, coverCardID, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, cardNameQuery, pokemonName, pokemonRulesJSON, displayMode, iconName, coverCardID, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     cardNameQuery = excluded.cardNameQuery,
                     pokemonName = excluded.pokemonName,
+                    pokemonRulesJSON = excluded.pokemonRulesJSON,
                     displayMode = excluded.displayMode,
                     iconName = excluded.iconName,
                     coverCardID = excluded.coverCardID,
@@ -604,6 +612,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     name,
                     query,
                     folder.pokemonName,
+                    try PokemonCollectionRule.encode(folder.pokemonRules),
                     folder.displayMode.rawValue,
                     folder.iconName,
                     folder.coverCardID,
@@ -784,7 +793,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         let folders = try Row.fetchAll(
             database,
             sql: """
-            SELECT id, name, cardNameQuery, pokemonName, displayMode, iconName, coverCardID, createdAt, updatedAt
+            SELECT id, name, cardNameQuery, pokemonName, pokemonRulesJSON, displayMode, iconName, coverCardID, createdAt, updatedAt
             FROM customCollectionFolder
             """
         ).map {
@@ -793,6 +802,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 name: $0["name"],
                 cardNameQuery: $0["cardNameQuery"],
                 pokemonName: $0["pokemonName"],
+                pokemonRulesJSON: $0["pokemonRulesJSON"],
                 displayMode: $0["displayMode"],
                 iconName: $0["iconName"],
                 coverCardID: $0["coverCardID"],
@@ -878,6 +888,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     name: item.name,
                     cardNameQuery: item.cardNameQuery,
                     pokemonName: item.pokemonName,
+                    pokemonRules: PokemonCollectionRule.decode(item.pokemonRulesJSON),
                     displayMode: mode,
                     iconName: item.iconName,
                     coverCardID: item.coverCardID,
@@ -930,12 +941,13 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     updatedAt: $0.updatedAt
                 )
             },
-            folders: document.folders.map {
+            folders: try document.folders.map {
                 .init(
                     id: $0.id.uuidString,
                     name: $0.name,
                     cardNameQuery: $0.cardNameQuery,
                     pokemonName: $0.pokemonName,
+                    pokemonRulesJSON: try PokemonCollectionRule.encode($0.pokemonRules),
                     displayMode: $0.displayMode.rawValue,
                     iconName: $0.iconName,
                     coverCardID: $0.coverCardID,
@@ -966,7 +978,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
               Set(document.setPreferences.map(\.setID)).count == document.setPreferences.count,
               document.folders.allSatisfy({
                   !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                  !$0.cardNameQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  !$0.cardNameQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                  ($0.pokemonRules.map(PokemonCollectionRule.isValid) ?? true)
               }),
               Set(document.folders.map(\.id)).count == document.folders.count,
               document.cardMetadata.allSatisfy({ !$0.cardID.isEmpty }),
@@ -1178,10 +1191,11 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             }
             try database.execute(
                 sql: """
-                INSERT INTO customCollectionFolder (id, name, cardNameQuery, pokemonName, displayMode, iconName, coverCardID, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO customCollectionFolder (id, name, cardNameQuery, pokemonName, pokemonRulesJSON, displayMode, iconName, coverCardID, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET name = excluded.name, cardNameQuery = excluded.cardNameQuery,
-                    pokemonName = excluded.pokemonName, displayMode = excluded.displayMode, iconName = excluded.iconName,
+                    pokemonName = excluded.pokemonName, pokemonRulesJSON = excluded.pokemonRulesJSON,
+                    displayMode = excluded.displayMode, iconName = excluded.iconName,
                     coverCardID = excluded.coverCardID, updatedAt = excluded.updatedAt
                 """,
                 arguments: [
@@ -1189,6 +1203,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     item.name,
                     item.cardNameQuery,
                     item.pokemonName,
+                    try PokemonCollectionRule.encode(item.pokemonRules),
                     item.displayMode.rawValue,
                     CollectionFolderIcon.validated(item.iconName).rawValue,
                     item.coverCardID,
@@ -1283,14 +1298,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             try database.execute(
                 sql: """
                 INSERT INTO customCollectionFolder
-                    (id, name, cardNameQuery, pokemonName, displayMode, iconName, coverCardID, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, name, cardNameQuery, pokemonName, pokemonRulesJSON, displayMode, iconName, coverCardID, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     item.id,
                     item.name,
                     item.cardNameQuery,
                     item.pokemonName,
+                    item.pokemonRulesJSON,
                     item.displayMode,
                     CollectionFolderIcon.validated(item.iconName).rawValue,
                     item.coverCardID,
@@ -1335,6 +1351,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             name: row["name"],
             cardNameQuery: row["cardNameQuery"],
             pokemonName: row["pokemonName"],
+            pokemonRules: PokemonCollectionRule.decode(row["pokemonRulesJSON"]),
             displayMode: displayMode,
             iconName: row["iconName"],
             coverCardID: row["coverCardID"],
@@ -1400,6 +1417,7 @@ private struct CollectionBackupPayload: Codable {
         let name: String
         let cardNameQuery: String
         let pokemonName: String?
+        let pokemonRulesJSON: String?
         let displayMode: String
         let iconName: String?
         let coverCardID: String?

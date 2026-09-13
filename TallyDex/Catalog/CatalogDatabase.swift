@@ -407,10 +407,12 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             try Row.fetchAll(
                 database,
                 sql: """
-                SELECT search.*, catalogSet.name AS setName,
+                SELECT search.*, detail.category, detail.illustrator, detail.rarity, detail.metadataJSON,
+                       catalogSet.name AS setName,
                        catalogSet.releaseDate AS setReleaseDate
                 FROM catalogSearchCard AS search
                 JOIN catalogSet ON catalogSet.id = search.setID
+                LEFT JOIN catalogCard AS detail ON detail.id = search.id
                 WHERE search.name LIKE ? COLLATE NOCASE
                 ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
                 """,
@@ -423,12 +425,54 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                         localID: row["localID"],
                         name: row["name"],
                         imageURL: Self.url(row["imageURL"]),
-                        category: nil,
-                        illustrator: nil,
-                        rarity: nil
+                        category: row["category"],
+                        illustrator: row["illustrator"],
+                        rarity: row["rarity"],
+                        metadata: Self.decodeMetadata(row["metadataJSON"])
                     ),
                     setName: row["setName"],
                     setReleaseDate: row["setReleaseDate"]
+                )
+            }
+        }
+    }
+
+    func fetchCards(matchingPokemonRules rules: [PokemonCollectionRule]) async throws -> [CatalogCardSearchResult] {
+        guard PokemonCollectionRule.isValid(rules) else { return [] }
+        let names = rules.map { rule in
+            "%" + rule.name.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_") + "%"
+        }
+        let ids = rules.compactMap(\.dexID)
+        var clauses = Array(repeating: "search.name LIKE ? ESCAPE '\\' COLLATE NOCASE", count: names.count)
+        if !ids.isEmpty {
+            let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ",")
+            clauses.append("EXISTS (SELECT 1 FROM json_each(detail.metadataJSON, '$.dexIDs') WHERE value IN (\(placeholders)))")
+        }
+        let whereClause = clauses.joined(separator: " OR ")
+        return try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT search.*, detail.category, detail.illustrator, detail.rarity, detail.metadataJSON,
+                       catalogSet.name AS setName, catalogSet.releaseDate AS setReleaseDate
+                FROM catalogSearchCard AS search
+                JOIN catalogSet ON catalogSet.id = search.setID
+                LEFT JOIN catalogCard AS detail ON detail.id = search.id
+                WHERE \(whereClause)
+                ORDER BY search.name COLLATE NOCASE, catalogSet.name COLLATE NOCASE, search.localID
+                """,
+                arguments: StatementArguments(names) + StatementArguments(ids)
+            ).map { row in
+                CatalogCardSearchResult(
+                    card: CatalogCard(
+                        id: row["id"], setID: row["setID"], localID: row["localID"], name: row["name"],
+                        imageURL: Self.url(row["imageURL"]), category: row["category"],
+                        illustrator: row["illustrator"], rarity: row["rarity"],
+                        metadata: Self.decodeMetadata(row["metadataJSON"])
+                    ),
+                    setName: row["setName"], setReleaseDate: row["setReleaseDate"]
                 )
             }
         }

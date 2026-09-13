@@ -202,6 +202,22 @@ Completed in v0.9.17:
 3. Existing free-text Collection rules retain their original behavior. Species
    selections survive automatic backups and portable JSON/CSV exports.
 
+Completed in v0.9.18:
+
+1. Collections can contain one or two catalogue-selected Pokémon. Cards featuring
+   either species are included, and a card matching both is counted only once.
+   The second selection is optional, replaceable, and removable from one compact
+   collection editor; Printings and card-page preferences are unchanged.
+2. Species rules now save a verified Pokédex ID where available. Matching uses
+   cached card IDs, including cards with multiple Pokémon IDs, and falls back to
+   canonical species names only when the necessary ID metadata is absent. Trainer
+   and Energy cards are excluded. IDs are never assigned by guessing tag-team order.
+3. Older one-Pokémon rules can resolve IDs from cached metadata, while original
+   free-text rules retain substring matching. Database migration v12 and portable
+   backup schema 4 preserve both Pokémon selections and their IDs through edits,
+   automatic backups, merge imports, and replacement restores.
+4. Updated What’s New notes explain two-Pokémon collections and ID-based matching.
+
 Completed in v0.9.16:
 
 1. Completing the introduction on a fresh install now uses an explicit completion
@@ -292,8 +308,8 @@ Completed in v0.9.10:
 
 Research and later builds:
 
-1. Use the stored Pokédex IDs for reliable Pokémon-focused Collection rules without
-   depending only on names; support cards containing multiple Pokémon IDs.
+1. Add optional type, era/set, and rarity filters to Pokémon-focused Collections
+   through one compact Filter sheet.
 2. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
    Treat them as market statistics, never as substitutes for a missing exact
    printing price.
