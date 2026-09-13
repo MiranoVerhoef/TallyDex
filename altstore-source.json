@@ -20,6 +20,9 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-sv-set-logos.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-cache-limits.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-api-info.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.19/TallyDex-v0.9.19-advanced-api.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.19/TallyDex-v0.9.19-bundled-porygon.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.18/TallyDex-v0.9.18-two-pokemon.png",
@@ -85,6 +88,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.20",
+          "buildVersion": "56",
+          "date": "2026-09-13",
+          "localizedDescription": "Adds matching bundled logos for Scarlet & Violet Energy and SVP Black Star Promos. Settings → Artwork Cache now has a persisted limit picker from 100 MB to 2 GB, keeping 400 MB as the default. Changes apply immediately without restarting; least-recently-used automatic artwork is trimmed while kept-offline sets and bundled images remain untouched. Advanced settings rename My API to TallyDex API, with a small info button explaining the development version of TCGdex used for faster card updates and the official fallback. Updated What's New notes explain the improvements. Collection data and card-detail preferences stay unchanged.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20.ipa",
+          "size": 29555937,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.19",
           "buildVersion": "55",

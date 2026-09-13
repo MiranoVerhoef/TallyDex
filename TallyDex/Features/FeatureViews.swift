@@ -462,11 +462,13 @@ private struct CatalogArtwork: View {
 }
 
 @MainActor
-private enum BundledSetLogo {
+enum BundledSetLogo {
     private static let fileStemsByID: [String: String] = [
         "upcoming-30c": "upcoming-30c",
         "mep": "mep",
         "mee": "mee",
+        "svp": "svp",
+        "sve": "sve",
         "sv05": "sv05",
         "swsh12.5gg": "swsh12.5gg",
         "swsh12.5tg": "swsh12.5tg",
@@ -504,6 +506,10 @@ private enum BundledSetLogo {
         "30th celebration": "upcoming-30c",
         "mega evolution energy": "mee",
         "mega evolution energies": "mee",
+        "svp black star promos": "svp",
+        "scarlet & violet promos": "svp",
+        "scarlet & violet energy": "sve",
+        "scarlet & violet energies": "sve",
         "mep black star promos": "mep",
         "temporal forces": "sv05",
         "crown zenith galarian gallery": "swsh12.5gg",
@@ -555,7 +561,8 @@ private enum BundledSetLogo {
             forResource: fileStem,
             withExtension: "webp",
             subdirectory: "BundledSetLogos"
-        ) ?? Bundle.main.url(forResource: fileStem, withExtension: "webp")
+        ) ?? Bundle.main.url(forResource: fileStem, withExtension: "png", subdirectory: "BundledSetLogos")
+          ?? Bundle.main.url(forResource: fileStem, withExtension: "webp")
         guard let url, let image = UIImage(contentsOfFile: url.path) else {
             return nil
         }
@@ -6074,11 +6081,21 @@ private struct AdvancedAPISettingsView: View {
     @State private var checkResult: String?
     @State private var checkSucceeded = false
     @State private var validationMessage: String?
+    @State private var isShowingAPIInfo = false
 
     var body: some View {
         Form {
             Section {
-                Toggle("Use My API First", isOn: $customEnabled)
+                Toggle(isOn: $customEnabled) {
+                    HStack(spacing: 8) {
+                        Text("TallyDex API")
+                        Button { isShowingAPIInfo = true } label: {
+                            Image(systemName: "info.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("About the TallyDex API")
+                    }
+                }
                 TextField("HTTPS API URL", text: $draftURL)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
@@ -6103,7 +6120,7 @@ private struct AdvancedAPISettingsView: View {
                 Text("Use an HTTPS hostname or /v2/en API root. The official API is always the fallback. Saving does not change your collection or remove offline downloads.")
             }
             Section {
-                LabeledContent("1", value: "My API")
+                LabeledContent("1", value: "TallyDex API")
                 LabeledContent("2", value: "Official TCGdex API")
                 LabeledContent("3", value: "Verified parent set")
                 LabeledContent("4", value: "Bundled thumbnails")
@@ -6118,6 +6135,11 @@ private struct AdvancedAPISettingsView: View {
         .onAppear { draftURL = savedURL }
         .onChange(of: draftURL) { _, _ in checkResult = nil; validationMessage = nil }
         .onChange(of: customEnabled) { _, _ in Task { await catalogStore.refresh() } }
+        .alert("TallyDex API", isPresented: $isShowingAPIInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The TallyDex API runs the development version of the TCGdex API for faster updates to cards and catalogue data. The official TCGdex API remains available as an automatic fallback.")
+        }
     }
 
     private func save() {
@@ -6448,12 +6470,14 @@ private struct ArtworkCacheSettingsView: View {
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(CatalogStore.self) private var catalogStore
     @State private var isConfirmingClearAll = false
+    @AppStorage(ArtworkCacheSettings.limitKey)
+    private var cacheLimit = ArtworkCacheSettings.defaultLimit.rawValue
 
     private func sizeDescription(_ statistics: CatalogArtworkCacheStatistics) -> String {
         guard statistics.fileCount > 0 else { return "Empty" }
         let size = ByteCountFormatter.string(
             fromByteCount: statistics.byteCount,
-            countStyle: .file
+            countStyle: .memory
         )
         return "\(statistics.fileCount) · \(size)"
     }
@@ -6483,15 +6507,13 @@ private struct ArtworkCacheSettingsView: View {
                         )
                     )
                 )
-                LabeledContent(
-                    "Automatic limit",
-                    value: ByteCountFormatter.string(
-                        fromByteCount: CatalogArtworkCache.maximumByteCount,
-                        countStyle: .file
-                    )
-                )
+                Picker("Automatic limit", selection: $cacheLimit) {
+                    ForEach(ArtworkCacheSizeLimit.allCases) { limit in
+                        Text(limit.title).tag(limit.rawValue)
+                    }
+                }
             } footer: {
-                Text("The first time a set opens, TallyDex downloads and caches its grid images. Card images are resized and compressed on this iPhone before storage; thumbnails use a smaller optimized copy while full artwork stays detailed. Missing artwork uses exact verified fallbacks. When the 400 MB limit is reached, the least recently used card images are removed first. Sets chosen in Offline Sets are stored separately and are never removed here.")
+                Text("Card images are resized and compressed on this iPhone. At the selected limit, the least recently used card images are removed first. Lowering the limit trims the automatic cache immediately. Kept-offline sets and bundled images are separate and are never removed here.")
             }
 
             Section("Choose What to Remove") {
@@ -6530,6 +6552,9 @@ private struct ArtworkCacheSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await artworkCacheStore.refreshSnapshot()
+        }
+        .onChange(of: cacheLimit) { _, _ in
+            Task { await artworkCacheStore.refreshSnapshot() }
         }
         .confirmationDialog(
             "Clear every automatic artwork cache?",

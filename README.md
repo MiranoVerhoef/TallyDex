@@ -60,8 +60,9 @@ Forever option has a configurable approximate history limit of 50 MB, 100 MB,
 Settings shows price-data usage and can clear history alone or all cached market data.
 Card details reuse fresh 18-hour data, and the complete search index uses TCGdex
 ETags so an unchanged refresh does not download its multi-megabyte response again.
-Artwork has a 400 MB automatic least-recently-used ceiling, with older card images
-removed before core series, set, and expansion artwork.
+Artwork defaults to a 400 MB automatic least-recently-used ceiling, configurable
+from 100 MB to 2 GB in Settings → Artwork Cache. Older card images are removed
+before core series, set, and expansion artwork. Lowering the limit trims immediately.
 
 ## Offline sets
 
@@ -69,7 +70,7 @@ Touch and hold a released set and choose **Keep Offline** to download its comple
 card metadata, printing variants, grid images, and full-size artwork. TallyDex
 shows an estimated size before downloading, progress while it works, and an
 Offline badge when the set is complete. Explicit downloads live separately from
-the automatic artwork cache, so its 400 MB cleanup never removes them. Manage
+the automatic artwork cache, so its cleanup never removes them. Manage
 individual downloads in Settings → Offline Sets.
 
 ## API and card images
@@ -77,7 +78,9 @@ individual downloads in Settings → Offline Sets.
 Settings → Advanced configures the first TCGdex API source. It defaults to
 `https://tcgdex.tallydex.nl/v2/en/`, accepts an HTTPS origin or the English API
 root, and provides a connection check against the series list and an exact card.
-Disabling **Use My API First** starts with official TCGdex. API metadata requests
+Disabling **TallyDex API** starts with official TCGdex. Its adjacent info button
+explains that the service runs the development version of TCGdex for faster card
+updates. API metadata requests
 fall back to `https://api.tcgdex.net/v2/en/` when the custom source fails. Failed
 hosts back off briefly; source-specific ETags prevent cross-provider 304 mistakes.
 
@@ -514,6 +517,17 @@ Completed in v0.9.19:
 - Source-scoped catalogue ETags and automatic artwork caches; explicitly kept
   offline API images use exact-card keys so changing hosts preserves availability.
 - Updated What's New notes; card-details preferences and printings stay unchanged.
+
+Completed in v0.9.20:
+
+- Bundled matching logos for Scarlet & Violet Energy (`sve`) and Black Star
+  Promos (`svp`) where the API omits its artwork links.
+- Artwork Cache has a persisted 100 MB–2 GB limit picker, with 400 MB unchanged
+  as the default. Changes take effect immediately without restarting; offline
+  downloads and bundled resources are excluded from automatic cleanup.
+- Advanced settings use the TallyDex API label and a small info button explaining
+  its development-version TCGdex service and faster card updates.
+- Updated What's New notes; collection data and card-detail preferences unchanged.
 
 ## Reporting catalog data
 
