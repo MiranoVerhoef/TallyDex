@@ -20,6 +20,7 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.18/TallyDex-v0.9.18-two-pokemon.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.17/TallyDex-v0.9.17-pokemon-collections.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.16/TallyDex-v0.9.16-first-launch-complete.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.15/TallyDex-v0.9.15-collapsed-card-details.png",
@@ -82,6 +83,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.18",
+          "buildVersion": "54",
+          "date": "2026-09-13",
+          "localizedDescription": "Collections can now contain one or two catalogue-selected Pokémon, such as Lucario and Riolu. Cards featuring either species are included, and shared cards appear only once. Verified Pokédex IDs improve matching across special forms and multi-Pokémon cards, with species-name fallback when IDs are missing. The compact editor lets you add, replace, or remove the optional second Pokémon and prevents duplicates. Existing collections and ownership stay intact; both selections and IDs survive backups and portable exports. Updated What's New notes explain the improvements.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.18/TallyDex-v0.9.18.ipa",
+          "size": 8862815,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.17",
           "buildVersion": "53",

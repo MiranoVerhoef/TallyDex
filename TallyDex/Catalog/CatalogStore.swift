@@ -252,6 +252,34 @@ final class CatalogStore {
         try await resolveRepository().fetchCards(matchingName: query)
     }
 
+    func cards(matchingPokemonRules rules: [PokemonCollectionRule]) async throws -> [CatalogCardSearchResult] {
+        let repository = try resolveRepository()
+        var candidates = try await repository.fetchCards(matchingPokemonRules: rules)
+        let resolved = rules.map { rule in
+            PokemonCollectionRule(
+                name: rule.name,
+                dexID: rule.dexID ?? PokemonRuleSearch.verifiedDexID(for: rule.name, from: candidates)
+            )
+        }
+        if resolved != rules {
+            candidates = try await repository.fetchCards(matchingPokemonRules: resolved)
+        }
+        return candidates.filter { PokemonRuleSearch.matches(card: $0.card, rules: resolved) }
+    }
+
+    func pokemonRule(for choice: PokemonRuleChoice) async -> PokemonCollectionRule {
+        guard choice.dexID == nil else { return choice.rule }
+        // One exact representative detail request, not a full-catalogue download.
+        guard let snapshot = try? await details(for: choice.exampleCard) else { return choice.rule }
+        let result = CatalogCardSearchResult(
+            card: snapshot.card, setName: choice.exampleSetName, setReleaseDate: nil
+        )
+        return .init(
+            name: choice.name,
+            dexID: PokemonRuleSearch.verifiedDexID(for: choice.name, from: [result])
+        )
+    }
+
     func searchResults(cardIDs: [String]) async throws -> [CatalogCardSearchResult] {
         try await resolveRepository().fetchSearchResults(cardIDs: cardIDs)
     }

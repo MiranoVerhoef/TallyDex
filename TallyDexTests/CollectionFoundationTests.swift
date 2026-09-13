@@ -932,6 +932,151 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(choices.map(\.name), ["Mew", "Mewtwo"])
     }
 
+    func testPokemonRulesUseVerifiedIDsAndFallbackOnlyWhenIDsAreMissing() {
+        let rules = [PokemonCollectionRule(name: "Lucario", dexID: 448)]
+        XCTAssertTrue(PokemonRuleSearch.matches(card: pokemonCard(name: "An unusual form", ids: [448]), rules: rules))
+        XCTAssertTrue(PokemonRuleSearch.matches(card: pokemonCard(name: "Lucario & Melmetal-GX", ids: [809, 448]), rules: rules))
+        XCTAssertFalse(PokemonRuleSearch.matches(card: pokemonCard(name: "Lucario", ids: [447]), rules: rules))
+        XCTAssertTrue(PokemonRuleSearch.matches(card: pokemonCard(name: "Mega Lucario ex", ids: []), rules: rules))
+        XCTAssertTrue(PokemonRuleSearch.matches(card: pokemonCard(name: "Lucario-GX", ids: nil), rules: rules))
+        XCTAssertFalse(PokemonRuleSearch.matches(card: pokemonCard(name: "Lucario", ids: [448], category: "Trainer"), rules: rules))
+        XCTAssertFalse(PokemonRuleSearch.matches(card: pokemonCard(name: "Lucario Spirit Link", ids: nil, category: nil), rules: rules))
+    }
+
+    func testTwoPokemonRulesIncludeEitherAndKeepMewDistinctFromMewtwo() {
+        let rules = [PokemonCollectionRule(name: "Lucario", dexID: 448), .init(name: "Riolu", dexID: 447)]
+        XCTAssertTrue(PokemonRuleSearch.matches(card: pokemonCard(name: "Riolu", ids: [447]), rules: rules))
+        XCTAssertTrue(PokemonRuleSearch.matches(card: pokemonCard(name: "Lucario V", ids: [448]), rules: rules))
+        XCTAssertFalse(PokemonRuleSearch.matches(card: pokemonCard(name: "Pikachu", ids: [25]), rules: rules))
+        XCTAssertFalse(PokemonRuleSearch.matches(card: pokemonCard(name: "Mewtwo", ids: nil), rules: [.init(name: "Mew")]))
+    }
+
+    func testPokemonChoicesNeverGuessMultiPokemonIDOrderOrConflictingIDs() {
+        let lucario = pokemonCard(name: "Lucario V", ids: [448])
+        let tagTeam = pokemonCard(name: "Lucario & Melmetal-GX", ids: [809, 448])
+        let results = [lucario, tagTeam].map {
+            CatalogCardSearchResult(card: $0, setName: "Test", setReleaseDate: nil)
+        }
+        XCTAssertEqual(PokemonRuleSearch.choices(from: results, query: "Lucario").first?.dexID, 448)
+        XCTAssertNil(PokemonRuleSearch.choices(from: [results[1]], query: "Melmetal").first?.dexID)
+        let contradictory = CatalogCardSearchResult(
+            card: pokemonCard(name: "Lucario", ids: [447]), setName: "Test", setReleaseDate: nil
+        )
+        XCTAssertNil(PokemonRuleSearch.choices(from: results + [contradictory], query: "Lucario").first?.dexID)
+    }
+
+    func testPokemonRulesRejectDuplicatesAndMoreThanTwoSelections() {
+        XCTAssertTrue(PokemonCollectionRule.isValid([.init(name: "Lucario", dexID: 448), .init(name: "Riolu", dexID: 447)]))
+        XCTAssertFalse(PokemonCollectionRule.isValid([]))
+        XCTAssertFalse(PokemonCollectionRule.isValid([.init(name: "Lucario"), .init(name: "lucario")]))
+        XCTAssertFalse(PokemonCollectionRule.isValid([.init(name: "Lucario", dexID: 448), .init(name: "Mega Lucario", dexID: 448)]))
+        XCTAssertFalse(PokemonCollectionRule.isValid([.init(name: "Lucario"), .init(name: "Riolu"), .init(name: "Pikachu")]))
+        XCTAssertFalse(PokemonCollectionRule.isValid([.init(name: "   ")]))
+        XCTAssertFalse(PokemonCollectionRule.isValid([.init(name: "Lucario", dexID: -1)]))
+    }
+
+    func testTwoPokemonFolderSurvivesEditBackupRestoreAndPortableMerge() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let destination = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let timestamp = Date(timeIntervalSince1970: 100)
+        let rules = [PokemonCollectionRule(name: "Lucario", dexID: 448), .init(name: "Riolu", dexID: 447)]
+        let folder = CustomCollectionFolder(
+            id: UUID(), name: "Lucario + Riolu", cardNameQuery: "Lucario + Riolu", pokemonName: "Lucario",
+            pokemonRules: rules, displayMode: .allMatching, coverCardID: "smp-SM95",
+            createdAt: timestamp, updatedAt: timestamp
+        )
+        try await repository.setQuantity(3, cardID: "smp-SM95", variant: .holo, updatedAt: timestamp)
+        try await repository.saveCustomFolder(folder)
+        let fetched = try await repository.fetchCustomFolders()
+        XCTAssertEqual(fetched, [folder])
+        XCTAssertEqual(fetched.first?.pokemonSummary, "Lucario + Riolu")
+        let backup = try await repository.createBackup(reason: "Two Pokémon", createdAt: timestamp)
+        let exported = try await repository.exportCollection(exportedAt: timestamp, appVersion: "0.9.18")
+        let decoded = try CollectionTransferCodec.decode(CollectionTransferCodec.encode(exported))
+        XCTAssertEqual(decoded.folders.first?.pokemonRules, rules)
+        let csv = String(decoding: CollectionTransferCodec.csv(decoded), as: UTF8.self)
+        XCTAssertTrue(csv.contains("pokemon_rules"))
+        XCTAssertTrue(csv.contains("Riolu"))
+        XCTAssertTrue(csv.contains("448"))
+        try await destination.importCollection(decoded, mode: .merge, importedAt: timestamp)
+        let merged = try await destination.fetchCustomFolders()
+        XCTAssertEqual(merged, [folder])
+        try await repository.saveCustomFolder(.init(
+            id: folder.id, name: "Riolu", cardNameQuery: "Riolu", pokemonName: "Riolu",
+            pokemonRules: [rules[1]], displayMode: .ownedOnly,
+            createdAt: timestamp, updatedAt: timestamp.addingTimeInterval(1)
+        ))
+        try await repository.restoreBackup(id: backup.id, safetyBackupReason: "Before restore", restoredAt: timestamp.addingTimeInterval(2))
+        let restored = try await repository.fetchCustomFolders()
+        XCTAssertEqual(restored, [folder])
+        let owned = try await repository.fetchEntries(cardID: "smp-SM95")
+        XCTAssertEqual(owned.first?.quantity, 3)
+        try await destination.importCollection(decoded, mode: .replace, importedAt: timestamp.addingTimeInterval(3))
+        let replaced = try await destination.fetchCustomFolders()
+        XCTAssertEqual(replaced, [folder])
+    }
+
+    func testLegacyAndSinglePokemonFoldersRetainTheirRules() {
+        let timestamp = Date(timeIntervalSince1970: 100)
+        let legacy = CustomCollectionFolder(
+            id: UUID(), name: "Luc", cardNameQuery: "Luc", displayMode: .allMatching,
+            createdAt: timestamp, updatedAt: timestamp
+        )
+        let single = CustomCollectionFolder(
+            id: UUID(), name: "Lucario", cardNameQuery: "Lucario", pokemonName: "Lucario",
+            displayMode: .allMatching, createdAt: timestamp, updatedAt: timestamp
+        )
+        XCTAssertTrue(legacy.effectivePokemonRules.isEmpty)
+        XCTAssertNil(legacy.pokemonSummary)
+        XCTAssertEqual(single.effectivePokemonRules, [.init(name: "Lucario")])
+    }
+
+    func testInvalidTwoPokemonRulesCannotBeSavedOrImported() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let timestamp = Date(timeIntervalSince1970: 100)
+        let badRules = [PokemonCollectionRule(name: "Lucario"), .init(name: "lucario")]
+        let folder = CustomCollectionFolder(
+            id: UUID(), name: "Duplicates", cardNameQuery: "Lucario", pokemonRules: badRules,
+            displayMode: .allMatching, createdAt: timestamp, updatedAt: timestamp
+        )
+        do {
+            try await repository.saveCustomFolder(folder)
+            XCTFail("Duplicate species must be rejected")
+        } catch {
+            XCTAssertEqual(error as? CollectionRepositoryError, .invalidCustomFolder)
+        }
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier, schemaVersion: 4,
+            exportedAt: timestamp, appVersion: "0.9.18", ownership: [], setPreferences: [],
+            folders: [.init(id: folder.id, name: folder.name, cardNameQuery: folder.cardNameQuery,
+                            pokemonRules: badRules, displayMode: .allMatching, createdAt: timestamp, updatedAt: timestamp)],
+            cardMetadata: []
+        )
+        do {
+            try await repository.importCollection(document, mode: .replace, importedAt: timestamp)
+            XCTFail("Duplicate species in portable documents must be rejected")
+        } catch {
+            XCTAssertEqual(error as? CollectionRepositoryError, .invalidImport)
+        }
+        let folders = try await repository.fetchCustomFolders()
+        XCTAssertTrue(folders.isEmpty)
+    }
+
+    private func pokemonCard(name: String, ids: [Int]?, category: String? = "Pokémon") -> CatalogCard {
+        CatalogCard(
+            id: name, setID: "test", localID: "1", name: name, imageURL: nil,
+            category: category, illustrator: nil, rarity: nil,
+            metadata: ids.map {
+                CatalogCardMetadata(
+                    dexIDs: $0, hp: nil, types: [], evolvesFrom: nil, stage: nil, suffix: nil,
+                    attacks: [], abilities: [], weaknesses: [], resistances: [], retreatCost: nil,
+                    regulationMark: nil, legality: nil, rulesText: nil, trainerType: nil, energyType: nil,
+                    flavorText: nil, updatedAt: nil
+                )
+            }
+        )
+    }
+
     func testLocalHTTPRequestParsesEncodedValuesCookiesAndBodyLength() throws {
         let body = "code=123456&note=Binder+page+%233"
         let raw = """
