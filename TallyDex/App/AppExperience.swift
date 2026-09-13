@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.22",
-        headline: "Find the overlooked cards",
+        version: "0.9.23",
+        headline: "Settings, simplified",
         notes: [
             AppReleaseNote(
-                systemImage: "square.stack.3d.up",
-                title: "Trick or Trade checklists",
-                detail: "Track the 30 pumpkin-stamped cards from each verified 2022–2024 release. Ownership is shared with the original card’s exact printing, without duplicate card records. Images may show original artwork without the stamp."
+                systemImage: "slider.horizontal.3",
+                title: "A cleaner Settings menu",
+                detail: "Focused pages for appearance and browsing, collection preferences, and prices keep everyday choices easy to find. Existing preferences stay unchanged."
             ),
             AppReleaseNote(
                 systemImage: "bolt.fill",
-                title: "Energy cards, together",
-                detail: "Each era now has a read-only Energy overview of cards already represented by the API. Original set ownership and completion stay shared. Unnumbered designs missing from the API still need verified identities."
+                title: "Original Energy sets only",
+                detail: "The extra Energy overview rows have been removed. Actual Energy sets, their cards, and your ownership remain intact."
             ),
             AppReleaseNote(
-                systemImage: "archivebox.fill",
-                title: "Report missing artwork",
-                detail: "Settings → Advanced lists observed failed image loads with exact card IDs. Recheck or share the report for API fixes. Network failures may be temporary; this is not a complete catalogue audit."
+                systemImage: "photo.stack",
+                title: "Small bundled set covers",
+                detail: "Trick or Trade 2022–2024 and My First Battle now have bundled logos. Hidden Fates: Shiny Vault uses its parent logo with a clear label; Yellow A Alternate uses its original A symbol. Each asset is under 20 KB."
             ),
         ]
     )

@@ -464,6 +464,12 @@ private struct CatalogArtwork: View {
 @MainActor
 enum BundledSetLogo {
     private static let fileStemsByID: [String: String] = [
+        "tallydex-tot-2022": "tallydex-tot-2022",
+        "tallydex-tot-2023": "tallydex-tot-2023",
+        "tallydex-tot-2024": "tallydex-tot-2024",
+        "mfb": "mfb",
+        "sma": "sma",
+        "xya": "xya",
         "upcoming-30c": "upcoming-30c",
         "mep": "mep",
         "mee": "mee",
@@ -503,6 +509,12 @@ enum BundledSetLogo {
     ]
 
     private static let fileStemsByName: [String: String] = [
+        "trick or trade 2022": "tallydex-tot-2022",
+        "trick or trade 2023": "tallydex-tot-2023",
+        "trick or trade 2024": "tallydex-tot-2024",
+        "my first battle": "mfb",
+        "hidden fates shiny vault": "sma",
+        "yellow a alternate": "xya",
         "30th celebration": "upcoming-30c",
         "mega evolution energy": "mee",
         "mega evolution energies": "mee",
@@ -575,7 +587,24 @@ private struct CatalogSetArtwork: View {
     let set: CatalogSet
 
     var body: some View {
-        if let release = TrickOrTradeRelease.release(setID: set.id) {
+        if let bundledImage = BundledSetLogo.image(for: set) {
+            if set.id == "sma" {
+                VStack(spacing: 2) {
+                    Image(uiImage: bundledImage).resizable().scaledToFit()
+                    Text("SHINY VAULT").font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            } else if set.id == "xya" {
+                VStack(spacing: 4) {
+                    Image(uiImage: bundledImage).resizable().interpolation(.none)
+                        .scaledToFit().frame(width: 30, height: 30)
+                    Text("ALTERNATE").font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Image(uiImage: bundledImage).resizable().scaledToFit()
+            }
+        } else if let release = TrickOrTradeRelease.release(setID: set.id) {
             VStack(spacing: 6) {
                 Image(systemName: "sparkles").font(.title2)
                 Text(String(release.year)).font(.caption.weight(.semibold))
@@ -583,15 +612,6 @@ private struct CatalogSetArtwork: View {
             .foregroundStyle(.indigo)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-        } else if CatalogEnergyChecklist.seriesID(setID: set.id) != nil {
-            Image(systemName: "bolt.fill")
-                .font(.largeTitle).foregroundStyle(.green)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-        } else if let bundledImage = BundledSetLogo.image(for: set) {
-            Image(uiImage: bundledImage)
-                .resizable()
-                .scaledToFit()
         } else if set.seriesID == "mc", set.preferredArtworkReference == nil {
             McDonaldsCollectionBadge(year: set.releaseDate.map { String($0.prefix(4)) })
         } else {
@@ -733,8 +753,6 @@ private struct CatalogSetLink: View {
         NavigationLink {
             if let release = TrickOrTradeRelease.release(setID: set.id) {
                 TrickOrTradeChecklistView(release: release)
-            } else if let seriesID = CatalogEnergyChecklist.seriesID(setID: set.id) {
-                EnergyChecklistView(seriesID: seriesID)
             } else {
                 CatalogSetDetailView(set: set)
             }
@@ -742,7 +760,6 @@ private struct CatalogSetLink: View {
             CatalogSetRow(set: set)
         }
         .contextMenu {
-            if CatalogEnergyChecklist.seriesID(setID: set.id) == nil {
             Button("Edit", systemImage: "slider.horizontal.3") {
                 onEdit(set)
             }
@@ -767,7 +784,6 @@ private struct CatalogSetLink: View {
                         || artworkCacheStore.downloadProgress[set.id] != nil
                         || set.isUpcoming()
                 )
-            }
             }
             }
         }
@@ -915,55 +931,6 @@ private struct TrickOrTradeChecklistView: View {
     }
 }
 
-private struct EnergyChecklistView: View {
-    let seriesID: String
-    @Environment(CatalogStore.self) private var catalogStore
-    @State private var results: [CatalogCardSearchResult] = []
-    @State private var searchText = ""
-    @State private var isLoading = true
-    @State private var message: String?
-
-    var body: some View {
-        List {
-            Section {
-                if isLoading { ProgressView("Loading Energy cards") }
-                else { Text("\(results.count) Energy cards in the saved catalogue") }
-            } footer: {
-                Text("An overview of existing cards, not another set to complete. Ownership stays shared with their original sets. Unnumbered designs not represented by the API are not included.")
-            }
-            if let message { Text(message).font(.footnote).foregroundStyle(.orange) }
-            ForEach(results.filter {
-                searchText.isEmpty || $0.card.name.localizedCaseInsensitiveContains(searchText)
-                    || $0.setName.localizedCaseInsensitiveContains(searchText)
-            }) { result in
-                NavigationLink {
-                    CatalogCardDetailView(card: result.card)
-                } label: {
-                    HStack(spacing: 12) {
-                        CachedCardImage(card: result.card).frame(width: 48, height: 67)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(result.card.name).font(.subheadline.weight(.semibold))
-                            Text("\(result.setName) · #\(result.card.localID)")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }.fixedSize(horizontal: false, vertical: true)
-                    }.padding(.vertical, 3)
-                }
-            }
-        }
-        .navigationTitle("Energy cards")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Energy or set name")
-        .task { await load() }
-        .refreshable { await catalogStore.preindexCompleteCatalog(); await load() }
-    }
-
-    private func load() async {
-        isLoading = true
-        defer { isLoading = false }
-        do { results = try await catalogStore.energyCards(seriesID: seriesID); message = nil }
-        catch { message = "Energy cards couldn’t load. Pull down to retry." }
-    }
-}
 
 private func offlineEstimate(for set: CatalogSet) -> String {
     ByteCountFormatter.string(
@@ -5184,10 +5151,129 @@ private struct CustomCollectionFolderDetailView: View {
 }
 
 struct SettingsView: View {
-    @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(LocalCollectionSharingController.self) private var localCollectionSharing
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Preferences") {
+                    ForEach(SettingsPreferencePage.allCases) { page in
+                        NavigationLink {
+                            SettingsPreferencesView(page: page)
+                        } label: {
+                            SettingsMenuLabel(title: page.title, detail: page.detail, systemImage: page.systemImage, tint: .blue)
+                        }
+                    }
+                }
+                Section("Collection & Data") {
+                    NavigationLink { CollectionBackupsView() } label: {
+                        SettingsMenuLabel(title: "Collection Backups", detail: "\(collectionStore.backups.count) saved backups", systemImage: "clock.arrow.circlepath", tint: .indigo)
+                    }
+                    NavigationLink { CollectionDataTransferView() } label: {
+                        SettingsMenuLabel(title: "Export & Import", detail: "Move or restore your collection", systemImage: "arrow.up.arrow.down.square", tint: .indigo)
+                    }
+                    NavigationLink { LocalCollectionSharingView() } label: {
+                        SettingsMenuLabel(title: "Browser Editor", detail: localCollectionSharing.isRunning ? "Active on your local network" : "Edit from a computer on the same Wi-Fi", systemImage: "desktopcomputer", tint: .indigo)
+                    }
+                }
+                Section("Storage") {
+                    NavigationLink {
+                        OfflineSetsSettingsView()
+                    } label: {
+                        LabeledContent {
+                            Text("\(artworkCacheStore.pinnedSetIDs.count)")
+                                .foregroundStyle(.secondary)
+                        } label: {
+                            Label("Offline Sets", systemImage: "arrow.down.circle")
+                        }
+                    }
+
+                    NavigationLink {
+                        PriceDataSettingsView()
+                    } label: {
+                        Label("Price Data", systemImage: "chart.xyaxis.line")
+                    }
+
+                    NavigationLink {
+                        ArtworkCacheSettingsView()
+                    } label: {
+                        Label("Artwork Cache", systemImage: "externaldrive")
+                    }
+                }
+                Section("Help & App") {
+                    NavigationLink { WhatsNewView(release: AppReleaseNotes.current) } label: {
+                        Label("What’s New", systemImage: "sparkles")
+                    }
+                    NavigationLink { CatalogIssueReportingView() } label: {
+                        Label("Missing or Incorrect Card", systemImage: "exclamationmark.bubble")
+                    }
+                    NavigationLink { AdvancedAPISettingsView() } label: {
+                        Label("Advanced", systemImage: "slider.horizontal.3")
+                    }
+                    NavigationLink { AboutTallyDexView() } label: {
+                        Label("About TallyDex", systemImage: "info.circle")
+                    }
+                }
+            }
+            .navigationTitle("Settings")
+        }
+    }
+}
+
+enum SettingsPreferencePage: String, CaseIterable, Identifiable {
+    case browsing, collection, prices
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .browsing: "Appearance & Browsing"
+        case .collection: "Collection Preferences"
+        case .prices: "Prices & Currency"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .browsing: "Theme, set layout and card details"
+        case .collection: "Default goals and copy tracking"
+        case .prices: "Marketplace and currency preferences"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .browsing: "paintpalette"
+        case .collection: "checklist"
+        case .prices: "eurosign.circle"
+        }
+    }
+}
+
+private struct SettingsMenuLabel: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.medium))
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).foregroundStyle(.primary)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct SettingsPreferencesView: View {
+    let page: SettingsPreferencePage
     @AppStorage(SetsScope.storageKey) private var defaultSetsScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
@@ -5206,12 +5292,10 @@ struct SettingsView: View {
     @AppStorage(PricingSettings.cardmarketCurrencyKey)
     private var cardmarketCurrency = PricingSettings.defaultCardmarketCurrency.rawValue
     @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
-    @AppStorage(AppExperienceSettings.introductionCompletedKey)
-    private var introductionCompleted = false
 
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
+            if page == .browsing {
                 Section {
                     Picker("Default View", selection: $defaultSetsScope) {
                         ForEach(SetsScope.allCases) { scope in
@@ -5251,7 +5335,8 @@ struct SettingsView: View {
                 } footer: {
                     Text("Only the optional Card details block is affected. Printings, prices, notes, and collection controls stay visible as usual.")
                 }
-
+            }
+            if page == .collection {
                 Section {
                     Picker("Default collection goal", selection: $defaultCollectionGoal) {
                         ForEach(CollectionGoal.allCases, id: \.self) { goal in
@@ -5287,24 +5372,8 @@ struct SettingsView: View {
                         Text("New Custom sets will start with these printing types. At least one printing type must remain selected; each set can still be edited separately.")
                     }
                 }
-
-                Section {
-                    NavigationLink {
-                        LocalCollectionSharingView()
-                    } label: {
-                        LabeledContent {
-                            Text(localCollectionSharing.isRunning ? "Active" : "Off")
-                                .foregroundStyle(localCollectionSharing.isRunning ? .green : .secondary)
-                        } label: {
-                            Label("Browser Editor", systemImage: "desktopcomputer")
-                        }
-                    }
-                } header: {
-                    Text("Computer Access")
-                } footer: {
-                    Text("Temporarily edit this collection from a browser on the same Wi-Fi network. No collection data is uploaded to a cloud service.")
-                }
-
+            }
+            if page == .prices {
                 Section {
                     Picker("Price source", selection: $preferredPriceSource) {
                         ForEach(CatalogPriceSource.allCases) { source in
@@ -5320,6 +5389,7 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    DisclosureGroup("Future Cardmarket Listings") {
                     LabeledContent {
                         Text("Waiting for access")
                             .foregroundStyle(.secondary)
@@ -5340,37 +5410,43 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
+                    Text("These saved choices do not filter or convert current TCGdex prices. They are reserved for future permitted Cardmarket API access.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    }
                 } header: {
-                    Text("Future Cardmarket Listings")
+                    Text("Future Features")
                 } footer: {
-                    Text("Reserved for when TallyDex can obtain permitted official Cardmarket API access. These choices are saved now, but do not filter or convert the current Europe-wide TCGdex aggregates.")
+                    Text("Current prices use the selected marketplace’s native currency: EUR for Cardmarket or USD for TCGplayer.")
                 }
+            }
+        }
+        .navigationTitle(page.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
 
-                Section("Storage") {
-                    NavigationLink {
-                        OfflineSetsSettingsView()
-                    } label: {
-                        LabeledContent {
-                            Text("\(artworkCacheStore.pinnedSetIDs.count)")
-                                .foregroundStyle(.secondary)
-                        } label: {
-                            Label("Offline Sets", systemImage: "arrow.down.circle")
-                        }
-                    }
-
-                    NavigationLink {
-                        PriceDataSettingsView()
-                    } label: {
-                        Label("Price Data", systemImage: "chart.xyaxis.line")
-                    }
-
-                    NavigationLink {
-                        ArtworkCacheSettingsView()
-                    } label: {
-                        Label("Artwork Cache", systemImage: "externaldrive")
-                    }
+    private func defaultCustomVariantBinding(for variant: CatalogVariantKind) -> Binding<Bool> {
+        Binding(
+            get: { defaultCustomVariants.contains(variant) },
+            set: { isIncluded in
+                if isIncluded {
+                    defaultCustomVariants.insert(variant)
+                } else if defaultCustomVariants.count > 1 {
+                    defaultCustomVariants.remove(variant)
                 }
+                UserDefaults.standard.set(
+                    defaultCustomVariants.map(\.rawValue).sorted(),
+                    forKey: CollectionSettings.defaultCustomVariantsKey
+                )
+            }
+        )
+    }
+}
 
+private struct CatalogueIndexSettingsView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+
+    var body: some View {
+        Form {
                 Section {
                     Button {
                         Task { await catalogStore.preindexCompleteCatalog() }
@@ -5402,90 +5478,9 @@ struct SettingsView: View {
                 } footer: {
                     Text("Downloads the lightweight complete TCGdex card index in one request so names, sets, and collector numbers search locally. Full card details and artwork stay on demand to control storage use.")
                 }
-
-                Section("Privacy") {
-                    LabeledContent("Storage", value: "On this iPhone")
-                    LabeledContent("Analytics", value: "None")
-                }
-
-                Section("Data") {
-                    NavigationLink {
-                        CollectionDataTransferView()
-                    } label: {
-                        Label("Export & Import", systemImage: "arrow.up.arrow.down.square")
-                    }
-
-                    NavigationLink {
-                        CollectionBackupsView()
-                    } label: {
-                        LabeledContent {
-                            Text("\(collectionStore.backups.count)")
-                                .foregroundStyle(.secondary)
-                        } label: {
-                            Label("Collection Backups", systemImage: "clock.arrow.circlepath")
-                        }
-                    }
-
-                    NavigationLink {
-                        CatalogIssueReportingView()
-                    } label: {
-                        Label("Missing or Incorrect Card", systemImage: "exclamationmark.bubble")
-                    }
-                }
-
-                Section("iCloud") {
-                    LabeledContent("Sync", value: "Off")
-                }
-
-                Section("Help & Updates") {
-                    NavigationLink {
-                        WhatsNewView(release: AppReleaseNotes.current)
-                    } label: {
-                        Label("What’s New", systemImage: "sparkles")
-                    }
-
-                    Button {
-                        introductionCompleted = false
-                    } label: {
-                        Label("Reset Introduction", systemImage: "arrow.counterclockwise")
-                    }
-                }
-
-                Section {
-                    NavigationLink {
-                        AdvancedAPISettingsView()
-                    } label: {
-                        Label("Advanced", systemImage: "slider.horizontal.3")
-                    }
-                }
-
-                Section {
-                    NavigationLink {
-                        AboutTallyDexView()
-                    } label: {
-                        Label("About TallyDex", systemImage: "info.circle")
-                    }
-                }
-            }
-            .navigationTitle("Settings")
         }
-    }
-
-    private func defaultCustomVariantBinding(for variant: CatalogVariantKind) -> Binding<Bool> {
-        Binding(
-            get: { defaultCustomVariants.contains(variant) },
-            set: { isIncluded in
-                if isIncluded {
-                    defaultCustomVariants.insert(variant)
-                } else if defaultCustomVariants.count > 1 {
-                    defaultCustomVariants.remove(variant)
-                }
-                UserDefaults.standard.set(
-                    defaultCustomVariants.map(\.rawValue).sorted(),
-                    forKey: CollectionSettings.defaultCustomVariantsKey
-                )
-            }
-        )
+        .navigationTitle("Catalogue Index")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -6423,6 +6418,13 @@ private struct AdvancedAPISettingsView: View {
             } footer: {
                 Text("Review observed image-loading failures and share exact card IDs for API fixes. This is not a full-catalogue scan.")
             }
+            Section("Maintenance") {
+                NavigationLink {
+                    CatalogueIndexSettingsView()
+                } label: {
+                    Label("Catalogue Index", systemImage: "bolt.horizontal.circle")
+                }
+            }
         }
         .navigationTitle("Advanced")
         .navigationBarTitleDisplayMode(.inline)
@@ -6866,6 +6868,10 @@ private struct ArtworkCacheSettingsView: View {
 }
 
 private struct AboutTallyDexView: View {
+    @AppStorage(AppExperienceSettings.introductionCompletedKey)
+    private var introductionCompleted = false
+    @State private var isConfirmingIntroductionReset = false
+
     private var versionDescription: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ?? "Unknown"
@@ -6895,6 +6901,20 @@ private struct AboutTallyDexView: View {
                 Text("TallyDex combines “tally”—keeping a count—with “dex,” a catalog or index. It is a catalog for tallying your card collection.")
             }
 
+            Section("Privacy & Sync") {
+                LabeledContent("Collection storage", value: "On this iPhone")
+                LabeledContent("Analytics", value: "None")
+                LabeledContent("iCloud sync", value: "Off")
+            }
+
+            Section {
+                Button("Replay Introduction", systemImage: "arrow.counterclockwise") {
+                    isConfirmingIntroductionReset = true
+                }
+            } footer: {
+                Text("Show the setup introduction again. Your collection and preferences are not reset.")
+            }
+
             Section("Data & Artwork") {
                 Text("Catalog metadata comes from the configured TCGdex API, with official TCGdex as fallback. Set logos and expansion symbols are cached locally by TallyDex.")
                 Text("Missing card images fall back through verified parent-set paths, 839 bundled exact-ID thumbnails, and Pokémon’s official asset service. API settings and a connection check are available under Settings → Advanced.")
@@ -6911,6 +6931,10 @@ private struct AboutTallyDexView: View {
         }
         .navigationTitle("About TallyDex")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Replay the introduction?", isPresented: $isConfirmingIntroductionReset, titleVisibility: .visible) {
+            Button("Replay Introduction") { introductionCompleted = false }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 }
 

@@ -71,23 +71,17 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(printingLookup.count, 30)
         XCTAssertEqual(printingLookup[cards[0].id]?.first?.kind, .trickOrTrade)
     }
-
-    func testEnergyOverviewFiltersTrainersAndDoesNotDuplicateSets() {
-        func card(_ name: String, category: String? = nil) -> CatalogCard {
-            .init(id: "test", setID: "sve", localID: "001", name: name, imageURL: nil,
-                  category: category, illustrator: nil, rarity: nil)
-        }
-        XCTAssertTrue(CatalogEnergyChecklist.includes(card("Grass Energy")))
-        XCTAssertTrue(CatalogEnergyChecklist.includes(card("Mystery", category: "Energy")))
-        XCTAssertFalse(CatalogEnergyChecklist.includes(card("Energy Search")))
-        XCTAssertFalse(CatalogEnergyChecklist.includes(card("Energy Retrieval")))
-        XCTAssertFalse(CatalogEnergyChecklist.includes(card("Grass Energy", category: "Trainer")))
-        let native = set(id: "sve", seriesID: "sv", name: "Scarlet & Violet Energy")
-        let groups = [CatalogSeriesGroup(series: .init(id: "sv", name: "SV", logoURL: nil), sets: [native])]
-        let result = CatalogEnergyChecklist.adding(to: groups)
-        XCTAssertEqual(result[0].sets.first, native)
-        XCTAssertEqual(result[0].sets.count, 2)
-        XCTAssertEqual(CatalogEnergyChecklist.adding(to: result), result)
+    func testCatalogueKeepsRealEnergySetsWithoutSyntheticOverviewRows() {
+        let sve = set(id: "sve", seriesID: "sv", name: "Scarlet & Violet Energy")
+        let mee = set(id: "mee", seriesID: "me", name: "Mega Evolution Energy")
+        let groups = TrickOrTradeRelease.adding(to: CatalogSeriesGrouping.groups(
+            series: [.init(id: "sv", name: "SV", logoURL: nil), .init(id: "me", name: "ME", logoURL: nil)],
+            sets: [sve, mee]
+        ))
+        XCTAssertEqual(groups.flatMap(\.sets).filter { $0.id == "sve" }, [sve])
+        XCTAssertEqual(groups.flatMap(\.sets).filter { $0.id == "mee" }, [mee])
+        XCTAssertFalse(groups.flatMap(\.sets).contains { $0.id.hasPrefix("tallydex-energy-") })
+        XCTAssertTrue(groups.allSatisfy { $0.catalogueSetCount == $0.sets.count })
     }
 
     func testArtworkDiagnosticsPersistDeduplicateAndClearAfterFallbackSuccess() async throws {

@@ -5,6 +5,36 @@ import UIKit
 
 final class TallyDexSmokeTests: XCTestCase {
     @MainActor
+    func testSupplementalSetCoversAreBundledAndSmall() throws {
+        for (id, name) in [
+            ("tallydex-tot-2022", "Trick or Trade 2022"),
+            ("tallydex-tot-2023", "Trick or Trade 2023"),
+            ("tallydex-tot-2024", "Trick or Trade 2024"),
+            ("mfb", "My First Battle"),
+            ("sma", "Hidden Fates Shiny Vault"),
+            ("xya", "Yellow A Alternate")
+        ] {
+            let set = CatalogSet(id: id, seriesID: "test", name: name, abbreviation: nil,
+                logoURL: nil, symbolURL: nil, officialCardCount: 0, totalCardCount: 0,
+                releaseDate: nil, rarityCounts: nil)
+            let image = try XCTUnwrap(BundledSetLogo.image(for: set), id)
+            XCTAssertLessThanOrEqual(try XCTUnwrap(image.cgImage).width, 420, id)
+            XCTAssertLessThanOrEqual(try XCTUnwrap(image.cgImage).height, 160, id)
+            let url = try XCTUnwrap(Bundle.main.url(forResource: id, withExtension: id == "xya" ? "png" : "webp",
+                subdirectory: "BundledSetLogos"), id)
+            XCTAssertLessThanOrEqual(try Data(contentsOf: url).count, 20_000, id)
+        }
+    }
+
+    func testSettingsPreferencePagesHaveStableUniqueRoutes() {
+        XCTAssertEqual(SettingsPreferencePage.allCases, [.browsing, .collection, .prices])
+        XCTAssertEqual(Set(SettingsPreferencePage.allCases.map(\.id)).count, 3)
+        XCTAssertTrue(SettingsPreferencePage.allCases.allSatisfy {
+            !$0.title.isEmpty && !$0.detail.isEmpty && !$0.systemImage.isEmpty
+        })
+    }
+
+    @MainActor
     func testPhotoExportRejectsInvalidArtwork() {
         XCTAssertNil(CardPhotoExport.pngData(from: Data("not an image".utf8)))
     }
@@ -170,7 +200,7 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.22")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.23")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,

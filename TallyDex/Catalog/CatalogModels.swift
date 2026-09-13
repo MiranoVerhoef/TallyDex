@@ -897,7 +897,7 @@ struct CatalogSeriesGroup: Equatable, Identifiable, Sendable {
     var id: String { series.id }
 
     var catalogueSetCount: Int {
-        sets.filter { CatalogEnergyChecklist.seriesID(setID: $0.id) == nil }.count
+        sets.count
     }
 
     var preferredArtworkURL: URL? {
@@ -1048,34 +1048,5 @@ struct TrickOrTradeRelease: Equatable, Identifiable, Sendable {
             }
             return CatalogSeriesGroup(series: group.series, sets: sets)
         }
-    }
-}
-
-/// Read-only views of existing Energy identities. Unnumbered designs without a
-/// verified provider identity are not invented or inserted into expansions.
-enum CatalogEnergyChecklist {
-    static func seriesID(setID: String) -> String? {
-        guard setID.hasPrefix("tallydex-energy-") else { return nil }
-        return String(setID.dropFirst("tallydex-energy-".count))
-    }
-
-    static func adding(to groups: [CatalogSeriesGroup]) -> [CatalogSeriesGroup] {
-        groups.map { group in
-            guard group.id != "mc", !group.sets.isEmpty else { return group }
-            let overview = CatalogSet(
-                id: "tallydex-energy-\(group.id)", seriesID: group.id, name: "Energy cards",
-                abbreviation: nil, logoURL: nil, symbolURL: nil, officialCardCount: 0,
-                totalCardCount: 0, releaseDate: nil, rarityCounts: nil
-            )
-            guard !group.sets.contains(where: { $0.id == overview.id }) else { return group }
-            return CatalogSeriesGroup(series: group.series, sets: group.sets + [overview])
-        }
-    }
-
-    static func includes(_ card: CatalogCard) -> Bool {
-        if let category = card.category { return category.lowercased() == "energy" }
-        // The lightweight API index omits categories. Exclude trainer names such
-        // as Energy Search/Retrieval; detailed records remain the authority.
-        return card.name == "Energy" || card.name.hasSuffix(" Energy")
     }
 }
