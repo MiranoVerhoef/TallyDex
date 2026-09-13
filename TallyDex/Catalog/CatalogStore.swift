@@ -536,10 +536,7 @@ final class CatalogStore {
             }
             .sorted { ($0.releaseDate ?? "") > ($1.releaseDate ?? "") }
         let sets = announcedSets + cachedSets
-        let setsBySeries = Dictionary(grouping: sets, by: \.seriesID)
-        groups = series.map { item in
-            CatalogSeriesGroup(series: item, sets: setsBySeries[item.id] ?? [])
-        }
+        groups = CatalogSeriesGrouping.groups(series: series, sets: sets)
     }
 
     /// Rechecks announced and recently released sets more frequently than the

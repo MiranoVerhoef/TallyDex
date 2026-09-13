@@ -1585,6 +1585,96 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertNotNil(signatures?["existing-grid"])
     }
 
+    func testMcDonaldsGroupingMovesKnownSetsWithoutChangingTheirIdentities() {
+        let mappings = [
+            "2011bw": "bw", "2012bw": "bw", "2013bw": "bw",
+            "2014xy": "xy", "2015xy": "xy", "2016xy": "xy",
+            "2017sm": "sm", "2018sm": "sm", "2019sm": "sm",
+            "2021swsh": "swsh", "2022swsh": "swsh", "2023sv": "sv", "2024sv": "sv",
+        ]
+        let series = ["sv", "swsh", "sm", "xy", "bw", "mc"].map {
+            CatalogSeries(id: $0, name: $0, logoURL: nil)
+        }
+        let sets = mappings.keys.sorted().map { set(id: $0, seriesID: "mc", name: $0) }
+        let groups = CatalogSeriesGrouping.groups(series: series, sets: sets)
+        XCTAssertFalse(groups.contains { $0.id == "mc" })
+        XCTAssertEqual(groups.flatMap(\.sets).count, sets.count)
+        for group in groups {
+            for relocated in group.sets {
+                XCTAssertEqual(mappings[relocated.id], group.id)
+                XCTAssertEqual(relocated, sets.first { $0.id == relocated.id })
+                XCTAssertEqual(relocated.seriesID, "mc")
+            }
+        }
+        XCTAssertEqual(CatalogSeriesGrouping.groups(series: series, sets: groups.flatMap(\.sets)), groups)
+    }
+
+    func testUnknownMcDonaldsReleasesAndAbsentParentsStayVisible() {
+        let series = ["sv", "mc"].map { CatalogSeries(id: $0, name: $0, logoURL: nil) }
+        let sets = [
+            set(id: "2024sv", seriesID: "mc", name: "Known"),
+            set(id: "2014xy", seriesID: "mc", name: "Missing parent"),
+            set(id: "future-mcd", seriesID: "mc", name: "Unmapped release"),
+        ]
+        let groups = CatalogSeriesGrouping.groups(series: series, sets: sets)
+        XCTAssertEqual(groups.first { $0.id == "sv" }?.sets.map(\.id), ["2024sv"])
+        XCTAssertEqual(groups.first { $0.id == "mc" }?.sets.map(\.id), ["2014xy", "future-mcd"])
+        XCTAssertEqual(Set(groups.flatMap(\.sets).map(\.id)), Set(sets.map(\.id)))
+    }
+
+    func testMcDonaldsGroupingInterleavesDatesWithoutReorderingExistingExpansions() {
+        func datedSet(_ id: String, seriesID: String, date: String?) -> CatalogSet {
+            CatalogSet(id: id, seriesID: seriesID, name: id, abbreviation: nil,
+                       logoURL: nil, symbolURL: nil, officialCardCount: 15,
+                       totalCardCount: 15, releaseDate: date, rarityCounts: nil)
+        }
+        let native = [datedSet("new", seriesID: "sv", date: "2024-11-08"),
+                      datedSet("old", seriesID: "sv", date: "2023-03-31")]
+        let added = [datedSet("2023sv", seriesID: "mc", date: "2023-08-01"),
+                     datedSet("2024sv", seriesID: "mc", date: "2024-12-04")]
+        let series = ["sv", "mc"].map { CatalogSeries(id: $0, name: $0, logoURL: nil) }
+        let groups = CatalogSeriesGrouping.groups(series: series, sets: native + added)
+        XCTAssertEqual(groups.first?.sets.map(\.id), ["2024sv", "new", "2023sv", "old"])
+        XCTAssertEqual(groups.first?.sets.filter { $0.seriesID == "sv" }, native)
+    }
+
+    func testBundledMcDonaldsCoverageIsGroupedExactlyOnce() throws {
+        let snapshot = try BundledCatalogLoader(bundle: .main).load()
+        let sets = snapshot.series.flatMap(\.sets)
+        let groups = CatalogSeriesGrouping.groups(series: snapshot.series.map(\.series), sets: sets)
+        XCTAssertFalse(groups.contains { $0.id == "mc" })
+        XCTAssertEqual(groups.flatMap(\.sets).count, sets.count)
+        XCTAssertEqual(Set(groups.flatMap(\.sets).map(\.id)), Set(sets.map(\.id)))
+        for set in sets where set.seriesID == "mc" {
+            XCTAssertEqual(groups.flatMap(\.sets).filter { $0.id == set.id }, [set])
+        }
+    }
+
+    @MainActor
+    func testCatalogStoreGroupsCachedMcDonaldsWithoutRewritingProviderData() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let promo = set(id: "2024sv", seriesID: "mc", name: "McDonald's Collection 2024")
+        let card = CatalogCard(id: "2024sv-1", setID: "2024sv", localID: "1", name: "Pikachu", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        try await repository.replaceCatalog([
+            .init(series: .init(id: "sv", name: "Scarlet & Violet", logoURL: nil), sets: []),
+            .init(series: .init(id: "mc", name: "McDonald's Collection", logoURL: nil), sets: [promo]),
+        ])
+        try await repository.replaceSet(.init(set: promo, cards: [card]))
+        let timestamp = Date()
+        for key in ["catalog.lastRefresh", "catalog.searchIndex.lastRefresh", "catalog.upcoming.lastAvailabilityCheck"] {
+            try await repository.setMetadataDate(timestamp, forKey: key)
+        }
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: card, variants: [.normal]))
+        let store = CatalogStore(provider: provider, repository: repository, now: { timestamp })
+        await store.start()
+        let visible = try XCTUnwrap(store.groups.first { $0.id == "sv" }?.sets.first { $0.id == "2024sv" })
+        XCTAssertEqual(visible.seriesID, "mc")
+        let storedSets = try await repository.fetchSets(seriesID: "mc")
+        let storedCards = try await repository.fetchCards(setID: promo.id)
+        XCTAssertEqual(storedSets, [promo])
+        XCTAssertEqual(storedCards, [card])
+    }
+
     func testCatalogMetadataRefreshPreservesDownloadedCards() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)

@@ -99,9 +99,13 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 
 ### Next fixes requested — 2026-09-13
 
+- [x] Single loading indicator beside set goal-slot counts. Card-list loading and
+  printing-rule preparation now share one spinner until both finish. Implemented
+  in v0.9.21.
+
 - [ ] Add missing Trick or Trade sets and check yearly coverage. Keep their exact
   card identities and special printings separate from the original expansion cards.
-- [ ] Group McDonald's releases inside their corresponding main series/era,
+- [x] Group McDonald's releases inside their corresponding main series/era,
   alongside the regular expansions, rather than a separate top-level McDonald's
   listing. Use [Pokellector's set catalogue](https://www.pokellector.com/sets) as the
   browsing reference: XY collections under XY, 2017–2019 collections under Sun &
@@ -528,6 +532,17 @@ Completed in v0.9.20:
 - Advanced settings use the TallyDex API label and a small info button explaining
   its development-version TCGdex service and faster card updates.
 - Updated What's New notes; collection data and card-detail preferences unchanged.
+
+Completed in v0.9.21:
+
+- McDonald's releases appear inside their matching eras in both catalogue layouts
+  and All/My Sets/Hidden scopes. Grouping is presentation-only: provider series IDs,
+  set/card identities, ownership, goals, offline keys, and backups do not change.
+- Supplemental releases use their release dates to join the existing set order.
+  Unknown future releases or missing parent eras stay in their provider group;
+  the top-level McDonald's group disappears only when all its sets were moved.
+- One spinner beside goal-slot counts covers card loading and printing-rule
+  preparation together. Updated What's New notes explain both changes.
 
 ## Reporting catalog data
 
