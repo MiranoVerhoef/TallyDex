@@ -162,6 +162,7 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     case watermarkedPromo
     case prerelease
     case prereleaseStaff
+    case trickOrTrade
 
     var displayName: String {
         switch self {
@@ -172,6 +173,7 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
         case .watermarkedPromo: "Watermarked promo"
         case .prerelease: "Prerelease"
         case .prereleaseStaff: "Prerelease Staff"
+        case .trickOrTrade: "Trick or Trade"
         }
     }
 }
@@ -236,7 +238,8 @@ struct CatalogPrinting: Codable, Equatable, Hashable, Identifiable, Sendable {
         case ("1st-edition", .firstEdition),
              ("w-promo", .watermarkedPromo),
              ("pre-release", .prerelease),
-             ("staff", .prereleaseStaff):
+             ("staff", .prereleaseStaff),
+             ("trick-or-trade", .trickOrTrade):
             true
         default:
             false
@@ -893,6 +896,10 @@ struct CatalogSeriesGroup: Equatable, Identifiable, Sendable {
 
     var id: String { series.id }
 
+    var catalogueSetCount: Int {
+        sets.filter { CatalogEnergyChecklist.seriesID(setID: $0.id) == nil }.count
+    }
+
     var preferredArtworkURL: URL? {
         series.logoURL
     }
@@ -938,5 +945,137 @@ enum CatalogSeriesGrouping {
             }
             return CatalogSeriesGroup(series: item, sets: ordered)
         }
+    }
+}
+
+/// A checklist of exact stamped printings, not a second set of card records.
+/// Membership was cross-checked against Pokellector/Bulbapedia and the English
+/// TCGdex index. No artwork or market prices are inferred from the parent card.
+struct TrickOrTradeRelease: Equatable, Identifiable, Sendable {
+    let year: Int
+    let seriesID: String
+    let releaseDate: String
+    let cardIDs: [String]
+
+    var id: String { "tallydex-tot-\(year)" }
+    var set: CatalogSet {
+        CatalogSet(id: id, seriesID: seriesID, name: "Trick or Trade \(year)",
+                   abbreviation: nil, logoURL: nil, symbolURL: nil,
+                   officialCardCount: cardIDs.count, totalCardCount: cardIDs.count,
+                   releaseDate: releaseDate, rarityCounts: nil)
+    }
+
+    static let all: [TrickOrTradeRelease] = [
+        .init(year: 2022, seriesID: "swsh", releaseDate: "2022-09-01", cardIDs: [
+            "swsh8-16", "swsh2-15", "swsh2-31", "swsh2-32", "swsh2-33",
+            "swsh7-49", "swsh5-69", "swsh6-55", "swsh6-56", "swsh6-57",
+            "swsh9-056", "swsh10-058", "swsh10-059", "swsh9-060", "swsh9-061",
+            "swsh9-062", "swsh7-76", "swsh7-77", "swsh3-81", "swsh3-82",
+            "swsh3-83", "swsh3.5-18", "swsh6-72", "swsh6-73", "swsh5-89",
+            "swsh3-102", "swsh3-103", "swsh5-93", "swsh3-105", "swsh10-103",
+        ]),
+        .init(year: 2023, seriesID: "sv", releaseDate: "2023-09-01", cardIDs: [
+            "swsh11-016", "swsh11-017", "swsh4-19", "sv01-034", "swsh11-024",
+            "swsh11-025", "swsh11-026", "sv02-062", "swsh4-95", "swsh2-102",
+            "swsh11-064", "swsh11-065", "swsh11-066", "swsh4-69", "swsh4-70",
+            "swsh4-71", "sv01-087", "swsh11-073", "sv02-088", "sv01-089",
+            "sv01-090", "sv02-097", "swsh7-80", "swsh11-081", "swsh1-89",
+            "swsh1-90", "sv01-104", "sv01-106", "swsh12-103", "sv02-131",
+        ]),
+        .init(year: 2024, seriesID: "sv", releaseDate: "2024-08-30", cardIDs: [
+            "sv06-012", "sv06-013", "sv02-012", "sv06-021", "sv06-022",
+            "sv06-024", "sv06-036", "sv06-037", "sv06-038", "sv04-023",
+            "sv02-050", "sv04.5-018", "sv06-111", "sv04-077", "sv04-078",
+            "sv04.5-037", "sv04.5-042", "sv04.5-043", "sv05-077", "sv05-078",
+            "sv06-095", "sv06-096", "sv05-102", "sv05-103", "sv04.5-057",
+            "sv03-130", "sv03-131", "sv03-133", "sv03-136", "sv05-139",
+        ]),
+    ]
+
+    static func release(setID: String) -> TrickOrTradeRelease? {
+        all.first { $0.id == setID }
+    }
+
+    /// Keep known provider printing IDs intact. Curated IDs for absent printings
+    /// are stable even if an API later supplies a different ID for the same stamp.
+    func printing(cardID: String, providerPrintings: [CatalogPrinting] = []) -> CatalogPrinting? {
+        guard cardIDs.contains(cardID) else { return nil }
+        let knownID: String?
+        if year == 2024 {
+            knownID = switch cardID {
+            case "sv03-130", "sv03-131", "sv03-133": "1jz5lzkp5ftnwh2lzmaeixidf6y9ps"
+            case "sv03-136": "23hmnvtwds1n7f4b2o51f5iqrd8z"
+            default: nil
+            }
+        } else { knownID = nil }
+        let provider = providerPrintings.first {
+            $0.stamps.contains("trick-or-trade") && (knownID == nil || $0.providerID == knownID)
+        }
+        return CatalogPrinting(
+            cardID: cardID, providerID: knownID ?? "tallydex-tot-\(year)",
+            rawType: provider?.rawType ?? "stamped", kind: .trickOrTrade,
+            subtype: String(year), size: "standard", stamps: ["trick-or-trade"],
+            foil: provider?.foil, languages: ["en"],
+            cardmarketProductID: provider?.cardmarketProductID,
+            tcgplayerProductID: provider?.tcgplayerProductID,
+            cardtraderProductID: provider?.cardtraderProductID
+        )
+    }
+
+    static func printings(cardID: String, providerPrintings: [CatalogPrinting]) -> [CatalogPrinting] {
+        let releases = all.filter { $0.cardIDs.contains(cardID) }
+        guard !releases.isEmpty else { return providerPrintings }
+        // A provider stamp and its verified checklist entry describe the same
+        // printing; never count both. Other provider printings stay unchanged.
+        let representedIDs = Set(releases.compactMap { release in
+            providerPrintings.first {
+                $0.stamps.contains("trick-or-trade") && (
+                    release.printing(cardID: cardID)?.providerID.hasPrefix("tallydex-") == true
+                        || $0.providerID == release.printing(cardID: cardID)?.providerID
+                )
+            }?.providerID
+        })
+        return providerPrintings.filter { !representedIDs.contains($0.providerID) }
+            + releases.compactMap { $0.printing(cardID: cardID, providerPrintings: providerPrintings) }
+    }
+
+    static func adding(to groups: [CatalogSeriesGroup]) -> [CatalogSeriesGroup] {
+        groups.map { group in
+            var sets = group.sets
+            for release in all.filter({ $0.seriesID == group.id }) where !sets.contains(where: { $0.id == release.id }) {
+                let index = sets.firstIndex { ($0.releaseDate ?? "9999") < release.releaseDate } ?? sets.endIndex
+                sets.insert(release.set, at: index)
+            }
+            return CatalogSeriesGroup(series: group.series, sets: sets)
+        }
+    }
+}
+
+/// Read-only views of existing Energy identities. Unnumbered designs without a
+/// verified provider identity are not invented or inserted into expansions.
+enum CatalogEnergyChecklist {
+    static func seriesID(setID: String) -> String? {
+        guard setID.hasPrefix("tallydex-energy-") else { return nil }
+        return String(setID.dropFirst("tallydex-energy-".count))
+    }
+
+    static func adding(to groups: [CatalogSeriesGroup]) -> [CatalogSeriesGroup] {
+        groups.map { group in
+            guard group.id != "mc", !group.sets.isEmpty else { return group }
+            let overview = CatalogSet(
+                id: "tallydex-energy-\(group.id)", seriesID: group.id, name: "Energy cards",
+                abbreviation: nil, logoURL: nil, symbolURL: nil, officialCardCount: 0,
+                totalCardCount: 0, releaseDate: nil, rarityCounts: nil
+            )
+            guard !group.sets.contains(where: { $0.id == overview.id }) else { return group }
+            return CatalogSeriesGroup(series: group.series, sets: group.sets + [overview])
+        }
+    }
+
+    static func includes(_ card: CatalogCard) -> Bool {
+        if let category = card.category { return category.lowercased() == "energy" }
+        // The lightweight API index omits categories. Exclude trainer names such
+        // as Energy Search/Retrieval; detailed records remain the authority.
+        return card.name == "Energy" || card.name.hasSuffix(" Energy")
     }
 }

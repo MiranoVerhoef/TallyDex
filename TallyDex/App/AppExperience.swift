@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.21",
-        headline: "A cleaner set catalogue",
+        version: "0.9.22",
+        headline: "Find the overlooked cards",
         notes: [
             AppReleaseNote(
                 systemImage: "square.stack.3d.up",
-                title: "McDonald’s sets, in their eras",
-                detail: "Find McDonald’s releases alongside the expansions from their matching Black & White, XY, Sun & Moon, Sword & Shield, and Scarlet & Violet eras. Each release stays its own set."
+                title: "Trick or Trade checklists",
+                detail: "Track the 30 pumpkin-stamped cards from each verified 2022–2024 release. Ownership is shared with the original card’s exact printing, without duplicate card records. Images may show original artwork without the stamp."
             ),
             AppReleaseNote(
-                systemImage: "arrow.trianglehead.2.clockwise",
-                title: "One loading indicator",
-                detail: "Set goal-slot counts now show a single spinner while cards and printing rules load, rather than two overlapping loading indicators."
+                systemImage: "bolt.fill",
+                title: "Energy cards, together",
+                detail: "Each era now has a read-only Energy overview of cards already represented by the API. Original set ownership and completion stay shared. Unnumbered designs missing from the API still need verified identities."
             ),
             AppReleaseNote(
                 systemImage: "archivebox.fill",
-                title: "Your collection stays intact",
-                detail: "This is a browsing change, not a card merge. Set IDs, card identities, ownership, goals, offline downloads, and backups remain unchanged."
+                title: "Report missing artwork",
+                detail: "Settings → Advanced lists observed failed image loads with exact card IDs. Recheck or share the report for API fixes. Network failures may be temporary; this is not a complete catalogue audit."
             ),
         ]
     )
