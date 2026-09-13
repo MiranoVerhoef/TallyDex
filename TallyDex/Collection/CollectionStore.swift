@@ -50,9 +50,16 @@ final class CollectionStore {
     }
 
     func preference(for setID: String) -> SetCollectionPreference {
-        setPreferencesByID[setID] ?? .defaultPreference(
+        if let saved = setPreferencesByID[setID] { return saved }
+        let fallback = SetCollectionPreference.defaultPreference(
             setID: setID,
             goal: CollectionSettings.preferredDefaultGoal
+        )
+        guard TrickOrTradeRelease.release(setID: setID) != nil else { return fallback }
+        return SetCollectionPreference(
+            setID: setID, status: fallback.status, goal: fallback.goal,
+            includedVariants: [.trickOrTrade], includesSecretCards: true,
+            updatedAt: fallback.updatedAt
         )
     }
 

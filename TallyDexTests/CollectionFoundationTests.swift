@@ -3,6 +3,50 @@ import XCTest
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    @MainActor
+    func testTrickOrTradeSharesCanonicalOwnershipWithoutTouchingNormalCopiesAndSurvivesBackup() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let store = CollectionStore(repository: repository)
+        await store.start()
+        let release = TrickOrTradeRelease.all[0]
+        let cardID = release.cardIDs[0]
+        let stamped = try XCTUnwrap(release.printing(cardID: cardID))
+        try await store.setQuantity(1, cardID: cardID, variant: .normal)
+        XCTAssertEqual(store.printingQuantity(cardID: cardID, printingID: stamped.providerID), 0)
+        try await store.setPrintingQuantity(1, cardID: cardID, printing: stamped)
+        XCTAssertEqual(store.printingQuantity(cardID: cardID, printingID: stamped.providerID), 1)
+        XCTAssertEqual(store.quantity(cardID: cardID, variant: .normal), 1)
+        XCTAssertEqual(store.quantity(cardID: cardID, variant: .trickOrTrade), 1)
+        let backup = try await store.createBackup(reason: "Stamped card test")
+        let exported = try await store.exportDocument()
+        let decoded = try CollectionTransferCodec.decode(CollectionTransferCodec.encode(exported))
+        XCTAssertEqual(decoded.exactOwnership.first?.cardID, cardID)
+        XCTAssertEqual(decoded.exactOwnership.first?.printingID, stamped.providerID)
+        XCTAssertEqual(decoded.exactOwnership.first?.variant, .trickOrTrade)
+        try await store.setPrintingQuantity(0, cardID: cardID, printing: stamped)
+        XCTAssertEqual(store.quantity(cardID: cardID, variant: .normal), 1)
+        try await store.restoreBackup(backup)
+        XCTAssertEqual(store.printingQuantity(cardID: cardID, printingID: stamped.providerID), 1)
+        XCTAssertEqual(store.quantity(cardID: cardID, variant: .normal), 1)
+        XCTAssertEqual(store.ownedCardIDs, [cardID])
+    }
+
+    func testExactPrintingProgressRecognizesStableIdentityWhenKindMetadataChanges() throws {
+        let release = TrickOrTradeRelease.all[2]
+        let id = "sv03-130"
+        let stamp = try XCTUnwrap(release.printing(cardID: id))
+        let card = CatalogCard(id: id, setID: "sv03", localID: "130", name: "Umbreon", imageURL: nil,
+                               category: nil, illustrator: nil, rarity: nil)
+        let progress = CollectionProgressCalculator.progress(cards: [card], set: release.set,
+            preference: .defaultPreference(setID: release.id, goal: .master),
+            availableVariants: [id: [.trickOrTrade]], ownedEntries: [],
+            availablePrintings: [id: [stamp]], exactOwnedEntries: [
+                .init(cardID: id, printingID: stamp.providerID, variant: .normal, quantity: 1, updatedAt: Date())
+            ])
+        XCTAssertEqual(progress.completedSlots, 1)
+        XCTAssertEqual(progress.requiredSlots, 1)
+    }
+
     func testExactPrintingMigrationMovesOnlyUnambiguousOwnershipAndCanRollback() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let before = Date(timeIntervalSince1970: 100)

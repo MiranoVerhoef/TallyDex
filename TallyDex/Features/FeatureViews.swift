@@ -440,7 +440,7 @@ private struct CatalogSeriesHeader: View {
                 .foregroundStyle(.primary)
                 .textCase(nil)
             Spacer()
-            Text("\(group.sets.count) \(group.sets.count == 1 ? "set" : "sets")")
+            Text("\(group.catalogueSetCount) \(group.catalogueSetCount == 1 ? "set" : "sets")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .textCase(nil)
@@ -575,7 +575,20 @@ private struct CatalogSetArtwork: View {
     let set: CatalogSet
 
     var body: some View {
-        if let bundledImage = BundledSetLogo.image(for: set) {
+        if let release = TrickOrTradeRelease.release(setID: set.id) {
+            VStack(spacing: 6) {
+                Image(systemName: "sparkles").font(.title2)
+                Text(String(release.year)).font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(.indigo)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        } else if CatalogEnergyChecklist.seriesID(setID: set.id) != nil {
+            Image(systemName: "bolt.fill")
+                .font(.largeTitle).foregroundStyle(.green)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        } else if let bundledImage = BundledSetLogo.image(for: set) {
             Image(uiImage: bundledImage)
                 .resizable()
                 .scaledToFit()
@@ -718,15 +731,23 @@ private struct CatalogSetLink: View {
 
     var body: some View {
         NavigationLink {
-            CatalogSetDetailView(set: set)
+            if let release = TrickOrTradeRelease.release(setID: set.id) {
+                TrickOrTradeChecklistView(release: release)
+            } else if let seriesID = CatalogEnergyChecklist.seriesID(setID: set.id) {
+                EnergyChecklistView(seriesID: seriesID)
+            } else {
+                CatalogSetDetailView(set: set)
+            }
         } label: {
             CatalogSetRow(set: set)
         }
         .contextMenu {
+            if CatalogEnergyChecklist.seriesID(setID: set.id) == nil {
             Button("Edit", systemImage: "slider.horizontal.3") {
                 onEdit(set)
             }
 
+            if TrickOrTradeRelease.release(setID: set.id) == nil {
             if artworkCacheStore.isPinned(setID: set.id) {
                 Button("Remove Offline Download", systemImage: "trash", role: .destructive) {
                     Task {
@@ -746,6 +767,8 @@ private struct CatalogSetLink: View {
                         || artworkCacheStore.downloadProgress[set.id] != nil
                         || set.isUpcoming()
                 )
+            }
+            }
             }
         }
         .confirmationDialog(
@@ -770,6 +793,175 @@ private struct CatalogSetLink: View {
                 artworkCacheStore.preparationFailed(setID: set.id, setName: set.name)
             }
         }
+    }
+}
+
+private struct TrickOrTradeChecklistView: View {
+    let release: TrickOrTradeRelease
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var cards: [CatalogCard] = []
+    @State private var printings: [String: [CatalogPrinting]] = [:]
+    @State private var searchText = ""
+    @State private var filter = SetCardFilter.all
+    @State private var isLoading = true
+    @State private var updating: Set<String> = []
+    @State private var message: String?
+    @State private var isEditing = false
+
+    private func printing(_ id: String) -> CatalogPrinting {
+        release.printing(cardID: id, providerPrintings: printings[id] ?? [])!
+    }
+
+    private func owns(_ id: String) -> Bool {
+        collectionStore.printingQuantity(cardID: id, printingID: printing(id).providerID) > 0
+    }
+
+    private var included: Bool {
+        let preference = collectionStore.preference(for: release.id)
+        return preference.goal != .custom || preference.includedVariants.contains(.trickOrTrade)
+    }
+
+    private var visibleCards: [CatalogCard] {
+        cards.filter { card in
+            let matches = searchText.isEmpty || card.name.localizedCaseInsensitiveContains(searchText)
+                || card.localID.localizedCaseInsensitiveContains(searchText)
+            return matches && (filter == .all || (filter == .owned ? owns(card.id) : !owns(card.id)))
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    CardCompletionIndicator(progress: .init(
+                        completedSlots: included ? release.cardIDs.filter(owns).count : 0,
+                        requiredSlots: included ? release.cardIDs.count : 0
+                    ))
+                    Text(included ? "\(release.cardIDs.filter(owns).count) of \(release.cardIDs.count) stamped cards" : "Trick or Trade is excluded by your custom goal")
+                        .font(.subheadline)
+                    if isLoading { Spacer(); ProgressView().controlSize(.small) }
+                }
+                Picker("Cards", selection: $filter) {
+                    Text("All").tag(SetCardFilter.all)
+                    Text("Owned").tag(SetCardFilter.owned)
+                    Text("Missing").tag(SetCardFilter.missing)
+                }.pickerStyle(.segmented)
+            } footer: {
+                Text("Only the pumpkin-stamped printing counts here. Images show original card artwork; the stamp may not be pictured.")
+            }
+            if let message { Text(message).font(.footnote).foregroundStyle(.orange) }
+            Section {
+                ForEach(visibleCards) { card in
+                    HStack(spacing: 12) {
+                        NavigationLink {
+                            CatalogCardDetailView(card: card)
+                        } label: {
+                            HStack(spacing: 12) {
+                                CachedCardImage(card: card).frame(width: 48, height: 67)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(card.name).font(.subheadline.weight(.semibold))
+                                    Text("\(card.setID.uppercased()) · #\(card.localID)")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    Text("Pumpkin stamp · \(String(release.year))")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }.fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Button { toggle(card) } label: {
+                            Image(systemName: owns(card.id) ? "checkmark.circle.fill" : "circle")
+                                .font(.title2).foregroundStyle(owns(card.id) ? Color.accentColor : .secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(updating.contains(card.id))
+                        .accessibilityLabel("\(owns(card.id) ? "Remove" : "Own") \(card.name) pumpkin-stamped printing")
+                    }.padding(.vertical, 3)
+                }
+            }
+        }
+        .navigationTitle(release.set.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Name or collector number")
+        .toolbar { Button("Goal", systemImage: "slider.horizontal.3") { isEditing = true } }
+        .sheet(isPresented: $isEditing) {
+            CatalogSetCollectionSettingsView(set: release.set).presentationDetents([.medium])
+        }
+        .task { await load() }
+        .refreshable { await load(forceRefresh: true) }
+    }
+
+    private func load(forceRefresh: Bool = false) async {
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            cards = try await catalogStore.cards(for: release.set, forceRefresh: forceRefresh)
+            printings = await catalogStore.cachedPrintings(for: cards)
+        } catch {
+            message = "The complete checklist couldn’t load. Check your connection and pull down to retry."
+        }
+    }
+
+    private func toggle(_ card: CatalogCard) {
+        updating.insert(card.id)
+        let chosen = printing(card.id)
+        let quantity = owns(card.id) ? 0 : 1
+        Task {
+            defer { updating.remove(card.id) }
+            do {
+                try await collectionStore.setPrintingQuantity(quantity, cardID: card.id, printing: chosen)
+            } catch { message = "The stamped printing couldn’t be saved. Please try again." }
+        }
+    }
+}
+
+private struct EnergyChecklistView: View {
+    let seriesID: String
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var results: [CatalogCardSearchResult] = []
+    @State private var searchText = ""
+    @State private var isLoading = true
+    @State private var message: String?
+
+    var body: some View {
+        List {
+            Section {
+                if isLoading { ProgressView("Loading Energy cards") }
+                else { Text("\(results.count) Energy cards in the saved catalogue") }
+            } footer: {
+                Text("An overview of existing cards, not another set to complete. Ownership stays shared with their original sets. Unnumbered designs not represented by the API are not included.")
+            }
+            if let message { Text(message).font(.footnote).foregroundStyle(.orange) }
+            ForEach(results.filter {
+                searchText.isEmpty || $0.card.name.localizedCaseInsensitiveContains(searchText)
+                    || $0.setName.localizedCaseInsensitiveContains(searchText)
+            }) { result in
+                NavigationLink {
+                    CatalogCardDetailView(card: result.card)
+                } label: {
+                    HStack(spacing: 12) {
+                        CachedCardImage(card: result.card).frame(width: 48, height: 67)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(result.card.name).font(.subheadline.weight(.semibold))
+                            Text("\(result.setName) · #\(result.card.localID)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }.fixedSize(horizontal: false, vertical: true)
+                    }.padding(.vertical, 3)
+                }
+            }
+        }
+        .navigationTitle("Energy cards")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Energy or set name")
+        .task { await load() }
+        .refreshable { await catalogStore.preindexCompleteCatalog(); await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+        do { results = try await catalogStore.energyCards(seriesID: seriesID); message = nil }
+        catch { message = "Energy cards couldn’t load. Pull down to retry." }
     }
 }
 
@@ -1007,7 +1199,7 @@ private struct CatalogSeriesRow: View {
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
-            Text("\(group.sets.count) \(group.sets.count == 1 ? "set" : "sets")")
+            Text("\(group.catalogueSetCount) \(group.catalogueSetCount == 1 ? "set" : "sets")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -6070,6 +6262,101 @@ private struct CollectionBackupsView: View {
     }
 }
 
+private struct MissingArtworkReportView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @State private var records: [ArtworkLoadDiagnostic] = []
+    @State private var cardsByID: [String: CatalogCard] = [:]
+    @State private var searchText = ""
+    @State private var isRetrying = false
+    @State private var retryTask: Task<Void, Never>?
+    @State private var checked = 0
+    @State private var retryMessage: String?
+    @State private var isConfirmingClear = false
+
+    private var report: String {
+        let heading = "TallyDex observed artwork failures — not a complete catalogue audit. Network errors may be temporary.\ncard_id,set_id,last_checked,size\n"
+        return heading + records.map {
+            "\($0.cardID),\($0.setID),\($0.checkedAt.ISO8601Format()),\($0.category)"
+        }.joined(separator: "\n")
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Text("\(records.count) observed image-loading failures")
+                if isRetrying {
+                    ProgressView("Rechecking \(checked) cards…")
+                    Button("Stop Rechecking") { retryTask?.cancel() }
+                } else {
+                    Button("Recheck Listed Cards") {
+                        retryTask = Task { await recheck() }
+                    }.disabled(records.isEmpty)
+                }
+                if let retryMessage { Text(retryMessage).font(.footnote).foregroundStyle(.secondary) }
+            } footer: {
+                Text("Only cards whose artwork failed to load on this device are listed (up to 1,000). Network errors can be temporary. A successful fallback removes the card. An empty report does not mean the whole catalogue has artwork.")
+            }
+            if records.isEmpty {
+                ContentUnavailableView("No observed failures", systemImage: "photo.on.rectangle",
+                                       description: Text("Browse cards normally to collect diagnostics."))
+            }
+            ForEach(records.filter {
+                searchText.isEmpty || $0.cardID.localizedCaseInsensitiveContains(searchText)
+                    || (cardsByID[$0.cardID]?.name.localizedCaseInsensitiveContains(searchText) ?? false)
+            }) { record in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(cardsByID[record.cardID]?.name ?? record.cardID).font(.subheadline.weight(.semibold))
+                    Text(record.cardID).font(.caption.monospaced()).textSelection(.enabled)
+                    Text("Last failed load: \(record.checkedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(.vertical, 3)
+            }
+        }
+        .navigationTitle("Missing Artwork")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Name or exact card ID")
+        .toolbar {
+            ShareLink(item: report).disabled(records.isEmpty || isRetrying)
+            Button("Clear Report", systemImage: "trash") { isConfirmingClear = true }
+                .disabled(records.isEmpty || isRetrying)
+        }
+        .confirmationDialog("Clear observed failures?", isPresented: $isConfirmingClear, titleVisibility: .visible) {
+            Button("Clear Report", role: .destructive) {
+                Task { await CatalogArtworkCache.shared.clearArtworkDiagnostics(); await load() }
+            }
+        } message: { Text("This clears diagnostics only. Artwork, offline downloads, and your collection are untouched.") }
+        .task { await load() }
+        .refreshable { await load() }
+        .onDisappear { retryTask?.cancel() }
+    }
+
+    private func load() async {
+        records = await CatalogArtworkCache.shared.artworkDiagnostics()
+        let cards = (try? await catalogStore.cardsForChecklist(cardIDs: records.map(\.cardID))) ?? []
+        cardsByID = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
+    }
+
+    private func recheck() async {
+        guard !isRetrying else { return }
+        isRetrying = true
+        checked = 0
+        retryMessage = nil
+        let original = records
+        defer { isRetrying = false }
+        for record in original {
+            guard !Task.isCancelled else { break }
+            guard let card = cardsByID[record.cardID] else { continue }
+            _ = try? await CatalogArtworkCache.shared.recheckArtwork(for: card)
+            guard !Task.isCancelled else { break }
+            checked += 1
+        }
+        await load()
+        let remainingIDs = Set(records.map(\.cardID))
+        let resolved = original.filter { !remainingIDs.contains($0.cardID) }.count
+        retryMessage = "Checked \(checked) cards. \(resolved) no longer listed; unavailable catalogue records were skipped."
+    }
+}
+
 private struct AdvancedAPISettingsView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @AppStorage(CatalogAPISettings.urlKey) private var savedURL = CatalogAPISettings.defaultURL
@@ -6126,6 +6413,15 @@ private struct AdvancedAPISettingsView: View {
                 LabeledContent("6", value: "Placeholder")
             } header: { Text("Card Image Fallback Order") } footer: {
                 Text("Only exact card IDs and collector numbers are used. Bundled images are thumbnails, not high-resolution artwork. Cached and kept-offline images remain available without a connection.")
+            }
+            Section {
+                NavigationLink {
+                    MissingArtworkReportView()
+                } label: {
+                    Label("Missing Artwork Report", systemImage: "photo.badge.exclamationmark")
+                }
+            } footer: {
+                Text("Review observed image-loading failures and share exact card IDs for API fixes. This is not a full-catalogue scan.")
             }
         }
         .navigationTitle("Advanced")

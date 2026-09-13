@@ -5,6 +5,150 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    func testTrickOrTradeChecklistsHaveThirtyCanonicalIDsAndCorrectEras() throws {
+        XCTAssertEqual(TrickOrTradeRelease.all.map(\.year), [2022, 2023, 2024])
+        XCTAssertEqual(TrickOrTradeRelease.all.map(\.seriesID), ["swsh", "sv", "sv"])
+        let allIDs = TrickOrTradeRelease.all.flatMap(\.cardIDs)
+        XCTAssertEqual(Set(allIDs).count, 90)
+        for release in TrickOrTradeRelease.all {
+            XCTAssertEqual(release.cardIDs.count, 30)
+            XCTAssertEqual(release.set.totalCardCount, 30)
+            XCTAssertNil(release.printing(cardID: "not-a-member"))
+            for id in release.cardIDs {
+                let printing = try XCTUnwrap(release.printing(cardID: id))
+                XCTAssertEqual(printing.cardID, id)
+                XCTAssertEqual(printing.kind, .trickOrTrade)
+                XCTAssertEqual(printing.stamps, ["trick-or-trade"])
+                XCTAssertEqual(printing.subtype, String(release.year))
+                XCTAssertNil(printing.cardmarketProductID)
+            }
+        }
+        let groups = [CatalogSeriesGroup(series: .init(id: "sv", name: "SV", logoURL: nil), sets: [])]
+        let added = TrickOrTradeRelease.adding(to: groups)
+        XCTAssertEqual(added[0].sets.map(\.id), ["tallydex-tot-2024", "tallydex-tot-2023"])
+        XCTAssertEqual(TrickOrTradeRelease.adding(to: added), added)
+    }
+
+    func testTrickOrTradeEnrichmentKeepsProviderIdentityAndOtherStampTypes() throws {
+        let release = TrickOrTradeRelease.all[2]
+        let normal = CatalogPrinting(cardID: "sv03-136", providerID: "normal-stamp", rawType: "normal", kind: .normal,
+            subtype: nil, size: "standard", stamps: ["trick-or-trade"], foil: nil, languages: [],
+            cardmarketProductID: 785593, tcgplayerProductID: nil, cardtraderProductID: nil)
+        let holo = CatalogPrinting(cardID: "sv03-136", providerID: "23hmnvtwds1n7f4b2o51f5iqrd8z", rawType: "holo", kind: .holo,
+            subtype: nil, size: "standard", stamps: ["trick-or-trade"], foil: nil, languages: [],
+            cardmarketProductID: 785594, tcgplayerProductID: nil, cardtraderProductID: nil)
+        let result = TrickOrTradeRelease.printings(cardID: holo.cardID, providerPrintings: [normal, holo])
+        XCTAssertEqual(result.count, 2)
+        XCTAssertTrue(result.contains(normal))
+        let stamped = try XCTUnwrap(result.first { $0.kind == .trickOrTrade })
+        XCTAssertEqual(stamped.providerID, holo.providerID)
+        XCTAssertEqual(stamped.cardmarketProductID, 785594)
+        XCTAssertEqual(release.printing(cardID: holo.cardID)?.providerID, stamped.providerID)
+        XCTAssertEqual(TrickOrTradeRelease.printings(cardID: holo.cardID, providerPrintings: result), result)
+    }
+
+    @MainActor
+    func testTrickOrTradeUsesCanonicalIndexWithoutCreatingDuplicateCardsOrSets() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let release = TrickOrTradeRelease.all[0]
+        let parentIDs = Set(release.cardIDs.map { String($0.split(separator: "-")[0]) })
+        try await repository.replaceCatalog([.init(series: .init(id: "swsh", name: "SWSH", logoURL: nil),
+            sets: parentIDs.sorted().map { set(id: $0, seriesID: "swsh", name: $0) })])
+        let cards = release.cardIDs.map { id in
+            CatalogCard(id: id, setID: String(id.split(separator: "-")[0]), localID: String(id.split(separator: "-")[1]),
+                        name: id, imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        }
+        try await repository.replaceSearchIndex(cards)
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: cards[0], variants: [.normal]))
+        let store = CatalogStore(provider: provider, repository: repository)
+        let loaded = try await store.cards(for: release.set)
+        XCTAssertEqual(loaded, cards)
+        let requestCount = await provider.cardRequestCount
+        XCTAssertEqual(requestCount, 0)
+        let storedSets = try await repository.fetchSets(seriesID: nil)
+        XCTAssertEqual(storedSets.count, parentIDs.count)
+        let printingLookup = await store.cachedPrintings(for: cards)
+        XCTAssertEqual(printingLookup.count, 30)
+        XCTAssertEqual(printingLookup[cards[0].id]?.first?.kind, .trickOrTrade)
+    }
+
+    func testEnergyOverviewFiltersTrainersAndDoesNotDuplicateSets() {
+        func card(_ name: String, category: String? = nil) -> CatalogCard {
+            .init(id: "test", setID: "sve", localID: "001", name: name, imageURL: nil,
+                  category: category, illustrator: nil, rarity: nil)
+        }
+        XCTAssertTrue(CatalogEnergyChecklist.includes(card("Grass Energy")))
+        XCTAssertTrue(CatalogEnergyChecklist.includes(card("Mystery", category: "Energy")))
+        XCTAssertFalse(CatalogEnergyChecklist.includes(card("Energy Search")))
+        XCTAssertFalse(CatalogEnergyChecklist.includes(card("Energy Retrieval")))
+        XCTAssertFalse(CatalogEnergyChecklist.includes(card("Grass Energy", category: "Trainer")))
+        let native = set(id: "sve", seriesID: "sv", name: "Scarlet & Violet Energy")
+        let groups = [CatalogSeriesGroup(series: .init(id: "sv", name: "SV", logoURL: nil), sets: [native])]
+        let result = CatalogEnergyChecklist.adding(to: groups)
+        XCTAssertEqual(result[0].sets.first, native)
+        XCTAssertEqual(result[0].sets.count, 2)
+        XCTAssertEqual(CatalogEnergyChecklist.adding(to: result), result)
+    }
+
+    func testArtworkDiagnosticsPersistDeduplicateAndClearAfterFallbackSuccess() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stub = HTTPClientStub(responses: [.init(data: Data(#"{"id":"test-1","image":null}"#.utf8), statusCode: 200, retryAfter: nil)])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
+        let api = CatalogArtworkReference(url: URL(string: "https://example.com/v2/en/cards/test-1")!, category: .cardThumbnails,
+                                          offlineSetID: "test", apiCardID: "test-1", cachedAssetURL: nil)
+        _ = try? await cache.bestAvailableData(for: [api])
+        _ = try? await cache.bestAvailableData(for: [api])
+        let failed = await cache.artworkDiagnostics()
+        XCTAssertEqual(failed.map(\.cardID), ["test-1"])
+        let cold = CatalogArtworkCache(rootDirectory: root, httpClient: HTTPClientStub(responses: []))
+        let persisted = await cold.artworkDiagnostics()
+        XCTAssertEqual(persisted, failed)
+        let imageURL = root.appendingPathComponent("fallback.png")
+        try makeNoisyPNG(width: 1, height: 1).write(to: imageURL)
+        _ = try await cache.bestAvailableData(for: [api, .init(url: imageURL, category: .cardThumbnails, offlineSetID: "test")])
+        let cleared = await cache.artworkDiagnostics()
+        XCTAssertTrue(cleared.isEmpty)
+        let coldAfterSuccess = CatalogArtworkCache(rootDirectory: root, httpClient: HTTPClientStub(responses: []))
+        let clearedPersisted = await coldAfterSuccess.artworkDiagnostics()
+        XCTAssertTrue(clearedPersisted.isEmpty)
+    }
+
+    func testCancelledArtworkLoadIsNotReportedAsMissing() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: CancelledHTTPClientStub(), imageDirectory: TCGdexImageDirectory())
+        _ = try? await cache.bestAvailableData(for: [.init(url: URL(string: "https://example.com/v2/en/cards/test-1")!,
+            category: .cardThumbnails, offlineSetID: "test", apiCardID: "test-1", cachedAssetURL: nil)])
+        let records = await cache.artworkDiagnostics()
+        XCTAssertTrue(records.isEmpty)
+    }
+
+    func testExplicitArtworkRecheckBypassesRememberedMissingAPIImage() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let card = CatalogCard(id: "example-1", setID: "example", localID: "1", name: "Example", imageURL: nil,
+                               category: nil, illustrator: nil, rarity: nil)
+        let apiCount = card.fullArtworkReferences.filter { $0.apiCardID != nil }.count
+        let empty = HTTPResponse(data: Data(#"{"id":"example-1","image":null}"#.utf8), statusCode: 200, retryAfter: nil)
+        let png = try makeNoisyPNG(width: 1, height: 1)
+        let stub = HTTPClientStub(responses: Array(repeating: empty, count: apiCount) + [
+            .init(data: Data(), statusCode: 404, retryAfter: nil),
+            .init(data: Data(#"{"id":"example-1","image":"https://art.example/verified/example-1"}"#.utf8), statusCode: 200, retryAfter: nil),
+            .init(data: png, statusCode: 200, retryAfter: nil),
+        ])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
+        _ = try? await cache.bestAvailableData(for: card)
+        let before = await cache.artworkDiagnostics()
+        XCTAssertEqual(before.map(\.cardID), [card.id])
+        let result = try await cache.recheckArtwork(for: card)
+        XCTAssertEqual(result, png)
+        let after = await cache.artworkDiagnostics()
+        XCTAssertTrue(after.isEmpty)
+        let requests = await stub.requestCount
+        XCTAssertEqual(requests, apiCount + 3)
+    }
+
     func testTCGdexDecodesSeriesIndex() async throws {
         let client = TCGdexClient(
             httpClient: HTTPClientStub(responses: [

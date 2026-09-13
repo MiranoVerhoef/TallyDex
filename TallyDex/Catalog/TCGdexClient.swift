@@ -124,6 +124,14 @@ actor TCGdexImageDirectory {
         return entry.url
     }
 
+    /// A collector explicitly requested a new image check, bypassing only this
+    /// card's remembered API result and the endpoint's short outage cooldown.
+    func invalidateImage(for endpoint: URL) {
+        entries.removeValue(forKey: endpoint.absoluteString)
+        let base = endpoint.deletingLastPathComponent().deletingLastPathComponent().appending(path: "")
+        unavailableUntil.removeValue(forKey: base)
+    }
+
     func imageURL(endpoint: URL, cardID: String, httpClient: any HTTPClient) async throws -> URL? {
         let key = endpoint.absoluteString
         if let entry = entries[key], entry.expires > Date() { return entry.url }
@@ -807,7 +815,7 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
         case .normal: normal
         case .reverseHolo: reverseHolofoil
         case .holo: holofoil
-        case .firstEdition, .watermarkedPromo, .prerelease, .prereleaseStaff: nil
+        case .firstEdition, .watermarkedPromo, .prerelease, .prereleaseStaff, .trickOrTrade: nil
         }
         guard let updatedAt = tcgdexDate(updated),
               let amount = market?.marketPrice,

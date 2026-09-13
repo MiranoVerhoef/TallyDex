@@ -103,8 +103,10 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
   printing-rule preparation now share one spinner until both finish. Implemented
   in v0.9.21.
 
-- [ ] Add missing Trick or Trade sets and check yearly coverage. Keep their exact
-  card identities and special printings separate from the original expansion cards.
+- [x] Verified 2022–2024 Trick or Trade checklists, each with 30 pumpkin-stamped
+  printings. Checklists share canonical original card IDs and exact ownership;
+  no duplicated card records or inferred stamp artwork. Later yearly releases
+  require verification before being added.
 - [x] Group McDonald's releases inside their corresponding main series/era,
   alongside the regular expansions, rather than a separate top-level McDonald's
   listing. Use [Pokellector's set catalogue](https://www.pokellector.com/sets) as the
@@ -116,6 +118,9 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 - [ ] Add missing Energy cards and supplemental Energy sets under the appropriate
   series/era. Audit which cards belong to an expansion versus a separate Energy
   release, preserving exact identities and avoiding duplicate collection totals.
+  v0.9.22 verifies the existing SVE (24) and MEE (8) coverage and adds a read-only
+  Energy overview per era. Older unnumbered designs absent from TCGdex remain
+  pending verified provider identities; the overview does not invent them.
 - [x] Custom TCGdex API channel at `tcgdex.tallydex.nl`, configurable and checkable
   in Advanced settings, with official-provider fallback and bundled thumbnails.
 
@@ -543,6 +548,43 @@ Completed in v0.9.21:
   the top-level McDonald's group disappears only when all its sets were moved.
 - One spinner beside goal-slot counts covers card loading and printing-rule
   preparation together. Updated What's New notes explain both changes.
+
+Completed in v0.9.22:
+
+- Trick or Trade 2022 under Sword & Shield, and 2023/2024 under Scarlet & Violet.
+  Thirty exact parent-card IDs per release are cross-checked with the English API
+  index. Pumpkin-stamp ownership is stored once on the canonical card, shared
+  between checklist and card details. Normal copies are not changed by checklist
+  checks, and old broad ownership never automatically checks a pumpkin stamp.
+- Known provider printing IDs stay intact; curated printing IDs remain stable
+  where the API omits a stamp. Provider printings not represented by a checklist
+  entry stay visible. Curated stamps have a separate printing kind so regular
+  parent-card prices are not presented as prices for them. Original Master goals
+  can now include verified pumpkin printings; existing quantities are not migrated.
+- Images in checklists are clearly labelled as original artwork that may not
+  picture the stamp. Checklists do not offer independent offline pinning; keep
+  original sets offline for their shared metadata and artwork.
+- Energy overviews reuse cards already represented by TCGdex, including numbered
+  expansion Energies and the existing SVE/MEE sets. These read-only views do not
+  create cards, ownership, goals, or new expansion completion requirements.
+- Settings → Advanced → Missing Artwork Report records up to 1,000 observed
+  failures, with exact card IDs, last-check time, search, sharing, and cancellable
+  rechecks. Network errors may be temporary. Successful fallback loads clear a
+  card; an empty report does not establish complete catalogue artwork coverage.
+  Explicit rechecks bypass remembered missing-image results without deleting art.
+
+Coverage references (metadata only; no artwork copied):
+
+- [Pokellector 2022](https://www.pokellector.com/Trick-or-Trade-Collection/),
+  [2023](https://www.pokellector.com/Trick-or-Trade-2023-Collection/),
+  [2024](https://www.pokellector.com/Trick-or-Trade-2024-Collection/).
+- Bulbapedia [2022](https://bulbapedia.bulbagarden.net/wiki/Trick_or_Trade_2022_(TCG)),
+  [2023](https://bulbapedia.bulbagarden.net/wiki/Trick_or_Trade_2023_(TCG)),
+  [2024](https://bulbapedia.bulbagarden.net/wiki/Trick_or_Trade_2024_(TCG)).
+- Pokémon's [2024 product release](https://www.pokemon.com/us/pokemon-tcg/product-gallery/trick-or-trade-booster-bundle-2024)
+  establishes August 30, rather than the later date shown by the browsing reference.
+- [TallyDex SVE API](https://tcgdex.tallydex.nl/v2/en/sets/sve) and
+  [MEE API](https://tcgdex.tallydex.nl/v2/en/sets/mee): 24 and 8 exact Energy IDs.
 
 ## Reporting catalog data
 

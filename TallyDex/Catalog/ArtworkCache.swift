@@ -249,6 +249,14 @@ enum CatalogArtworkCacheError: Error {
     case invalidImageData
 }
 
+struct ArtworkLoadDiagnostic: Codable, Equatable, Identifiable, Sendable {
+    let cardID: String
+    let setID: String
+    let category: String
+    let checkedAt: Date
+    var id: String { cardID }
+}
+
 actor CatalogArtworkCache {
     static let shared = CatalogArtworkCache()
     static let maximumByteCount: Int64 = 400 * 1_024 * 1_024
@@ -264,6 +272,8 @@ actor CatalogArtworkCache {
     private let httpClient: any HTTPClient
     private let imageDirectory: TCGdexImageDirectory
     private var missingAssetsUntil: [URL: Date] = [:]
+    private let diagnosticsURL: URL
+    private var loadDiagnostics: [String: ArtworkLoadDiagnostic]
 
     init(
         rootDirectory: URL? = nil,
@@ -279,6 +289,13 @@ actor CatalogArtworkCache {
         self.limitDefaults = preferencesSuiteName.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         self.httpClient = httpClient
         self.imageDirectory = imageDirectory
+        let diagnosticsRoot = rootDirectory
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TallyDexArtworkDiagnostics", isDirectory: true)
+        self.diagnosticsURL = diagnosticsRoot.appendingPathComponent("observed-failures.json")
+        let saved = (try? Data(contentsOf: self.diagnosticsURL))
+            .flatMap { try? JSONDecoder().decode([ArtworkLoadDiagnostic].self, from: $0) } ?? []
+        self.loadDiagnostics = saved.prefix(1_000).reduce(into: [:]) { $0[$1.cardID] = $1 }
         let automaticCacheBase = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("TallyDexArtwork", isDirectory: true)
         let resolvedRootDirectory = rootDirectory
@@ -468,16 +485,61 @@ actor CatalogArtworkCache {
             if !result.contains(reference) { result.append(reference) }
         }
         var lastError: Error = CatalogArtworkCacheError.invalidResponse
+        let cardReference = references.first { $0.apiCardID != nil }
         for reference in references {
             do {
-                return try await data(for: reference)
+                let result = try await data(for: reference)
+                if let cardID = cardReference?.apiCardID,
+                   loadDiagnostics.removeValue(forKey: cardID) != nil { persistDiagnostics() }
+                return result
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 lastError = error
             }
         }
+        try Task.checkCancellation()
+        if let cardReference, let cardID = cardReference.apiCardID {
+            loadDiagnostics[cardID] = ArtworkLoadDiagnostic(
+                cardID: cardID, setID: cardReference.offlineSetID ?? "",
+                category: cardReference.category.rawValue, checkedAt: Date()
+            )
+            if loadDiagnostics.count > 1_000,
+               let oldest = loadDiagnostics.values.min(by: { $0.checkedAt < $1.checkedAt }) {
+                loadDiagnostics.removeValue(forKey: oldest.cardID)
+            }
+            persistDiagnostics()
+        }
         throw lastError
+    }
+
+    func artworkDiagnostics() -> [ArtworkLoadDiagnostic] {
+        loadDiagnostics.values.sorted { $0.checkedAt > $1.checkedAt }
+    }
+
+    func clearArtworkDiagnostics() {
+        loadDiagnostics.removeAll()
+        persistDiagnostics()
+    }
+
+    func recheckArtwork(for card: CatalogCard) async throws -> Data {
+        let references = card.fullArtworkReferences + card.thumbnailArtworkReferences
+        for reference in references {
+            if reference.apiCardID != nil {
+                if let imageURL = await imageDirectory.cachedURL(for: reference.url) {
+                    missingAssetsUntil.removeValue(forKey: Self.resolvedAssetURL(imageURL, category: reference.category))
+                }
+                await imageDirectory.invalidateImage(for: reference.url)
+            }
+            missingAssetsUntil.removeValue(forKey: Self.resolvedAssetURL(reference.url, category: reference.category))
+        }
+        return try await bestAvailableData(for: references)
+    }
+
+    private func persistDiagnostics() {
+        guard let data = try? JSONEncoder().encode(artworkDiagnostics()) else { return }
+        try? fileManager.createDirectory(at: diagnosticsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: diagnosticsURL, options: .atomic)
     }
 
     /// Returns whether at least one exact alternative is already present locally.

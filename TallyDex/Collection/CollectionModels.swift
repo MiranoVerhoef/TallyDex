@@ -276,7 +276,7 @@ enum CollectionProgressCalculator {
                 let requiredIDs = Set(exactOptions.map(\.providerID))
                 let exactCompleted = Set(
                     exactOwnedForCard
-                        .filter { $0.variant == variant && requiredIDs.contains($0.printingID) }
+                        .filter { requiredIDs.contains($0.printingID) }
                         .map(\.printingID)
                 ).count
                 // An old broad check represents one real but unspecified copy.

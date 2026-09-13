@@ -181,6 +181,23 @@ final class CatalogStore {
 
     func cards(for set: CatalogSet, forceRefresh: Bool = false) async throws -> [CatalogCard] {
         let repository = try resolveRepository()
+        if let seriesID = CatalogEnergyChecklist.seriesID(setID: set.id) {
+            if forceRefresh { await refreshSearchIndex(in: repository) }
+            return try await energyCards(seriesID: seriesID).map(\.card)
+        }
+        if let release = TrickOrTradeRelease.release(setID: set.id) {
+            if forceRefresh { await refreshSearchIndex(in: repository) }
+            var indexed = try await repository.fetchSearchResults(cardIDs: release.cardIDs)
+            let found = Set(indexed.map(\.id))
+            for id in release.cardIDs where !found.contains(id) {
+                let snapshot = try await provider.fetchCard(id: id)
+                guard snapshot.card.id == id else { throw TCGdexError.invalidResponse }
+                try await repository.replaceCard(snapshot)
+                indexed.append(CatalogCardSearchResult(card: snapshot.card, setName: set.name))
+            }
+            let byID = Dictionary(uniqueKeysWithValues: indexed.map { ($0.id, $0.card) })
+            return release.cardIDs.compactMap { byID[$0] }
+        }
         let cachedCards = try await repository.fetchCards(setID: set.id)
         let refreshKey = setRefreshKey(set.id)
         let setLastUpdated = try await repository.metadataDate(forKey: refreshKey)
@@ -207,7 +224,22 @@ final class CatalogStore {
         let cards = try await cards(for: set, forceRefresh: true)
         guard !cards.isEmpty else { return cards }
         _ = await prepareVariants(for: cards)
+        if TrickOrTradeRelease.release(setID: set.id) != nil {
+            return try await cardsForChecklist(cardIDs: cards.map(\.id))
+        }
         return try await resolveRepository().fetchCards(setID: set.id)
+    }
+
+    func cardsForChecklist(cardIDs: [String]) async throws -> [CatalogCard] {
+        let indexed = try await resolveRepository().fetchSearchResults(cardIDs: cardIDs)
+        let byID = Dictionary(uniqueKeysWithValues: indexed.map { ($0.id, $0.card) })
+        return cardIDs.compactMap { byID[$0] }
+    }
+
+    func energyCards(seriesID: String) async throws -> [CatalogCardSearchResult] {
+        let setIDs = Set(groups.first { $0.id == seriesID }?.sets.map(\.id) ?? [])
+        let candidates = try await resolveRepository().fetchCards(matchingName: "Energy")
+        return candidates.filter { setIDs.contains($0.card.setID) && CatalogEnergyChecklist.includes($0.card) }
     }
 
     func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
@@ -297,7 +329,11 @@ final class CatalogStore {
     }
 
     func variants(cardIDs: [String]) async throws -> [String: Set<CatalogVariantKind>] {
-        try await resolveRepository().fetchVariants(cardIDs: cardIDs)
+        var result = try await resolveRepository().fetchVariants(cardIDs: cardIDs)
+        for id in cardIDs where TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(id) }) {
+            result[id, default: []].insert(.trickOrTrade)
+        }
+        return result
     }
 
     func prices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]] {
@@ -392,6 +428,9 @@ final class CatalogStore {
         _ = try? await enforcePriceHistoryLimits(in: repository)
 
         cached = (try? await repository.fetchVariants(cardIDs: cardIDs)) ?? cached
+        for card in cards where TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(card.id) }) {
+            cached[card.id, default: []].insert(.trickOrTrade)
+        }
         return cached
     }
 
@@ -402,9 +441,8 @@ final class CatalogStore {
         var result: [String: [CatalogPrinting]] = [:]
         result.reserveCapacity(cards.count)
         for card in cards {
-            if let printings = try? await repository.fetchPrintings(cardID: card.id), !printings.isEmpty {
-                result[card.id] = printings
-            }
+            let printings = (try? await repository.fetchPrintings(cardID: card.id)) ?? []
+            result[card.id] = TrickOrTradeRelease.printings(cardID: card.id, providerPrintings: printings)
         }
         return result
     }
@@ -474,9 +512,9 @@ final class CatalogStore {
         let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
         return CatalogCardSnapshot(
             card: cachedCard,
-            variants: variants,
+            variants: variants.union(TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(card.id) }) ? [.trickOrTrade] : []),
             prices: pricesByCardID[card.id] ?? [],
-            printings: printings
+            printings: TrickOrTradeRelease.printings(cardID: card.id, providerPrintings: printings)
         )
     }
 
@@ -536,7 +574,7 @@ final class CatalogStore {
             }
             .sorted { ($0.releaseDate ?? "") > ($1.releaseDate ?? "") }
         let sets = announcedSets + cachedSets
-        groups = CatalogSeriesGrouping.groups(series: series, sets: sets)
+        groups = CatalogEnergyChecklist.adding(to: TrickOrTradeRelease.adding(to: CatalogSeriesGrouping.groups(series: series, sets: sets)))
     }
 
     /// Rechecks announced and recently released sets more frequently than the

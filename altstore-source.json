@@ -20,6 +20,9 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22-trick-or-trade.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22-energy-overview.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22-artwork-report.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21-era-groups.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21-mcdonalds-in-era.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-sv-set-logos.png",
@@ -90,6 +93,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.22",
+          "buildVersion": "58",
+          "date": "2026-09-13",
+          "localizedDescription": "Adds verified 30-card Trick or Trade checklists for 2022–2024 within their eras, with separate pumpkin-stamp checks and shared original card identities. Normal copies do not automatically count as stamped copies; original artwork may not show the stamp. Adds a read-only Energy cards overview linking existing cards to their original sets without duplicate ownership or completion targets. Older unnumbered Energy designs still need verified API identities. Advanced → Missing Artwork lists up to 1,000 unique observed loading failures with search, sharing, and cancellable rechecks; successful fallbacks clear resolved entries. An empty report is not a full catalogue audit. Updated What's New notes explain the changes. Existing preferences, normal-card ownership, and backups are preserved.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22.ipa",
+          "size": 29697443,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.21",
           "buildVersion": "57",
