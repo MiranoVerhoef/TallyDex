@@ -897,3 +897,46 @@ struct CatalogSeriesGroup: Equatable, Identifiable, Sendable {
         series.logoURL
     }
 }
+
+/// Presentation-only grouping. Provider series IDs and set/card identities stay intact.
+enum CatalogSeriesGrouping {
+    private static let mcdonaldsParentSeries: [String: String] = [
+        "2011bw": "bw", "2012bw": "bw", "2013bw": "bw",
+        "2014xy": "xy", "2015xy": "xy", "2016xy": "xy",
+        "2017sm": "sm", "2018sm": "sm", "2019sm": "sm",
+        "2021swsh": "swsh", "2022swsh": "swsh",
+        "2023sv": "sv", "2024sv": "sv",
+    ]
+
+    static func groups(series: [CatalogSeries], sets: [CatalogSet]) -> [CatalogSeriesGroup] {
+        let availableSeries = Set(series.map(\.id))
+        let setsBySeries = Dictionary(grouping: sets) { set in
+            if set.seriesID == "mc", let parent = mcdonaldsParentSeries[set.id],
+               availableSeries.contains(parent) { return parent }
+            // Unknown releases or absent parents remain visible in their provider series.
+            return set.seriesID
+        }
+        return series.compactMap { item in
+            let assigned = setsBySeries[item.id] ?? []
+            if item.id == "mc", assigned.isEmpty { return nil }
+            var ordered = assigned.filter { $0.seriesID == item.id }
+            let supplemental = assigned.enumerated()
+                .filter { $0.element.seriesID != item.id }
+                .sorted {
+                    let left = $0.element.releaseDate ?? ""
+                    let right = $1.element.releaseDate ?? ""
+                    return left == right ? $0.offset < $1.offset : left > right
+                }
+            for entry in supplemental {
+                let set = entry.element
+                let index = set.releaseDate.flatMap { date in
+                    ordered.firstIndex { existing in
+                        existing.releaseDate.map { $0 < date } ?? false
+                    }
+                } ?? ordered.endIndex
+                ordered.insert(set, at: index)
+            }
+            return CatalogSeriesGroup(series: item, sets: ordered)
+        }
+    }
+}

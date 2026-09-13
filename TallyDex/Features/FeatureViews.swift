@@ -1249,14 +1249,12 @@ private struct CatalogSetDetailView: View {
                         Text("\(progress.completedSlots) of \(progress.requiredSlots) goal slots")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
-                        if isPreparingGoalMetadata {
+                        if isLoadingCards || isPreparingGoalMetadata {
                             ProgressView()
                                 .controlSize(.small)
-                                .accessibilityLabel("Loading printing rules")
-                        }
-                        if isLoadingCards {
-                            ProgressView()
-                                .controlSize(.small)
+                                .accessibilityLabel(
+                                    isPreparingGoalMetadata ? "Loading printing rules" : "Loading cards"
+                                )
                         }
                     }
 

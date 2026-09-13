@@ -20,6 +20,8 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21-era-groups.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21-mcdonalds-in-era.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-sv-set-logos.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-cache-limits.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.20/TallyDex-v0.9.20-api-info.png",
@@ -88,6 +90,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.21",
+          "buildVersion": "57",
+          "date": "2026-09-13",
+          "localizedDescription": "McDonald's releases now appear inside their matching Black & White, XY, Sun & Moon, Sword & Shield, and Scarlet & Violet eras, ordered among expansions by release date. Each release stays its own set: provider IDs, cards, ownership, goals, offline downloads, and backups are unchanged. Both catalogue layouts and All/My Sets/Hidden scopes use the grouping. Unknown future releases or absent parent eras remain visible in their original group. One loading indicator beside goal-slot counts now covers overlapping card loading and printing-rule preparation until both finish. Updated What's New notes explain the changes.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21.ipa",
+          "size": 29562165,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.20",
           "buildVersion": "56",

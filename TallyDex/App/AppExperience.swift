@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.20",
-        headline: "Artwork, under your control",
+        version: "0.9.21",
+        headline: "A cleaner set catalogue",
         notes: [
             AppReleaseNote(
-                systemImage: "server.rack",
-                title: "About the TallyDex API",
-                detail: "Advanced settings now clearly label the TallyDex API. Tap its info button to learn about the development version of TCGdex used for faster card updates."
+                systemImage: "square.stack.3d.up",
+                title: "McDonald’s sets, in their eras",
+                detail: "Find McDonald’s releases alongside the expansions from their matching Black & White, XY, Sun & Moon, Sword & Shield, and Scarlet & Violet eras. Each release stays its own set."
             ),
             AppReleaseNote(
-                systemImage: "photo.stack",
-                title: "Choose your artwork cache limit",
-                detail: "Settings → Artwork Cache lets you choose a limit from 100 MB to 2 GB. The default stays 400 MB, and kept-offline sets and bundled images remain separate."
+                systemImage: "arrow.trianglehead.2.clockwise",
+                title: "One loading indicator",
+                detail: "Set goal-slot counts now show a single spinner while cards and printing rules load, rather than two overlapping loading indicators."
             ),
             AppReleaseNote(
                 systemImage: "archivebox.fill",
-                title: "Scarlet & Violet set logos",
-                detail: "The Energy and Black Star Promo sets now include their matching logos, even when the API does not provide them. Collection data and card-detail preferences stay unchanged."
+                title: "Your collection stays intact",
+                detail: "This is a browsing change, not a card merge. Set IDs, card identities, ownership, goals, offline downloads, and backups remain unchanged."
             ),
         ]
     )
