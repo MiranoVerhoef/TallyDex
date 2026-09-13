@@ -118,9 +118,9 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 - [ ] Add missing Energy cards and supplemental Energy sets under the appropriate
   series/era. Audit which cards belong to an expansion versus a separate Energy
   release, preserving exact identities and avoiding duplicate collection totals.
-  v0.9.22 verifies the existing SVE (24) and MEE (8) coverage and adds a read-only
-  Energy overview per era. Older unnumbered designs absent from TCGdex remain
-  pending verified provider identities; the overview does not invent them.
+  v0.9.22 verified the existing SVE (24) and MEE (8) coverage. The supplemental
+  read-only Energy overview was removed in v0.9.23; actual Energy sets stay intact.
+  Older unnumbered designs absent from TCGdex remain pending verified identities.
 - [x] Custom TCGdex API channel at `tcgdex.tallydex.nl`, configurable and checkable
   in Advanced settings, with official-provider fallback and bundled thumbnails.
 
@@ -572,6 +572,35 @@ Completed in v0.9.22:
   rechecks. Network errors may be temporary. Successful fallback loads clear a
   card; an empty report does not establish complete catalogue artwork coverage.
   Explicit rechecks bypass remembered missing-image results without deleting art.
+
+Completed in v0.9.23:
+
+- Removes the supplemental Energy overview presentation rows and screen, without
+  touching the real Energy sets, card identities, ownership, or goals.
+- Replaces the sprawling Settings form with a compact menu. Appearance & Browsing
+  contains theme, set scope/layout, and the card-details default. Collection
+  Preferences contains goal/copy tracking and Custom defaults. Prices & Currency
+  contains the marketplace choice and collapsed future listing preferences.
+- Storage, backups, export/import, and local Browser Editor remain directly
+  accessible. Catalogue Index is under Advanced; privacy/sync status and a
+  confirmed Replay Introduction action are under About. Existing storage keys
+  and saved choices are unchanged. What's New explains the reorganization.
+- Bundles Trick or Trade 2022–2024 and My First Battle logos, plus the original
+  Yellow A mark. Hidden Fates Shiny Vault uses its parent Hidden Fates logo with
+  a native Shiny Vault label (not a claimed standalone official logo). These six
+  assets are at most 420 × 160 pixels and under 20 KB each, with transparency.
+  Set IDs, cards, and goals remain unchanged.
+
+Supplemental cover sources:
+
+- Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),
+  [2023](https://www.pokellector.com/Trick-or-Trade-2023-Collection/), and
+  [2024](https://www.pokellector.com/Trick-or-Trade-2024-Collection/) set headers.
+- [My First Battle logo](https://bulbapedia.bulbagarden.net/wiki/File:My_First_Battle_logo.png)
+  (file provenance identifies the official Pokémon My First Battle site).
+- [Hidden Fates parent logo](https://assets.tcgdex.net/en/sm/sm115/logo.png),
+  using the existing verified parent expansion, not a third-party custom logo.
+- [Yellow A symbol](https://bulbapedia.bulbagarden.net/wiki/Yellow_A_Alternate_cards_%28TCG%29).
 
 Coverage references (metadata only; no artwork copied):
 

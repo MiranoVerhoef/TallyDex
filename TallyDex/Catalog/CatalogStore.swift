@@ -181,10 +181,6 @@ final class CatalogStore {
 
     func cards(for set: CatalogSet, forceRefresh: Bool = false) async throws -> [CatalogCard] {
         let repository = try resolveRepository()
-        if let seriesID = CatalogEnergyChecklist.seriesID(setID: set.id) {
-            if forceRefresh { await refreshSearchIndex(in: repository) }
-            return try await energyCards(seriesID: seriesID).map(\.card)
-        }
         if let release = TrickOrTradeRelease.release(setID: set.id) {
             if forceRefresh { await refreshSearchIndex(in: repository) }
             var indexed = try await repository.fetchSearchResults(cardIDs: release.cardIDs)
@@ -234,12 +230,6 @@ final class CatalogStore {
         let indexed = try await resolveRepository().fetchSearchResults(cardIDs: cardIDs)
         let byID = Dictionary(uniqueKeysWithValues: indexed.map { ($0.id, $0.card) })
         return cardIDs.compactMap { byID[$0] }
-    }
-
-    func energyCards(seriesID: String) async throws -> [CatalogCardSearchResult] {
-        let setIDs = Set(groups.first { $0.id == seriesID }?.sets.map(\.id) ?? [])
-        let candidates = try await resolveRepository().fetchCards(matchingName: "Energy")
-        return candidates.filter { setIDs.contains($0.card.setID) && CatalogEnergyChecklist.includes($0.card) }
     }
 
     func searchCards(query: String) async throws -> [CatalogCardSearchResult] {
@@ -574,7 +564,7 @@ final class CatalogStore {
             }
             .sorted { ($0.releaseDate ?? "") > ($1.releaseDate ?? "") }
         let sets = announcedSets + cachedSets
-        groups = CatalogEnergyChecklist.adding(to: TrickOrTradeRelease.adding(to: CatalogSeriesGrouping.groups(series: series, sets: sets)))
+        groups = TrickOrTradeRelease.adding(to: CatalogSeriesGrouping.groups(series: series, sets: sets))
     }
 
     /// Rechecks announced and recently released sets more frequently than the

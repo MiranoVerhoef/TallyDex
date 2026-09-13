@@ -20,8 +20,12 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.23/TallyDex-v0.9.23-settings.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.23/TallyDex-v0.9.23-browsing-preferences.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.23/TallyDex-v0.9.23-settings-tools.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.23/TallyDex-v0.9.23-trick-or-trade-cover.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.23/TallyDex-v0.9.23-my-first-battle-cover.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22-trick-or-trade.png",
-        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22-energy-overview.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.22/TallyDex-v0.9.22-artwork-report.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21-era-groups.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.21/TallyDex-v0.9.21-mcdonalds-in-era.png",
@@ -93,6 +97,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.23",
+          "buildVersion": "59",
+          "date": "2026-09-13",
+          "localizedDescription": "Removes the extra Energy overview rows while keeping actual Energy sets, cards, ownership, and goals intact. Settings now uses a compact menu with focused Appearance & Browsing, Collection Preferences, and Prices & Currency pages. Existing saved preferences are unchanged; the card-details default still affects only Card details, not printings. Storage, backups, export/import, and Browser Editor stay directly accessible. Catalogue indexing is under Advanced; privacy/sync status and confirmed Replay Introduction are under About. Future Cardmarket listing preferences are collapsed. Adds six small bundled covers for Trick or Trade 2022–2024, My First Battle, Hidden Fates Shiny Vault (parent logo with label), and Yellow A Alternate (original A mark), each under 20 KB. Updated What's New explains the changes.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.23/TallyDex-v0.9.23.ipa",
+          "size": 29772667,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.22",
           "buildVersion": "58",
