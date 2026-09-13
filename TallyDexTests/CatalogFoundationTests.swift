@@ -1085,8 +1085,8 @@ final class CatalogFoundationTests: XCTestCase {
             rarity: nil
         )
         XCTAssertEqual(
-            galleryCard.thumbnailArtworkReference.map {
-                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            TCGdexArtworkFallbacks.cardImageURLs(for: galleryCard, category: .cardThumbnails).first.map {
+                CatalogArtworkCache.resolvedAssetURL($0, category: .cardThumbnails).absoluteString
             },
             "https://assets.tcgdex.net/en/swsh/swsh12.5/GG36/low.webp"
         )
@@ -1102,10 +1102,10 @@ final class CatalogFoundationTests: XCTestCase {
             rarity: nil
         )
         XCTAssertEqual(
-            providerGap.thumbnailArtworkReference.map {
-                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            TCGdexArtworkFallbacks.cardImageURLs(for: providerGap, category: .cardThumbnails).first.map {
+                CatalogArtworkCache.resolvedAssetURL($0, category: .cardThumbnails).absoluteString
             },
-            "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/SWSH12PT5GG/SWSH12PT5GG_EN_GG48.png"
+            "https://assets.tcgdex.net/en/swsh/swsh12.5/GG48/low.webp"
         )
 
         let lowOnly = CatalogCard(
@@ -1132,8 +1132,8 @@ final class CatalogFoundationTests: XCTestCase {
             rarity: nil
         )
         XCTAssertEqual(
-            unrelated.thumbnailArtworkReference.map {
-                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            TCGdexArtworkFallbacks.cardImageURLs(for: unrelated, category: .cardThumbnails).first.map {
+                CatalogArtworkCache.resolvedAssetURL($0, category: .cardThumbnails).absoluteString
             },
             "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/TK-EXAMPLE/TK-EXAMPLE_EN_1.png"
         )
@@ -1152,14 +1152,14 @@ final class CatalogFoundationTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            riolu.thumbnailArtworkReference.map {
-                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            TCGdexArtworkFallbacks.cardImageURLs(for: riolu, category: .cardThumbnails).first.map {
+                CatalogArtworkCache.resolvedAssetURL($0, category: .cardThumbnails).absoluteString
             },
             "https://assets.tcgdex.net/en/swsh/swsh12.5/GG26/low.webp"
         )
         XCTAssertEqual(
-            riolu.fullArtworkReference.map {
-                CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+            TCGdexArtworkFallbacks.cardImageURLs(for: riolu, category: .cardArtwork).first.map {
+                CatalogArtworkCache.resolvedAssetURL($0, category: .cardArtwork).absoluteString
             },
             "https://assets.tcgdex.net/en/swsh/swsh12.5/GG26/high.webp"
         )
@@ -1180,14 +1180,14 @@ final class CatalogFoundationTests: XCTestCase {
             let expected = "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/MEP/MEP_EN_\(Int(localID)!).png"
 
             XCTAssertEqual(
-                card.thumbnailArtworkReference.map {
-                    CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+                TCGdexArtworkFallbacks.cardImageURLs(for: card, category: .cardThumbnails).first.map {
+                    CatalogArtworkCache.resolvedAssetURL($0, category: .cardThumbnails).absoluteString
                 },
                 expected
             )
             XCTAssertEqual(
-                card.fullArtworkReference.map {
-                    CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+                TCGdexArtworkFallbacks.cardImageURLs(for: card, category: .cardArtwork).first.map {
+                    CatalogArtworkCache.resolvedAssetURL($0, category: .cardArtwork).absoluteString
                 },
                 expected
             )
@@ -1214,8 +1214,8 @@ final class CatalogFoundationTests: XCTestCase {
                 rarity: nil
             )
             XCTAssertEqual(
-                card.thumbnailArtworkReference.map {
-                    CatalogArtworkCache.resolvedAssetURL($0.url, category: $0.category).absoluteString
+                TCGdexArtworkFallbacks.cardImageURLs(for: card, category: .cardThumbnails).first.map {
+                    CatalogArtworkCache.resolvedAssetURL($0, category: .cardThumbnails).absoluteString
                 },
                 "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/\(assetCode)/\(assetCode)_EN_\(number).png"
             )
@@ -1231,9 +1231,11 @@ final class CatalogFoundationTests: XCTestCase {
         ))
         let stub = HTTPClientStub(responses: [
             HTTPResponse(data: Data(), statusCode: 404, retryAfter: nil),
+            HTTPResponse(data: Data(#"{"id":"me05-001","image":"https://assets.tcgdex.net/en/me/me05/001"}"#.utf8), statusCode: 200, retryAfter: nil),
+            HTTPResponse(data: Data(), statusCode: 404, retryAfter: nil),
             HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
         ])
-        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub)
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
         let card = CatalogCard(
             id: "me05-001",
             setID: "me05",
@@ -1249,7 +1251,8 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(
             references.map(\.url.absoluteString),
             [
-                "https://assets.tcgdex.net/en/me/me05/001",
+                CatalogAPISettings.customURL.appending(path: "cards/me05-001").absoluteString,
+                "https://api.tcgdex.net/v2/en/cards/me05-001",
                 "https://assets.pokemon.com/static-assets/content-assets/cms2/img/cards/web/ME05/ME05_EN_1.png",
             ]
         )
@@ -1257,7 +1260,178 @@ final class CatalogFoundationTests: XCTestCase {
 
         XCTAssertEqual(resolved, imageData)
         let requestCount = await stub.requestCount
-        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(requestCount, 4)
+    }
+
+    func testAPIURLValidationAcceptsOnlyHTTPSOriginsAndEnglishRoots() {
+        for input in ["https://tcgdex.tallydex.nl", "https://tcgdex.tallydex.nl/", "https://tcgdex.tallydex.nl/v2/en/"] {
+            XCTAssertEqual(CatalogAPISettings.normalizedURL(input)?.absoluteString, "https://tcgdex.tallydex.nl/v2/en/")
+        }
+        for input in ["http://example.com", "https://user:secret@example.com", "https://example.com/v2/fr", "https://example.com?secret=x", "https://example.com/#fragment", ""] {
+            XCTAssertNil(CatalogAPISettings.normalizedURL(input))
+        }
+    }
+
+    func testConfiguredProviderUsesCustomThenOfficialAndBacksOffFailedHost() async throws {
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(), statusCode: 503, retryAfter: nil),
+            HTTPResponse(data: Data(#"[{"id":"sv","name":"Scarlet & Violet"}]"#.utf8), statusCode: 200, retryAfter: nil),
+            HTTPResponse(data: Data(#"[{"id":"sv","name":"Scarlet & Violet"}]"#.utf8), statusCode: 200, retryAfter: nil),
+        ])
+        let provider = ConfiguredCatalogProvider(
+            httpClient: stub, customURL: URL(string: "https://mirror.example/v2/en/")!,
+            useCustom: true, imageDirectory: TCGdexImageDirectory(), etagStore: nil
+        )
+        let first = try await provider.fetchSeriesIndex()
+        let second = try await provider.fetchSeriesIndex()
+        XCTAssertEqual(first, second)
+        let urls = await stub.requestURLs
+        XCTAssertEqual(urls.map(\.absoluteString), [
+            "https://mirror.example/v2/en/series", "https://api.tcgdex.net/v2/en/series", "https://api.tcgdex.net/v2/en/series",
+        ])
+    }
+
+    func testConfiguredProviderDoesNotFallbackOnCancellationOrNotModified() async throws {
+        let cancelled = CancelledHTTPClientStub()
+        let provider = ConfiguredCatalogProvider(httpClient: cancelled, useCustom: true, imageDirectory: TCGdexImageDirectory(), etagStore: nil)
+        do { _ = try await provider.fetchSeriesIndex(); XCTFail("Expected cancellation") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        let cancellationCount = await cancelled.requestCount
+        XCTAssertEqual(cancellationCount, 1)
+        let stub = HTTPClientStub(responses: [HTTPResponse(data: Data(), statusCode: 304, retryAfter: nil)])
+        let unchanged = ConfiguredCatalogProvider(httpClient: stub, useCustom: true, imageDirectory: TCGdexImageDirectory(), etagStore: nil)
+        do { _ = try await unchanged.fetchCardIndex(); XCTFail("Expected not modified") }
+        catch { XCTAssertEqual(error as? TCGdexError, .notModified) }
+        let unchangedCount = await stub.requestCount
+        XCTAssertEqual(unchangedCount, 1)
+    }
+
+    func testETagsDoNotCrossAPISourcesOrSurviveSwitchingBack() async throws {
+        let stub = HTTPClientStub(responses: (0..<3).map { _ in
+            HTTPResponse(data: Data(#"[{"id":"base-1","localId":"1","name":"Card"}]"#.utf8), statusCode: 200, retryAfter: nil, etag: "v1")
+        })
+        let etags = TCGdexETagStore()
+        let primary = TCGdexClient(httpClient: stub, baseURL: URL(string: "https://mirror.example/v2/en/")!, etagStore: etags)
+        let official = TCGdexClient(httpClient: stub, etagStore: etags)
+        _ = try await primary.fetchCardIndex()
+        _ = try await official.fetchCardIndex()
+        _ = try await primary.fetchCardIndex()
+        for index in 0..<3 {
+            let header = await stub.header("If-None-Match", requestIndex: index)
+            XCTAssertNil(header)
+        }
+    }
+
+    func testBundledThumbnailsMatchExactIDsAndDecode() throws {
+        XCTAssertEqual(BundledCardThumbnails.filesByCardID.count, 839)
+        for id in ["ecard2-103a", "mfb-1", "mep-032"] {
+            let url = try XCTUnwrap(BundledCardThumbnails.url(for: id))
+            XCTAssertTrue(CatalogArtworkCache.isValidImageData(try Data(contentsOf: url)))
+        }
+        XCTAssertNil(BundledCardThumbnails.url(for: "not-a-real-card"))
+        XCTAssertNil(BundledCardThumbnails.url(for: "mfb-1--blueborder"))
+    }
+
+    func testBundledThumbnailPrecedesPokemonHostAndUsesThumbnailCategory() throws {
+        let card = CatalogCard(id: "ecard2-103a", setID: "ecard2", localID: "103a", name: "Porygon", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        let refs = card.fullArtworkReferences
+        let bundledIndex = try XCTUnwrap(refs.firstIndex { $0.url.isFileURL })
+        let pokemonIndex = try XCTUnwrap(refs.firstIndex { $0.url.host == "assets.pokemon.com" })
+        XCTAssertLessThan(bundledIndex, pokemonIndex)
+        XCTAssertEqual(refs[bundledIndex].category, .cardThumbnails)
+        XCTAssertEqual(refs.filter { $0.apiCardID != nil }.last?.url.host, "api.tcgdex.net")
+    }
+
+    func testAPIReturnedImageIsUsedAndCachedForColdOfflineLaunch() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(#"{"id":"test-7","image":"https://cdn.example/changed/test/7"}"#.utf8), statusCode: 200, retryAfter: nil),
+            HTTPResponse(data: png, statusCode: 200, retryAfter: nil),
+        ])
+        let reference = CatalogArtworkReference(url: URL(string: "https://mirror.example/v2/en/cards/test-7")!, category: .cardThumbnails, apiCardID: "test-7")
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
+        let data = try await cache.data(for: reference)
+        XCTAssertEqual(data, png)
+        let urls = await stub.requestURLs
+        XCTAssertEqual(urls.last?.absoluteString, "https://cdn.example/changed/test/7/low.webp")
+        let offlineHTTP = HTTPClientStub(responses: [])
+        let cold = CatalogArtworkCache(rootDirectory: root, httpClient: offlineHTTP, imageDirectory: TCGdexImageDirectory())
+        let cached = try await cold.data(for: reference)
+        XCTAssertEqual(cached, png)
+        let count = await offlineHTTP.requestCount
+        XCTAssertEqual(count, 0)
+    }
+
+    func testAPIImageRejectsWrongCardAndDoesNotGuessArtwork() async throws {
+        let directory = TCGdexImageDirectory()
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(#"{"id":"different-1","image":"https://cdn.example/wrong"}"#.utf8), statusCode: 200, retryAfter: nil),
+        ])
+        do {
+            _ = try await directory.imageURL(endpoint: URL(string: "https://mirror.example/v2/en/cards/test-1")!, cardID: "test-1", httpClient: stub)
+            XCTFail("Must reject the wrong card")
+        } catch { XCTAssertEqual(error as? TCGdexError, .invalidResponse) }
+    }
+
+    func testKeptOfflineAPICardRemainsAvailableAfterChangingHost() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let png = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+        let stub = HTTPClientStub(responses: [])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
+        let old = CatalogArtworkReference(url: URL(string: "https://old.example/v2/en/cards/test-1")!, category: .cardArtwork, offlineSetID: "test", apiCardID: "test-1")
+        try await cache.storeOffline(png, for: old, setID: "test")
+        let new = CatalogArtworkReference(url: URL(string: "https://new.example/v2/en/cards/test-1")!, category: .cardArtwork, offlineSetID: "test", apiCardID: "test-1")
+        let data = try await cache.data(for: new)
+        XCTAssertEqual(data, png)
+        let count = await stub.requestCount
+        XCTAssertEqual(count, 0)
+    }
+
+    func testBundledFallbackNeedsNoImageDownloadAfterAPIsReportMissing() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(), statusCode: 404, retryAfter: nil),
+            HTTPResponse(data: Data(), statusCode: 404, retryAfter: nil),
+        ])
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
+        let card = CatalogCard(id: "ecard2-103a", setID: "ecard2", localID: "103a", name: "Porygon", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        let data = try await cache.bestAvailableData(for: card)
+        XCTAssertTrue(CatalogArtworkCache.isValidImageData(data))
+        let count = await stub.requestCount
+        XCTAssertEqual(count, 2)
+    }
+
+    func testArtworkChainStopsOnCancellationInsteadOfTryingNextSource() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stub = CancelledHTTPClientStub()
+        let cache = CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory())
+        let refs = ["https://example.com/first.png", "https://example.com/second.png"].map {
+            CatalogArtworkReference(url: URL(string: $0)!, category: .cardThumbnails)
+        }
+        do { _ = try await cache.bestAvailableData(for: refs); XCTFail("Expected cancellation") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        let count = await stub.requestCount
+        XCTAssertEqual(count, 1)
+    }
+
+    func testAllRecoveredParentPathsRemainEligibleForLowAndHighArtwork() {
+        for id in ["swsh4.5sv-SV028", "swsh4.5sv-SV046", "swsh12.5gg-GG48", "swsh12.5gg-GG06", "swsh9tg-TG23"] {
+            let pieces = id.split(separator: "-")
+            let card = CatalogCard(id: id, setID: String(pieces[0]), localID: String(pieces[1]), name: "Test", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+            for category in [CatalogArtworkCategory.cardThumbnails, .cardArtwork] {
+                let refs = TCGdexArtworkFallbacks.references(for: card, category: category)
+                let parentIndex = refs.firstIndex { $0.url.host == "assets.tcgdex.net" }
+                XCTAssertEqual(parentIndex, 2)
+                if let bundleIndex = refs.firstIndex(where: { $0.url.isFileURL }), let parentIndex {
+                    XCTAssertLessThan(parentIndex, bundleIndex)
+                }
+            }
+        }
     }
 
     func testArtworkCacheCompressesLargeCardImagesOnDevice() async throws {
@@ -1301,8 +1475,13 @@ final class CatalogFoundationTests: XCTestCase {
             HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
             HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
         ])
+        let imageDirectory = TCGdexImageDirectory()
+        await imageDirectory.seed(
+            Data(#"[{"id":"sv01-001","image":"https://assets.example/001.png"},{"id":"sv01-002","image":"https://assets.example/002.png"}]"#.utf8),
+            baseURL: CatalogAPISettings.customURL, path: "cards"
+        )
         let store = ArtworkCacheStore(
-            cache: CatalogArtworkCache(rootDirectory: root, httpClient: stub),
+            cache: CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: imageDirectory),
             userDefaults: defaults
         )
         let catalogSet = set(id: "sv01", seriesID: "sv", name: "Scarlet & Violet")
@@ -1343,10 +1522,11 @@ final class CatalogFoundationTests: XCTestCase {
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
         ))
         let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: Data(#"{"id":"smp-SM95","image":"https://assets.example/lucario.png"}"#.utf8), statusCode: 200, retryAfter: nil),
             HTTPResponse(data: imageData, statusCode: 200, retryAfter: nil),
         ])
         let store = ArtworkCacheStore(
-            cache: CatalogArtworkCache(rootDirectory: root, httpClient: stub),
+            cache: CatalogArtworkCache(rootDirectory: root, httpClient: stub, imageDirectory: TCGdexImageDirectory()),
             userDefaults: defaults
         )
         let card = CatalogCard(
@@ -1360,7 +1540,7 @@ final class CatalogFoundationTests: XCTestCase {
         await store.warmImagesIfNeeded(cacheKey: key, cards: [card])
 
         let requestCount = await stub.requestCount
-        XCTAssertEqual(requestCount, 1)
+        XCTAssertEqual(requestCount, 2)
         let signatures = defaults.dictionary(
             forKey: ArtworkCacheStore.warmedSetSignaturesKey
         ) as? [String: String]
@@ -2466,6 +2646,7 @@ private actor HTTPClientStub: HTTPClient {
     private var responses: [HTTPResponse]
     private var requests: [URLRequest] = []
     private(set) var requestCount = 0
+    var requestURLs: [URL] { requests.compactMap(\.url) }
 
     init(responses: [HTTPResponse]) {
         self.responses = responses

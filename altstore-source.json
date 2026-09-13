@@ -20,6 +20,8 @@
       "tintColor": "#087FE8",
       "category": "utilities",
       "screenshots": [
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.19/TallyDex-v0.9.19-advanced-api.png",
+        "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.19/TallyDex-v0.9.19-bundled-porygon.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.18/TallyDex-v0.9.18-two-pokemon.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.17/TallyDex-v0.9.17-pokemon-collections.png",
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.16/TallyDex-v0.9.16-first-launch-complete.png",
@@ -83,6 +85,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.19",
+          "buildVersion": "55",
+          "date": "2026-09-13",
+          "localizedDescription": "Your configurable TallyDex TCGdex API is now the first source, defaulting to https://tcgdex.tallydex.nl, with a connection check in Settings → Advanced and automatic official TCGdex fallback. Card images follow the custom API, official API, verified parent-set paths, 839 bundled exact-ID thumbnails, Pokémon's official image host, then placeholder. All 887 supplied files were checksum-verified, including separately preserved My First Battle variant images. Existing cached images, kept-offline sets, ownership, and backups stay intact. Source-specific ETags protect catalogue refreshes when switching APIs. Updated What's New notes explain the changes.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.19/TallyDex-v0.9.19.ipa",
+          "size": 29394348,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.18",
           "buildVersion": "54",

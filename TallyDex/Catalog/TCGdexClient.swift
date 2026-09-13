@@ -1,5 +1,169 @@
 import Foundation
 
+enum CatalogAPISettings {
+    static let urlKey = "catalog.api.customURL"
+    static let enabledKey = "catalog.api.customEnabled"
+    static let defaultURL = "https://tcgdex.tallydex.nl"
+    static let officialURL = URL(string: "https://api.tcgdex.net/v2/en/")!
+
+    /// Accept an HTTPS origin or the English API root, never credentials or queries.
+    static func normalizedURL(_ input: String) -> URL? {
+        let input = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var parts = URLComponents(string: input), parts.scheme == "https",
+              let host = parts.host, !host.isEmpty, parts.user == nil, parts.password == nil,
+              parts.query == nil, parts.fragment == nil,
+              ["", "/", "/v2/en", "/v2/en/"].contains(parts.path) else { return nil }
+        parts.path = "/v2/en/"
+        return parts.url
+    }
+
+    static var customURL: URL {
+        normalizedURL(UserDefaults.standard.string(forKey: urlKey) ?? defaultURL)
+            ?? normalizedURL(defaultURL)!
+    }
+
+    static var customEnabled: Bool {
+        UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true
+    }
+}
+
+/// Reads preferences per request, so saving an endpoint does not require a restart.
+struct ConfiguredCatalogProvider: CatalogProvider {
+    private let httpClient: any HTTPClient
+    private let customURLOverride: URL?
+    private let enabledOverride: Bool?
+    private let imageDirectory: TCGdexImageDirectory
+    private let etagStore: TCGdexETagStore?
+
+    init(
+        httpClient: any HTTPClient = URLSessionHTTPClient(), customURL: URL? = nil,
+        useCustom: Bool? = nil, imageDirectory: TCGdexImageDirectory = .shared,
+        etagStore: TCGdexETagStore? = .shared
+    ) {
+        self.httpClient = httpClient
+        customURLOverride = customURL
+        enabledOverride = useCustom
+        self.imageDirectory = imageDirectory
+        self.etagStore = etagStore
+    }
+
+    private func fetch<T: Sendable>(
+        _ operation: @Sendable (TCGdexClient) async throws -> T
+    ) async throws -> T {
+        let custom = customURLOverride ?? CatalogAPISettings.customURL
+        if enabledOverride ?? CatalogAPISettings.customEnabled, custom != CatalogAPISettings.officialURL,
+           await imageDirectory.canRequest(custom) {
+            do {
+                return try await operation(TCGdexClient(
+                    httpClient: httpClient, baseURL: custom,
+                    retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero),
+                    etagStore: etagStore, timeout: 6
+                ))
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch TCGdexError.notModified {
+                throw TCGdexError.notModified
+            } catch {
+                await imageDirectory.recordFailure(error, baseURL: custom)
+            }
+        }
+        return try await operation(TCGdexClient(httpClient: httpClient, etagStore: etagStore))
+    }
+
+    func fetchCardIndex() async throws -> [CatalogCard] { try await fetch { try await $0.fetchCardIndex() } }
+    func fetchSeriesIndex() async throws -> [CatalogSeries] { try await fetch { try await $0.fetchSeriesIndex() } }
+    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
+        try await fetch { try await $0.fetchSeries(id: id) }
+    }
+    func fetchSet(id: String) async throws -> CatalogSetSnapshot {
+        try await fetch { try await $0.fetchSet(id: id) }
+    }
+    func fetchCard(id: String) async throws -> CatalogCardSnapshot {
+        try await fetch { try await $0.fetchCard(id: id) }
+    }
+}
+
+/// API responses are the authority for image URLs; a mirror's CDN path is never guessed.
+actor TCGdexImageDirectory {
+    static let shared = TCGdexImageDirectory()
+    private struct Entry { let url: URL?; let expires: Date }
+    private var entries: [String: Entry] = [:]
+    private var unavailableUntil: [URL: Date] = [:]
+    private var pending: [String: Task<URL?, Error>] = [:]
+
+    func canRequest(_ baseURL: URL) -> Bool {
+        (unavailableUntil[baseURL] ?? .distantPast) <= Date()
+    }
+
+    func recordFailure(_ error: Error, baseURL: URL) {
+        if case TCGdexError.httpError(let status) = error, status == 404 { return }
+        unavailableUntil[baseURL] = Date().addingTimeInterval(60)
+    }
+
+    func seed(_ data: Data, baseURL: URL, path: String) {
+        unavailableUntil[baseURL] = nil
+        guard path == "cards" || path.hasPrefix("cards/") || path.hasPrefix("sets/"),
+              let json = try? JSONSerialization.jsonObject(with: data) else { return }
+        let objects: [[String: Any]]
+        if let list = json as? [[String: Any]] { objects = list }
+        else if let object = json as? [String: Any] {
+            objects = object["cards"] as? [[String: Any]] ?? [object]
+        } else { return }
+        for object in objects {
+            guard let id = object["id"] as? String else { continue }
+            let url = (object["image"] as? String).flatMap(URL.init(string:))
+            entries[baseURL.appending(path: "cards/\(id)").absoluteString] = Entry(
+                url: url?.scheme == "https" ? url : nil,
+                expires: Date().addingTimeInterval(6 * 60 * 60)
+            )
+        }
+    }
+
+    func cachedURL(for endpoint: URL) -> URL? {
+        guard let entry = entries[endpoint.absoluteString], entry.expires > Date() else { return nil }
+        return entry.url
+    }
+
+    func imageURL(endpoint: URL, cardID: String, httpClient: any HTTPClient) async throws -> URL? {
+        let key = endpoint.absoluteString
+        if let entry = entries[key], entry.expires > Date() { return entry.url }
+        if let task = pending[key] {
+            let url = try await task.value
+            try Task.checkCancellation()
+            return url
+        }
+        let baseURL = endpoint.deletingLastPathComponent().deletingLastPathComponent().appending(path: "")
+        guard canRequest(baseURL) else { throw TCGdexError.transport("API temporarily unavailable") }
+        let task = Task<URL?, Error> {
+            var request = URLRequest(url: endpoint)
+            request.timeoutInterval = 6
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let response = try await httpClient.send(request)
+            if response.statusCode == 404 { return nil }
+            guard (200..<300).contains(response.statusCode) else {
+                throw TCGdexError.httpError(statusCode: response.statusCode)
+            }
+            struct ImageResponse: Decodable { let id: String; let image: URL? }
+            let card = try JSONDecoder().decode(ImageResponse.self, from: response.data)
+            guard card.id == cardID else { throw TCGdexError.invalidResponse }
+            guard card.image == nil || card.image?.scheme == "https" else { throw TCGdexError.invalidResponse }
+            return card.image
+        }
+        pending[key] = task
+        defer { pending[key] = nil }
+        do {
+            let url = try await task.value
+            try Task.checkCancellation()
+            unavailableUntil[baseURL] = nil
+            entries[key] = Entry(url: url, expires: Date().addingTimeInterval(6 * 60 * 60))
+            return url
+        } catch {
+            if !(error is CancellationError) { recordFailure(error, baseURL: baseURL) }
+            throw error
+        }
+    }
+}
+
 struct HTTPResponse: Sendable {
     let data: Data
     let statusCode: Int
@@ -46,6 +210,7 @@ actor TCGdexETagStore {
     private let defaults: UserDefaults?
     private let keyPrefix = "tcgdex.etag."
     private var memory: [String: String] = [:]
+    private var activeIndexSource: String?
 
     init(defaults: UserDefaults? = nil) {
         self.defaults = defaults
@@ -58,6 +223,17 @@ actor TCGdexETagStore {
     func setValue(_ value: String, for path: String) {
         memory[path] = value
         defaults?.set(value, forKey: keyPrefix + path)
+    }
+
+    func prepareIndexSource(_ source: URL) {
+        let key = "tcgdex.indexSource"
+        let previous = activeIndexSource ?? defaults?.string(forKey: key)
+        guard previous != source.absoluteString else { return }
+        let etagKey = source.appending(path: "cards").absoluteString
+        memory[etagKey] = nil
+        defaults?.removeObject(forKey: keyPrefix + etagKey)
+        activeIndexSource = source.absoluteString
+        defaults?.set(source.absoluteString, forKey: key)
     }
 }
 
@@ -81,12 +257,26 @@ enum TCGdexError: Error, Equatable, Sendable {
     case malformedResponse(String)
 }
 
+extension TCGdexError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse: "The server did not return the expected TCGdex data."
+        case .notModified: "The catalogue has not changed."
+        case .rateLimited: "The API is rate-limiting requests. Please try again later."
+        case .serverError(let code), .httpError(let code): "The API returned HTTP \(code)."
+        case .transport: "The API could not be reached. Check its hostname and your connection."
+        case .malformedResponse: "The server response is not valid TCGdex data."
+        }
+    }
+}
+
 struct TCGdexClient: CatalogProvider, Sendable {
     private let baseURL: URL
     private let httpClient: any HTTPClient
     private let retryPolicy: TCGdexRetryPolicy
     private let sleep: @Sendable (Duration) async throws -> Void
     private let etagStore: TCGdexETagStore?
+    private let timeout: TimeInterval
 
     init(
         session: URLSession = .shared,
@@ -105,6 +295,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
         baseURL: URL = URL(string: "https://api.tcgdex.net/v2/en/")!,
         retryPolicy: TCGdexRetryPolicy = .standard,
         etagStore: TCGdexETagStore? = nil,
+        timeout: TimeInterval = 20,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
         }
@@ -113,6 +304,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
         self.baseURL = baseURL
         self.retryPolicy = retryPolicy
         self.etagStore = etagStore
+        self.timeout = timeout
         self.sleep = sleep
     }
 
@@ -122,12 +314,14 @@ struct TCGdexClient: CatalogProvider, Sendable {
     }
 
     func fetchCardIndex() async throws -> [CatalogCard] {
+        await etagStore?.prepareIndexSource(baseURL)
         let response: [CardBriefDTO] = try await request(path: "cards")
         return response.compactMap(\.searchIndexCard)
     }
 
     func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
         let response: SeriesDTO = try await request(path: "series/\(id)")
+        guard response.id == id else { throw TCGdexError.invalidResponse }
         let series = response.catalogSeries
         return CatalogSeriesSnapshot(
             series: series,
@@ -137,6 +331,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
 
     func fetchSet(id: String) async throws -> CatalogSetSnapshot {
         let response: SetDTO = try await request(path: "sets/\(id)")
+        guard response.id == id else { throw TCGdexError.invalidResponse }
         let set = response.catalogSet
         return CatalogSetSnapshot(
             set: set,
@@ -146,6 +341,7 @@ struct TCGdexClient: CatalogProvider, Sendable {
 
     func fetchCard(id: String) async throws -> CatalogCardSnapshot {
         let response: CardDTO = try await request(path: "cards/\(id)")
+        guard response.id == id else { throw TCGdexError.invalidResponse }
         let providerVariants = (response.variants?.availableKinds ?? [])
             .union(response.variantsDetailed?.availableKinds ?? [])
             .union(response.pricing?.availableKinds ?? [])
@@ -162,10 +358,11 @@ struct TCGdexClient: CatalogProvider, Sendable {
 
     private func request<Response: Decodable & Sendable>(path: String) async throws -> Response {
         var request = URLRequest(url: baseURL.appending(path: path))
-        request.timeoutInterval = 20
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let usesConditionalRequest = path == "cards"
-        if usesConditionalRequest, let etag = await etagStore?.value(for: path) {
+        let etagKey = baseURL.appending(path: path).absoluteString
+        if usesConditionalRequest, let etag = await etagStore?.value(for: etagKey) {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }
         var attempt = 1
@@ -187,11 +384,13 @@ struct TCGdexClient: CatalogProvider, Sendable {
 
             switch response.statusCode {
             case 200..<300:
-                if usesConditionalRequest, let etag = response.etag {
-                    await etagStore?.setValue(etag, for: path)
-                }
                 do {
-                    return try JSONDecoder().decode(Response.self, from: response.data)
+                    let decoded = try JSONDecoder().decode(Response.self, from: response.data)
+                    if usesConditionalRequest, let etag = response.etag {
+                        await etagStore?.setValue(etag, for: etagKey)
+                    }
+                    await TCGdexImageDirectory.shared.seed(response.data, baseURL: baseURL, path: path)
+                    return decoded
                 } catch {
                     throw TCGdexError.malformedResponse(String(describing: error))
                 }
