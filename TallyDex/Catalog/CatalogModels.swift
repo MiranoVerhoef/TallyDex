@@ -747,7 +747,15 @@ enum CatalogValueCalculator {
         var amount = 0.0
         var pricedVariants = 0
         var missingVariants = 0
-        for entry in entries where entry.quantity > 0 {
+        // Shared views may reference the same canonical ownership record more
+        // than once. Keep its latest value, rather than counting another copy.
+        let uniqueEntries = entries.reduce(into: [String: CollectionVariantEntry]()) { result, entry in
+            if let existing = result[entry.id],
+               existing.updatedAt > entry.updatedAt
+                || (existing.updatedAt == entry.updatedAt && existing.quantity >= entry.quantity) { return }
+            result[entry.id] = entry
+        }
+        for entry in uniqueEntries.values.sorted(by: { $0.id < $1.id }) where entry.quantity > 0 {
             if let quote = prices[entry.cardID]?.first(where: {
                 $0.variant == entry.variant && $0.source == source
             }) {

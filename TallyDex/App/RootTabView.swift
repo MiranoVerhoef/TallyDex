@@ -147,6 +147,17 @@ struct RootTabView: View {
                 Label("Settings", systemImage: "gearshape")
             }
         }
+        .overlay(alignment: .topLeading) {
+#if DEBUG
+            if let fixture = ReliabilityUITestFixture.current {
+                Text(fixture.state(collectionStore))
+                    .font(.system(size: 1))
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("reliability.state")
+            }
+#endif
+        }
         .onChange(of: collectionStore.pendingExternalImport?.id) { _, id in
             if id != nil { selection = .settings }
         }

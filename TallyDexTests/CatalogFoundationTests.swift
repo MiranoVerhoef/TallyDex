@@ -5,6 +5,26 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    func testSharedOwnershipReferencesDoNotDoubleValueOrPriceUnquotedStamps() {
+        let normal = CollectionVariantEntry(cardID: "swsh8-16", variant: .normal, quantity: 3,
+            updatedAt: Date(timeIntervalSince1970: 100))
+        let stamp = CollectionVariantEntry(cardID: normal.cardID, variant: .trickOrTrade, quantity: 4,
+            updatedAt: normal.updatedAt)
+        let quote = CatalogPriceQuote(cardID: normal.cardID, variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 2, updatedAt: normal.updatedAt)
+        let summary = CatalogValueCalculator.summary(entries: [normal, stamp, normal, stamp],
+            prices: [normal.cardID: [quote]], source: .cardmarket)
+        XCTAssertEqual(summary.amount, 6)
+        XCTAssertEqual(summary.pricedVariants, 1)
+        XCTAssertEqual(summary.missingVariants, 1)
+        let removed = CollectionVariantEntry(cardID: normal.cardID, variant: .normal, quantity: 0,
+            updatedAt: Date(timeIntervalSince1970: 200))
+        for entries in [[normal, removed], [removed, normal]] {
+            XCTAssertEqual(CatalogValueCalculator.summary(entries: entries, prices: [normal.cardID: [quote]],
+                source: .cardmarket).amount, 0)
+        }
+    }
+
     func testTrickOrTradeChecklistsHaveThirtyCanonicalIDsAndCorrectEras() throws {
         XCTAssertEqual(TrickOrTradeRelease.all.map(\.year), [2022, 2023, 2024])
         XCTAssertEqual(TrickOrTradeRelease.all.map(\.seriesID), ["swsh", "sv", "sv"])

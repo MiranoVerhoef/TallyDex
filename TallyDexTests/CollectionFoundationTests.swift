@@ -4,6 +4,104 @@ import XCTest
 
 final class CollectionFoundationTests: XCTestCase {
     @MainActor
+    func testSharedCanonicalPrintingsSurviveDiskRestartMergeReplaceAndRollback() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("reliability.sqlite").path
+        let cardID = TrickOrTradeRelease.all[0].cardIDs[0]
+        let normal = printing(cardID: cardID, id: "normal-exact", kind: .normal)
+        let stamp = try XCTUnwrap(TrickOrTradeRelease.all[0].printing(cardID: cardID))
+        let first = CollectionStore(repository: GRDBCollectionRepository(database: try CollectionDatabase(path: path)),
+                                    now: { Date(timeIntervalSince1970: 100) })
+        await first.start()
+        try await first.setPrintingQuantity(3, cardID: cardID, printing: normal)
+        try await first.setPrintingQuantity(4, cardID: cardID, printing: stamp)
+        try await first.saveSetPreference(.init(setID: "swsh8", status: .collecting, goal: .master,
+            includedVariants: [.normal, .trickOrTrade], includesSecretCards: true, updatedAt: Date(timeIntervalSince1970: 100)))
+        try await first.saveCardMetadata(cardID: cardID, isWishlisted: true, notes: "Original notes")
+        for rules in [[PokemonCollectionRule(name: "Phantump")], [.init(name: "Phantump"), .init(name: "Trevenant")]] {
+            try await first.saveCustomFolder(.init(id: UUID(), name: rules.map(\.name).joined(separator: " + "),
+                cardNameQuery: "Phantump", pokemonRules: rules, displayMode: .allMatching,
+                coverCardID: cardID, createdAt: Date(timeIntervalSince1970: 100), updatedAt: Date(timeIntervalSince1970: 100)))
+        }
+        let baseline = try await first.exportDocument()
+        _ = try await first.createBackup(reason: "Original reliability baseline")
+        let incoming = PortableCollectionDocument(format: baseline.format, schemaVersion: baseline.schemaVersion,
+            exportedAt: baseline.exportedAt, appVersion: baseline.appVersion, ownership: baseline.ownership,
+            setPreferences: baseline.setPreferences, folders: baseline.folders, cardMetadata: baseline.cardMetadata,
+            exactOwnership: baseline.exactOwnership + [.init(cardID: "other-1", printingID: "normal-exact",
+                variant: .normal, quantity: 2, updatedAt: Date(timeIntervalSince1970: 100))])
+        let second = CollectionStore(repository: GRDBCollectionRepository(database: try CollectionDatabase(path: path)),
+                                     now: { Date(timeIntervalSince1970: 300) })
+        await second.start()
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: normal.providerID), 3)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: stamp.providerID), 4)
+        XCTAssertEqual(second.ownedCardIDs, [cardID])
+        XCTAssertEqual(second.customFolders.count, 2)
+        XCTAssertEqual(second.preference(for: "swsh8").goal, .master)
+        let card = CatalogCard(id: cardID, setID: "swsh8", localID: "16", name: "Phantump", imageURL: nil,
+            category: "Pokémon", illustrator: nil, rarity: nil)
+        let parentSet = CatalogSet(id: "swsh8", seriesID: "swsh", name: "Fusion Strike", abbreviation: nil,
+            logoURL: nil, symbolURL: nil, officialCardCount: 1, totalCardCount: 1, releaseDate: nil, rarityCounts: nil)
+        for folder in second.customFolders {
+            let matching = [card].filter { PokemonRuleSearch.matches(card: $0, rules: folder.effectivePokemonRules) }
+            XCTAssertEqual(matching.count, 1)
+            let progress = CollectionProgressCalculator.progress(cards: matching, set: parentSet,
+                preference: second.preference(for: parentSet.id), availableVariants: [cardID: [.normal]],
+                ownedEntries: second.ownedEntries, availablePrintings: [cardID: [normal]],
+                exactOwnedEntries: second.exactOwnedEntries)
+            XCTAssertEqual(progress, CollectionProgress(completedSlots: 1, requiredSlots: 1))
+        }
+        let stampProgress = CollectionProgressCalculator.progress(cards: [card], set: TrickOrTradeRelease.all[0].set,
+            preference: .defaultPreference(setID: TrickOrTradeRelease.all[0].id, goal: .master),
+            availableVariants: [cardID: [.trickOrTrade]], ownedEntries: second.ownedEntries,
+            availablePrintings: [cardID: [stamp]], exactOwnedEntries: second.exactOwnedEntries)
+        XCTAssertEqual(stampProgress, CollectionProgress(completedSlots: 1, requiredSlots: 1))
+        try await second.setPrintingQuantity(7, cardID: cardID, printing: normal)
+        try await second.setPrintingQuantity(2, cardID: cardID, printing: stamp)
+        try await second.saveCardMetadata(cardID: cardID, isWishlisted: false, notes: "Newer local notes")
+        let prepared = try await second.prepareImport(data: CollectionTransferCodec.encode(incoming), filename: "Reliability.pokecollection")
+        XCTAssertGreaterThan(prepared.mergePreview.conflicts, 0)
+        XCTAssertTrue(prepared.mergePreview.hasChanges)
+        try await second.importCollection(prepared, mode: .merge)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: normal.providerID), 7)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: stamp.providerID), 2)
+        XCTAssertEqual(second.ownedCardIDs, [cardID, "other-1"])
+        let mergedMetadata = try await second.cardMetadata(for: cardID)
+        XCTAssertEqual(mergedMetadata.notes, "Newer local notes")
+        let freshPreview = try await second.prepareImport(data: CollectionTransferCodec.encode(incoming), filename: "Reliability.pokecollection")
+        XCTAssertFalse(freshPreview.mergePreview.hasChanges)
+        let backupCount = second.backups.count
+        try await second.importCollection(freshPreview, mode: .merge)
+        XCTAssertEqual(second.backups.count, backupCount)
+        try await second.importCollection(freshPreview, mode: .replace)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: normal.providerID), 3)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: stamp.providerID), 4)
+        let replacedMetadata = try await second.cardMetadata(for: cardID)
+        XCTAssertEqual(replacedMetadata.notes, "Original notes")
+        let rollback = try XCTUnwrap(second.backups.first { $0.reason == "Before replace import" })
+        let rollbackPreview = try await second.previewBackupRestore(rollback)
+        XCTAssertTrue(rollbackPreview.hasChanges)
+        try await second.restoreBackup(rollback)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: normal.providerID), 7)
+        XCTAssertEqual(second.printingQuantity(cardID: cardID, printingID: stamp.providerID), 2)
+        let beforeMerge = try XCTUnwrap(second.backups.first { $0.reason == "Before merge import" })
+        try await second.restoreBackup(beforeMerge)
+        XCTAssertEqual(second.ownedCardIDs, [cardID])
+        let exported = try await second.exportDocument()
+        XCTAssertEqual(exported.exactOwnership.count, 2)
+        XCTAssertEqual(Set(exported.exactOwnership.map { "\($0.cardID)|\($0.printingID)" }).count, 2)
+        let third = CollectionStore(repository: GRDBCollectionRepository(database: try CollectionDatabase(path: path)))
+        await third.start()
+        XCTAssertEqual(third.printingQuantity(cardID: cardID, printingID: normal.providerID), 7)
+        XCTAssertEqual(third.printingQuantity(cardID: cardID, printingID: stamp.providerID), 2)
+        XCTAssertEqual(third.ownedCardIDs, [cardID])
+        XCTAssertEqual(third.customFolders.count, 2)
+        XCTAssertEqual(third.preference(for: "swsh8").goal, .master)
+    }
+
+    @MainActor
     func testTrickOrTradeSharesCanonicalOwnershipWithoutTouchingNormalCopiesAndSurvivesBackup() async throws {
         let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
         let store = CollectionStore(repository: repository)

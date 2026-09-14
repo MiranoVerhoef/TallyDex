@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.24",
+          "buildVersion": "60",
+          "date": "2026-09-14",
+          "localizedDescription": "Reliability release with the existing clean UI unchanged. Adds isolated automated checks for completing/skipping first setup, update notes appearing once, restore-preview cancellation, explicit restore/replace confirmation, automatic rollback, newer-local Merge conflicts, and exact normal/Trick or Trade quantities surviving restart and restore. Card-detail, copy-tracking, and marketplace preferences are checked across relaunch and restore. One- and two-Pokémon collections retain shared canonical ownership. Value summaries defensively ignore repeated references to the same ownership record; unpriced stamped variants do not borrow normal-printing prices. Test fixtures are excluded from the Release IPA. Existing artwork, grouping, preferences, and saved ownership are preserved.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.24/TallyDex-v0.9.24.ipa",
+          "size": 29749496,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.23",
           "buildVersion": "59",
           "date": "2026-09-13",
