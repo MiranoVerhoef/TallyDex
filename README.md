@@ -370,8 +370,8 @@ Completed in v0.9.10:
 
 Research and later builds:
 
-1. Add optional type, era/set, and rarity filters to Pokémon-focused Collections
-   through one compact Filter sheet.
+1. Collection type, era/set, and rarity filters are implemented in v0.9.25 through
+   one compact Filter sheet; see the completed-build notes below.
 2. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
    Treat them as market statistics, never as substitutes for a missing exact
    printing price.
@@ -384,7 +384,7 @@ Research and later builds:
    only as supporting evidence.
 6. Add optional booster membership and pack artwork where TCGdex supplies it;
    incomplete provider coverage must be shown honestly.
-7. Continue the missing-art audit for the remaining 1,001 genuine provider gaps. Add a
+7. Continue the missing-art audit for the remaining verified provider gaps. Add a
    fallback only where set, collector number, source permission, and image identity
    can all be verified; otherwise keep the honest TallyDex placeholder.
 8. Research another permitted card/catalogue/price API, including its licence,
@@ -613,6 +613,26 @@ Completed in v0.9.24:
 - Defensively deduplicates repeated canonical ownership references in value
   summaries. Distinct variants remain separate, and unpriced stamped cards never
   borrow an unstamped card's price.
+
+Completed in v0.9.25:
+
+- Verified with 179 unit tests and eight end-to-end UI tests.
+- One toolbar button opens a compact collection Filter sheet. Type, era, exact
+  set, rarity, ownership, release year, and sort order live together rather than
+  adding controls to the card grid or Settings.
+- Apply accepts a draft; Cancel or swipe dismissal discards it. Reset restores
+  the collection's initial All/Owned view and newest-release sort. Browsing
+  choices last for this visit only and are not saved into species rules/backups.
+- Filtered results say how many of the collection's cards are shown. Ownership,
+  completion, percentage, and value summaries continue to describe the whole
+  collection. Empty results offer Clear filters, including clearing the search.
+- Type and rarity use available cached provider metadata, never names or inferred
+  attributes. Missing fields remain visible with All types/All rarities. Options
+  come from the collection's matching cards; dual-type cards can match either
+  type. Era/set filtering uses provider IDs, not potentially repeated names.
+- Selecting an era narrows the set choices and clears an incompatible selected
+  set. Existing one-/two-Pokémon species matching, exact-printing checkmarks,
+  settings, card-detail collapse defaults, and collection membership are unchanged.
 
 Supplemental cover sources:
 

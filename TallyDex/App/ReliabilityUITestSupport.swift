@@ -13,7 +13,7 @@ struct ReliabilityUITestFixture {
         guard process.arguments.contains("-ReliabilityUITesting"),
               let text = process.environment["TALLYDEX_UI_TEST_ID"], let id = UUID(uuidString: text),
               let scenario = process.environment["TALLYDEX_UI_TEST_SCENARIO"],
-              ["fresh", "update", "restore", "merge", "replace"].contains(scenario) else { return nil }
+              ["fresh", "update", "restore", "merge", "replace", "filters"].contains(scenario) else { return nil }
         return .init(id: id, scenario: scenario)
     }
 
@@ -47,7 +47,7 @@ struct ReliabilityUITestFixture {
     }
 
     func makeCatalogStore() -> CatalogStore {
-        CatalogStore(provider: ReliabilityCatalogProvider(),
+        CatalogStore(provider: ReliabilityCatalogProvider(includeFilterCards: scenario == "filters"),
                      repository: try! GRDBCatalogRepository(database: CatalogDatabase.inMemory()))
     }
 
@@ -70,6 +70,12 @@ struct ReliabilityUITestFixture {
             try await store.setPrintingQuantity(7, cardID: cardID, printing: ReliabilityCatalogProvider.normal)
             try await store.setPrintingQuantity(2, cardID: cardID, printing: stamp)
             defaults.set(true, forKey: "fixture.collection.initialized")
+            if scenario == "filters" {
+                try await store.saveCustomFolder(.init(id: id, name: "Filter fixture", cardNameQuery: "Phantump",
+                    pokemonRules: [.init(name: "Phantump", dexID: 708), .init(name: "Trevenant", dexID: 709)],
+                    displayMode: .allMatching, coverCardID: cardID,
+                    createdAt: Date(timeIntervalSince1970: 300), updatedAt: Date(timeIntervalSince1970: 300)))
+            }
             if scenario == "merge" || scenario == "replace" {
                 let incoming = PortableCollectionDocument(
                     format: baseline.format, schemaVersion: baseline.schemaVersion, exportedAt: baseline.exportedAt,
@@ -94,21 +100,48 @@ struct ReliabilityUITestFixture {
 }
 
 private struct ReliabilityCatalogProvider: CatalogProvider {
+    var includeFilterCards = false
+    private static func metadata(dexID: Int, types: [String]) -> CatalogCardMetadata {
+        .init(dexIDs: [dexID], hp: nil, types: types, evolvesFrom: nil, stage: nil, suffix: nil,
+              attacks: [], abilities: [], weaknesses: [], resistances: [], retreatCost: nil,
+              regulationMark: nil, legality: nil, rulesText: nil, trainerType: nil, energyType: nil,
+              flavorText: nil, updatedAt: Date(timeIntervalSince1970: 100))
+    }
     static let card = CatalogCard(id: "swsh8-16", setID: "swsh8", localID: "16", name: "Phantump", imageURL: nil,
-        category: "Pokémon", illustrator: nil, rarity: nil)
+        category: "Pokémon", illustrator: nil, rarity: "Common", metadata: metadata(dexID: 708, types: ["Grass"]))
     static let normal = CatalogPrinting(cardID: card.id, providerID: "ui-normal", rawType: "normal", kind: .normal,
         subtype: nil, size: "standard", stamps: [], foil: nil, languages: ["en"],
         cardmarketProductID: nil, tcgplayerProductID: nil, cardtraderProductID: nil)
     private static let series = CatalogSeries(id: "swsh", name: "Sword & Shield", logoURL: nil)
     private static let set = CatalogSet(id: "swsh8", seriesID: "swsh", name: "Fusion Strike", abbreviation: nil,
         logoURL: nil, symbolURL: nil, officialCardCount: 1, totalCardCount: 1, releaseDate: "2021-11-12", rarityCounts: nil)
-    func fetchCardIndex() async throws -> [CatalogCard] { [Self.card] }
-    func fetchSeriesIndex() async throws -> [CatalogSeries] { [Self.series] }
-    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot { .init(series: Self.series, sets: [Self.set]) }
-    func fetchSet(id: String) async throws -> CatalogSetSnapshot { .init(set: Self.set, cards: [Self.card]) }
+    private static let svSeries = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+    private static let svSet = CatalogSet(id: "sv05", seriesID: "sv", name: "Temporal Forces", abbreviation: nil,
+        logoURL: nil, symbolURL: nil, officialCardCount: 1, totalCardCount: 1, releaseDate: "2024-03-22", rarityCounts: nil)
+    private var cards: [CatalogCard] {
+        guard includeFilterCards else { return [Self.card] }
+        return [Self.card,
+            .init(id: "swsh8-ui-2", setID: "swsh8", localID: "2", name: "Phantump", imageURL: nil,
+                  category: "Pokémon", illustrator: nil, rarity: "Rare", metadata: Self.metadata(dexID: 708, types: ["Psychic"])),
+            .init(id: "sv05-ui-3", setID: "sv05", localID: "3", name: "Trevenant", imageURL: nil,
+                  category: "Pokémon", illustrator: nil, rarity: "Rare", metadata: Self.metadata(dexID: 709, types: ["Grass"])),
+            .init(id: "swsh8-ui-4", setID: "swsh8", localID: "4", name: "Phantump", imageURL: nil,
+                  category: "Pokémon", illustrator: nil, rarity: nil)]
+    }
+    func fetchCardIndex() async throws -> [CatalogCard] { cards }
+    func fetchSeriesIndex() async throws -> [CatalogSeries] { includeFilterCards ? [Self.series, Self.svSeries] : [Self.series] }
+    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
+        id == "sv" ? .init(series: Self.svSeries, sets: [Self.svSet]) : .init(series: Self.series, sets: [Self.set])
+    }
+    func fetchSet(id: String) async throws -> CatalogSetSnapshot {
+        .init(set: id == "sv05" ? Self.svSet : Self.set, cards: cards.filter { $0.setID == id })
+    }
     func fetchCard(id: String) async throws -> CatalogCardSnapshot {
-        guard id == Self.card.id else { throw TCGdexError.invalidResponse }
-        return .init(card: Self.card, variants: [.normal], printings: [Self.normal])
+        guard let card = cards.first(where: { $0.id == id }) else { throw TCGdexError.invalidResponse }
+        let printing = CatalogPrinting(cardID: card.id, providerID: "ui-normal", rawType: "normal", kind: .normal,
+            subtype: nil, size: "standard", stamps: [], foil: nil, languages: ["en"],
+            cardmarketProductID: nil, tcgplayerProductID: nil, cardtraderProductID: nil)
+        return .init(card: card, variants: [.normal], printings: [printing])
     }
 }
 #endif

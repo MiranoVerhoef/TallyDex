@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.24",
-        headline: "Reliability, checked",
+        version: "0.9.25",
+        headline: "Collections, focused",
         notes: [
             AppReleaseNote(
                 systemImage: "slider.horizontal.3",
-                title: "Setup and update checks",
-                detail: "Automated checks cover completing or skipping setup, showing update notes once, and preserving preferences across app restarts. The interface stays unchanged."
+                title: "One compact Filter sheet",
+                detail: "Narrow a Pokémon collection by type, era, exact set, and rarity. Ownership, release year, and sorting are together in the same sheet."
             ),
             AppReleaseNote(
                 systemImage: "clock.arrow.circlepath",
-                title: "Restore with confidence",
-                detail: "Regression checks cover preview cancellation, merge and replace, confirmation, exact quantities, and restoring the automatic rollback snapshot."
+                title: "Browse without changing totals",
+                detail: "Apply or cancel your choices, reset to the collection’s default view, and see how many cards are shown. Ownership, species rules, completion, and value totals stay unchanged."
             ),
             AppReleaseNote(
                 systemImage: "checklist",
-                title: "Shared cards, counted once",
-                detail: "Checks verify shared parent cards, pumpkin-stamped printings, and one- or two-Pokémon collections keep canonical ownership and independent printing counts."
+                title: "Honest metadata filters",
+                detail: "Type and rarity choices come from available provider details. Cards without those fields stay visible with All types and All rarities; nothing is guessed from card names."
             ),
         ]
     )
