@@ -639,6 +639,29 @@
         }
       ],
       "appPermissions": {}
+    },
+    {
+      "name": "TallyDex Scan Lab",
+      "bundleIdentifier": "com.miranoverhoef.TallyDexScanLab",
+      "developerName": "Mirano Verhoef",
+      "subtitle": "Collect examples for a smarter card scanner.",
+      "localizedDescription": "Separate, local-only Pokémon card training lab. Automatically capture stable outlines and changed card appearances, review front/back/background labels, follow nine starter goals, generate training-only extras, and export a Create ML dataset ZIP. No trained classifier is included yet; your main TallyDex collection is untouched.",
+      "iconURL": "https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/ScanLab/Assets.xcassets/AppIcon.appiconset/ScanLab-Icon.png",
+      "tintColor": "#6559E8",
+      "category": "utilities",
+      "screenshots": [],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "buildVersion": "1",
+          "date": "2026-09-15",
+          "localizedDescription": "First standalone Scan Lab build. Automatic stable capture with tracked outlines, pose and appearance-change rearming, manual shutter, local review and editable boxes, recoverable exclusion, nine real-photo goals (180 examples), separate validation/test goals, supplementary perspective/lighting/blur generation, and reviewed-only Create ML ZIP export. Auto pauses at 60 pending photos and on save errors. Photos are never uploaded automatically. Train and validate a Core ML card detector on your Mac after collecting real examples.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/scanlab-v0.1.0/TallyDexScanLab-v0.1.0.ipa",
+          "size": 20368770,
+          "minOSVersion": "26.0"
+        }
+      ],
+      "appPermissions": {}
     }
   ],
   "news": []
