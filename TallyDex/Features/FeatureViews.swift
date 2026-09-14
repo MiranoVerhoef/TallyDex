@@ -4669,32 +4669,100 @@ private struct PokemonRulePickerView: View {
     }
 }
 
-private enum CollectionCardSort: String, CaseIterable, Identifiable {
-    case releaseNewest
-    case releaseOldest
-    case setName
-    case collectorNumber
-    case cardName
+private struct CollectionCardFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: CollectionCardFilters
+    let defaultOwnership: CollectionOwnershipFilter
+    let options: CollectionCardFilterOptions
+    let onApply: (CollectionCardFilters) -> Void
 
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .releaseNewest: "Release date (newest)"
-        case .releaseOldest: "Release date (oldest)"
-        case .setName: "Set name"
-        case .collectorNumber: "Collector number"
-        case .cardName: "Card name"
-        }
+    init(filters: CollectionCardFilters, defaultOwnership: CollectionOwnershipFilter,
+         options: CollectionCardFilterOptions, onApply: @escaping (CollectionCardFilters) -> Void) {
+        _draft = State(initialValue: filters)
+        self.defaultOwnership = defaultOwnership
+        self.options = options
+        self.onApply = onApply
     }
-}
 
-private enum CollectionOwnershipFilter: String, CaseIterable, Identifiable {
-    case all
-    case owned
-    case missing
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Show") {
+                    Picker("Ownership", selection: $draft.ownership) {
+                        ForEach(CollectionOwnershipFilter.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
 
-    var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+                Section {
+                    Picker("Type", selection: $draft.type) {
+                        Text("All types").tag("")
+                        ForEach(options.types, id: \.self) { Text($0).tag($0) }
+                    }
+                    .accessibilityIdentifier("collection.filters.type")
+                    .disabled(options.types.isEmpty)
+                    Picker("Era", selection: $draft.seriesID) {
+                        Text("All eras").tag("")
+                        ForEach(options.eras) { Text($0.name).tag($0.id) }
+                    }
+                    .accessibilityIdentifier("collection.filters.era")
+                    Picker("Set", selection: $draft.setID) {
+                        Text("All sets").tag("")
+                        ForEach(options.sets(in: draft.seriesID)) { Text("\($0.name) (\($0.id))").tag($0.id) }
+                    }
+                    .accessibilityIdentifier("collection.filters.set")
+                    Picker("Rarity", selection: $draft.rarity) {
+                        Text("All rarities").tag("")
+                        ForEach(options.rarities, id: \.self) { Text($0).tag($0) }
+                    }
+                    .accessibilityIdentifier("collection.filters.rarity")
+                    .disabled(options.rarities.isEmpty)
+                    Picker("Release year", selection: $draft.releaseYear) {
+                        Text("All years").tag(0)
+                        ForEach(options.releaseYears, id: \.self) { Text(String($0)).tag($0) }
+                    }
+                } header: {
+                    Text("Card Filters")
+                } footer: {
+                    Text("Type and rarity use available provider data. Cards without those fields remain visible with All types and All rarities. These filters change the view, not membership, ownership, or totals.")
+                }
+                .pickerStyle(.navigationLink)
+
+                Section("Sort") {
+                    Picker("Order", selection: $draft.sort) {
+                        ForEach(CollectionCardSort.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.navigationLink)
+                }
+                Section {
+                    Button("Reset filters", systemImage: "arrow.counterclockwise") {
+                        draft = CollectionCardFilters(ownership: defaultOwnership)
+                    }
+                    .disabled(draft == CollectionCardFilters(ownership: defaultOwnership))
+                    .accessibilityIdentifier("collection.filters.reset")
+                }
+            }
+            .navigationTitle("Filters")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("collection.filters.cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Apply") { onApply(draft); dismiss() }
+                        .accessibilityIdentifier("collection.filters.apply")
+                }
+            }
+            .onChange(of: draft.seriesID) { _, era in
+                if !draft.setID.isEmpty, !options.sets(in: era).contains(where: { $0.id == draft.setID }) {
+                    draft.setID = ""
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
 }
 
 private struct CustomCollectionFolderDetailView: View {
@@ -4713,10 +4781,18 @@ private struct CustomCollectionFolderDetailView: View {
     @State private var selectedVariantCard: CatalogCard?
     @State private var updatingCardIDs: Set<String> = []
     @State private var searchText = ""
-    @State private var ownershipFilter: CollectionOwnershipFilter
-    @State private var selectedSetName = ""
-    @State private var selectedReleaseYear = 0
-    @State private var sort = CollectionCardSort.releaseNewest
+    @State private var filters: CollectionCardFilters
+    @State private var isShowingFilters = false
+
+    private var defaultOwnership: CollectionOwnershipFilter {
+        folder.displayMode == .ownedOnly ? .owned : .all
+    }
+
+    private var filterOptions: CollectionCardFilterOptions {
+        CollectionCardFilterOptions(matches: matches, groups: catalogStore.groups)
+    }
+
+    private var activeFilterCount: Int { filters.activeCount(defaultOwnership: defaultOwnership) }
 
     private var artworkWarmKey: String {
         "collection-\(folder.id.uuidString.lowercased())"
@@ -4730,68 +4806,25 @@ private struct CustomCollectionFolderDetailView: View {
 
     init(folder: CustomCollectionFolder) {
         self.folder = folder
-        _ownershipFilter = State(
-            initialValue: folder.displayMode == .ownedOnly ? .owned : .all
-        )
-    }
-
-    private var availableSetNames: [String] {
-        Array(Set(matches.map(\.setName))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-
-    private var availableReleaseYears: [Int] {
-        Array(Set(matches.compactMap { result in
-            result.setReleaseDate.flatMap { Int($0.prefix(4)) }
-        })).sorted(by: >)
+        _filters = State(initialValue: CollectionCardFilters(ownership: folder.displayMode == .ownedOnly ? .owned : .all))
     }
 
     private var visibleMatches: [CatalogCardSearchResult] {
         let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let options = filterOptions
         return matches.filter { result in
             let isOwned = collectionStore.owns(cardID: result.card.id)
             let progress = cardProgress(
                 for: result.card, variants: variantsByCardID[result.card.id] ?? [],
                 catalog: catalogStore, collection: collectionStore
             )
-            let ownershipMatches: Bool = switch ownershipFilter {
-            case .all: true
-            case .owned: isOwned
-            case .missing: progress.completedSlots < progress.requiredSlots
-            }
             let searchMatches = trimmedSearch.isEmpty
                 || result.card.name.localizedCaseInsensitiveContains(trimmedSearch)
                 || result.setName.localizedCaseInsensitiveContains(trimmedSearch)
                 || result.card.localID.localizedCaseInsensitiveContains(trimmedSearch)
-            let setMatches = selectedSetName.isEmpty || result.setName == selectedSetName
-            let yearMatches = selectedReleaseYear == 0
-                || result.setReleaseDate?.hasPrefix(String(selectedReleaseYear)) == true
-            return ownershipMatches && searchMatches && setMatches && yearMatches
-        }.sorted(by: compareResults)
-    }
-
-    private func compareResults(_ left: CatalogCardSearchResult, _ right: CatalogCardSearchResult) -> Bool {
-        switch sort {
-        case .releaseNewest:
-            let leftDate = left.setReleaseDate ?? ""
-            let rightDate = right.setReleaseDate ?? ""
-            if leftDate != rightDate { return leftDate > rightDate }
-        case .releaseOldest:
-            let leftDate = left.setReleaseDate ?? "9999"
-            let rightDate = right.setReleaseDate ?? "9999"
-            if leftDate != rightDate { return leftDate < rightDate }
-        case .setName:
-            let comparison = left.setName.localizedCaseInsensitiveCompare(right.setName)
-            if comparison != .orderedSame { return comparison == .orderedAscending }
-        case .collectorNumber:
-            let leftNumber = Int(left.card.localID) ?? .max
-            let rightNumber = Int(right.card.localID) ?? .max
-            if leftNumber != rightNumber { return leftNumber < rightNumber }
-        case .cardName:
-            let comparison = left.card.name.localizedCaseInsensitiveCompare(right.card.name)
-            if comparison != .orderedSame { return comparison == .orderedAscending }
-        }
-        if left.setName != right.setName { return left.setName < right.setName }
-        return left.card.localID.localizedStandardCompare(right.card.localID) == .orderedAscending
+            return searchMatches && filters.matches(result, seriesID: options.seriesBySetID[result.card.setID],
+                                                     isOwned: isOwned, progress: progress)
+        }.sorted(by: filters.sort.precedes)
     }
 
     private var ownedCount: Int {
@@ -4878,14 +4911,21 @@ private struct CustomCollectionFolderDetailView: View {
                     ContentUnavailableView(
                         "No Cards for These Filters",
                         systemImage: "line.3.horizontal.decrease.circle",
-                        description: Text("Try another search, ownership filter, set, or release year.")
+                        description: Text("Try another search or clear the browsing filters. Your collection is unchanged.")
                     )
+                    Button("Clear filters", systemImage: "arrow.counterclockwise") {
+                        filters = CollectionCardFilters(ownership: defaultOwnership)
+                        searchText = ""
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("collection.filters.clear")
                 } else {
                     HStack {
-                        Text("\(visibleMatches.count) cards")
+                        Text("\(visibleMatches.count) of \(matches.count) cards")
                             .font(.headline)
+                            .accessibilityIdentifier("collection.visibleCount")
                         Spacer()
-                        Text(ownershipFilter.title)
+                        Text(filters.ownership.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
@@ -4956,91 +4996,24 @@ private struct CustomCollectionFolderDetailView: View {
         .searchable(text: $searchText, prompt: "Card, set, or number")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu("Filter and sort", systemImage: "line.3.horizontal.decrease.circle") {
-                    Menu("Ownership: \(ownershipFilter.title)") {
-                        ForEach(CollectionOwnershipFilter.allCases) { filter in
-                            Button {
-                                ownershipFilter = filter
-                            } label: {
-                                if ownershipFilter == filter {
-                                    Label(filter.title, systemImage: "checkmark")
-                                } else {
-                                    Text(filter.title)
-                                }
-                            }
-                        }
-                    }
-
-                    Menu(selectedSetName.isEmpty ? "Set: All" : "Set: \(selectedSetName)") {
-                        Button {
-                            selectedSetName = ""
-                        } label: {
-                            if selectedSetName.isEmpty {
-                                Label("All sets", systemImage: "checkmark")
-                            } else {
-                                Text("All sets")
-                            }
-                        }
-                        ForEach(availableSetNames, id: \.self) { setName in
-                            Button {
-                                selectedSetName = setName
-                            } label: {
-                                if selectedSetName == setName {
-                                    Label(setName, systemImage: "checkmark")
-                                } else {
-                                    Text(setName)
-                                }
-                            }
-                        }
-                    }
-
-                    Menu(selectedReleaseYear == 0 ? "Release year: All" : "Release year: \(selectedReleaseYear)") {
-                        Button {
-                            selectedReleaseYear = 0
-                        } label: {
-                            if selectedReleaseYear == 0 {
-                                Label("All years", systemImage: "checkmark")
-                            } else {
-                                Text("All years")
-                            }
-                        }
-                        ForEach(availableReleaseYears, id: \.self) { year in
-                            Button {
-                                selectedReleaseYear = year
-                            } label: {
-                                if selectedReleaseYear == year {
-                                    Label(String(year), systemImage: "checkmark")
-                                } else {
-                                    Text(String(year))
-                                }
-                            }
-                        }
-                    }
-
-                    Menu("Sort: \(sort.title)") {
-                        ForEach(CollectionCardSort.allCases) { option in
-                            Button {
-                                sort = option
-                            } label: {
-                                if sort == option {
-                                    Label(option.title, systemImage: "checkmark")
-                                } else {
-                                    Text(option.title)
-                                }
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    Button("Reset filters", systemImage: "arrow.counterclockwise") {
-                        ownershipFilter = folder.displayMode == .ownedOnly ? .owned : .all
-                        selectedSetName = ""
-                        selectedReleaseYear = 0
-                        sort = .releaseNewest
-                    }
+                Button {
+                    isShowingFilters = true
+                } label: {
+                    Label(
+                        activeFilterCount == 0 ? "Filters" : "Filters, \(activeFilterCount) active",
+                        systemImage: activeFilterCount > 0 || filters.sort != .releaseNewest
+                            ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                    )
                 }
+                .accessibilityIdentifier("collection.filters.open")
+                .disabled(matches.isEmpty)
             }
+        }
+        .sheet(isPresented: $isShowingFilters) {
+            CollectionCardFilterSheet(
+                filters: filters, defaultOwnership: defaultOwnership,
+                options: filterOptions
+            ) { filters = $0 }
         }
         .sheet(item: $selectedVariantCard) { card in
             CatalogVariantPickerView(card: card)
@@ -5120,12 +5093,12 @@ private struct CustomCollectionFolderDetailView: View {
                 for: matches.map(\.card), refreshCachedDetails: false
             )
             guard !Task.isCancelled else { return }
-            if !rules.isEmpty {
-                // Newly fetched details may supply authoritative IDs or categories.
-                // Apply them during this visit, not only after reopening the folder.
-                matches = try await catalogStore.cards(matchingPokemonRules: rules)
-                variantsByCardID = try await catalogStore.variants(cardIDs: matches.map { $0.card.id })
-            }
+            // Use newly cached metadata for both species and legacy name-based
+            // folders. Filter choices must reflect this visit's fetched details.
+            matches = try await rules.isEmpty
+                ? catalogStore.cards(matchingName: folder.cardNameQuery)
+                : catalogStore.cards(matchingPokemonRules: rules)
+            variantsByCardID = try await catalogStore.variants(cardIDs: matches.map { $0.card.id })
             await loadPricesForOwnedMatches()
             if matches.isEmpty, catalogStore.isPreparingSearchIndex {
                 message = "TallyDex is preparing the complete card catalogue. This collection will refresh automatically."

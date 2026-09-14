@@ -3,6 +3,106 @@ import XCTest
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    func testCollectionFiltersDoNotHideUnknownMetadataByDefault() {
+        let unknown = filterResult(id: "unknown", setID: "unknown-set", types: nil, rarity: nil, date: nil)
+        let all = CollectionCardFilters()
+        XCTAssertTrue(all.matches(unknown, seriesID: nil, isOwned: false, progress: .init(completedSlots: 0, requiredSlots: 1)))
+        XCTAssertEqual(all.activeCount(defaultOwnership: .all), 0)
+        var type = all
+        type.type = "Grass"
+        XCTAssertFalse(type.matches(unknown, seriesID: nil, isOwned: true, progress: .init(completedSlots: 1, requiredSlots: 1)))
+        var rarity = all
+        rarity.rarity = "Rare"
+        XCTAssertFalse(rarity.matches(unknown, seriesID: nil, isOwned: false, progress: .init(completedSlots: 0, requiredSlots: 1)))
+    }
+
+    func testCollectionFiltersIntersectWithoutDistinguishingPokemonSuffixes() {
+        let matching = filterResult(id: "a", setID: "sv-test", types: [" Grass ", "Psychic"], rarity: "Rare", date: "2024-03-22")
+        let filters = CollectionCardFilters(type: "grass", seriesID: "sv", setID: "sv-test", rarity: " rare ", releaseYear: 2024)
+        XCTAssertTrue(filters.matches(matching, seriesID: "sv", isOwned: false, progress: .init(completedSlots: 0, requiredSlots: 1)))
+        for mismatch in [
+            CollectionCardFilters(type: "Fire"), CollectionCardFilters(seriesID: "swsh"),
+            CollectionCardFilters(setID: "sv-other"), CollectionCardFilters(rarity: "Common"),
+            CollectionCardFilters(releaseYear: 2023)
+        ] {
+            XCTAssertFalse(mismatch.matches(matching, seriesID: "sv", isOwned: false, progress: .init(completedSlots: 0, requiredSlots: 1)))
+        }
+        XCTAssertTrue(CollectionCardFilters(type: "Psychic").matches(matching, seriesID: "sv", isOwned: false,
+            progress: .init(completedSlots: 0, requiredSlots: 1)))
+    }
+
+    func testCollectionFiltersUseSetAndEraIdentityInsteadOfSharedNames() {
+        let a = filterResult(id: "a", setID: "swsh-promo", types: [], rarity: nil, date: nil)
+        let b = filterResult(id: "b", setID: "sv-promo", types: [], rarity: nil, date: nil)
+        XCTAssertEqual(a.setName, b.setName)
+        let set = CollectionCardFilters(setID: "swsh-promo")
+        XCTAssertTrue(set.matches(a, seriesID: "swsh", isOwned: true, progress: .init(completedSlots: 1, requiredSlots: 1)))
+        XCTAssertFalse(set.matches(b, seriesID: "sv", isOwned: true, progress: .init(completedSlots: 1, requiredSlots: 1)))
+        XCTAssertFalse(CollectionCardFilters(seriesID: "swsh").matches(b, seriesID: "sv", isOwned: true,
+            progress: .init(completedSlots: 1, requiredSlots: 1)))
+    }
+
+    func testCollectionFilterOptionsAreScopedToMembersAndPreserveExactSetIDs() {
+        func group(_ id: String, sets: [String]) -> CatalogSeriesGroup {
+            .init(series: .init(id: id, name: id, logoURL: nil), sets: sets.map {
+                .init(id: $0, seriesID: id, name: "Promos", abbreviation: nil, logoURL: nil, symbolURL: nil,
+                      officialCardCount: 1, totalCardCount: 1, releaseDate: nil, rarityCounts: nil)
+            })
+        }
+        let options = CollectionCardFilterOptions(matches: [
+            filterResult(id: "a", setID: "swsh-promo", types: ["Grass", " grass ", "Psychic"], rarity: " Rare ", date: "2021-01-01"),
+            filterResult(id: "b", setID: "sv-promo", types: nil, rarity: "rare", date: "2024-01-01"),
+            filterResult(id: "c", setID: "unknown-set", types: [" "], rarity: nil, date: nil)
+        ], groups: [group("swsh", sets: ["swsh-promo"]), group("sv", sets: ["sv-promo"]), group("unused", sets: ["unused-set"])])
+        XCTAssertEqual(options.types.map(CollectionCardFilters.normalized), ["grass", "psychic"])
+        XCTAssertEqual(options.rarities.map(CollectionCardFilters.normalized), ["rare"])
+        XCTAssertEqual(options.eras.map(\.id), ["swsh", "sv"])
+        XCTAssertEqual(options.sets.count, 3)
+        XCTAssertEqual(options.sets(in: "swsh").map(\.id), ["swsh-promo"])
+        XCTAssertEqual(options.sets(in: "").count, 3)
+        XCTAssertEqual(options.releaseYears, [2024, 2021])
+        XCTAssertEqual(options.missingTypeCount, 2)
+        XCTAssertEqual(options.missingRarityCount, 1)
+    }
+
+    func testCollectionOwnershipFiltersRetainPartialMasterCompletionAndOwnedOnlyDefaults() {
+        let card = filterResult(id: "a", setID: "s", types: nil, rarity: nil, date: nil)
+        let partial = CollectionProgress(completedSlots: 1, requiredSlots: 2)
+        XCTAssertTrue(CollectionCardFilters(ownership: .missing).matches(card, seriesID: nil, isOwned: true, progress: partial))
+        XCTAssertTrue(CollectionCardFilters(ownership: .owned).matches(card, seriesID: nil, isOwned: true, progress: partial))
+        XCTAssertFalse(CollectionCardFilters(ownership: .owned).matches(card, seriesID: nil, isOwned: false, progress: partial))
+        XCTAssertFalse(CollectionCardFilters(ownership: .missing).matches(card, seriesID: nil, isOwned: true,
+            progress: .init(completedSlots: 2, requiredSlots: 2)))
+        XCTAssertEqual(CollectionCardFilters(ownership: .owned).activeCount(defaultOwnership: .owned), 0)
+        XCTAssertEqual(CollectionCardFilters(ownership: .all, type: "Grass", seriesID: "sv", setID: "s", rarity: "Rare", releaseYear: 2024)
+            .activeCount(defaultOwnership: .owned), 6)
+    }
+
+    func testCollectionCardSortKeepsUnknownDatesLastAndUsesCanonicalTieBreaker() {
+        let old = filterResult(id: "a", setID: "s", types: nil, rarity: nil, date: "2021-01-01")
+        let new = filterResult(id: "b", setID: "s", types: nil, rarity: nil, date: "2024-01-01")
+        let unknown = filterResult(id: "c", setID: "s", types: nil, rarity: nil, date: nil)
+        let emptyDate = filterResult(id: "d", setID: "s", types: nil, rarity: nil, date: "")
+        XCTAssertEqual([unknown, old, new].sorted(by: CollectionCardSort.releaseNewest.precedes).map(\.id), ["b", "a", "c"])
+        XCTAssertEqual([unknown, new, old].sorted(by: CollectionCardSort.releaseOldest.precedes).map(\.id), ["a", "b", "c"])
+        XCTAssertEqual([emptyDate, unknown, new, old].sorted(by: CollectionCardSort.releaseNewest.precedes).map(\.id), ["b", "a", "c", "d"])
+        XCTAssertEqual([emptyDate, unknown, new, old].sorted(by: CollectionCardSort.releaseOldest.precedes).map(\.id), ["a", "b", "c", "d"])
+        for sort in CollectionCardSort.allCases {
+            XCTAssertFalse(sort.precedes(old, old))
+        }
+        XCTAssertEqual([new, old].sorted(by: CollectionCardSort.cardName.precedes).map(\.id), ["a", "b"])
+    }
+
+    private func filterResult(id: String, setID: String, types: [String]?, rarity: String?, date: String?) -> CatalogCardSearchResult {
+        let metadata = types.map {
+            CatalogCardMetadata(dexIDs: [448], hp: nil, types: $0, evolvesFrom: nil, stage: nil, suffix: nil,
+                attacks: [], abilities: [], weaknesses: [], resistances: [], retreatCost: nil, regulationMark: nil,
+                legality: nil, rulesText: nil, trainerType: nil, energyType: nil, flavorText: nil, updatedAt: nil)
+        }
+        return .init(card: CatalogCard(id: id, setID: setID, localID: "1", name: "Lucario GX", imageURL: nil,
+            category: "Pokémon", illustrator: nil, rarity: rarity, metadata: metadata), setName: "Promos", setReleaseDate: date)
+    }
+
     @MainActor
     func testSharedCanonicalPrintingsSurviveDiskRestartMergeReplaceAndRollback() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

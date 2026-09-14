@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.25",
+          "buildVersion": "61",
+          "date": "2026-09-14",
+          "localizedDescription": "Adds a compact collection Filter sheet for type, era, exact set, rarity, ownership, release year, and sorting. Apply accepts a draft; Cancel or dismissal keeps the previous view, and Reset returns to the collection's default All/Owned view. Results show how many cards are visible while membership, saved ownership, completion, owned percentage, and value totals remain unchanged. Type and rarity use available cached provider details; unknown fields remain visible with All types/All rarities and dual-type cards match either reported type. Set/era choices use exact IDs and changing era clears an incompatible set. Empty results offer Clear filters. Choices last for the current collection visit, without new Settings clutter or backup changes. Existing two-Pokémon matching, printings, artwork, card-detail defaults, and reliability flows are preserved. Updated What's New explains the controls.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.25/TallyDex-v0.9.25.ipa",
+          "size": 29796001,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.24",
           "buildVersion": "60",
           "date": "2026-09-14",

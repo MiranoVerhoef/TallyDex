@@ -76,17 +76,82 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed, file: file, line: line)
     }
 
+    private func openFilterCollection() {
+        launch("filters")
+        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+        tap(app.tabBars.buttons["Collection"])
+        tap(button("Filter fixture"))
+        expectVisible(4)
+    }
+
+    private func expectVisible(_ count: Int, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(app.staticTexts["\(count) of 4 cards"].waitForExistence(timeout: 10), file: file, line: line)
+    }
+
+    private func chooseFilter(_ label: String, option: String) {
+        tap(app.buttons[label])
+        tap(app.buttons[option])
+        if app.navigationBars[label].exists { back() }
+    }
+
+    func testCollectionFilterApplyCancelIntersectionAndEmptyResetLeaveOwnershipUntouched() {
+        openFilterCollection()
+        tap(app.buttons["collection.filters.open"])
+        chooseFilter("Type", option: "Grass")
+        tap(app.buttons["collection.filters.apply"])
+        expectVisible(2)
+        XCTAssertTrue(app.staticTexts["25% owned"].exists)
+        tap(app.buttons["collection.filters.open"])
+        chooseFilter("Type", option: "Psychic")
+        tap(app.buttons["collection.filters.cancel"])
+        expectVisible(2)
+        tap(app.buttons["collection.filters.open"])
+        chooseFilter("Era", option: "Scarlet & Violet")
+        tap(app.buttons["collection.filters.apply"])
+        expectVisible(1)
+        tap(app.buttons["collection.filters.open"])
+        chooseFilter("Rarity", option: "Common")
+        tap(app.buttons["collection.filters.apply"])
+        XCTAssertTrue(app.staticTexts["No Cards for These Filters"].waitForExistence(timeout: 10))
+        tap(app.buttons["collection.filters.clear"])
+        expectVisible(4)
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+    }
+
+    func testCollectionEraClearsIncompatibleExactSetAndSheetResetCanBeCancelled() {
+        openFilterCollection()
+        tap(app.buttons["collection.filters.open"])
+        chooseFilter("Set", option: "Fusion Strike (swsh8)")
+        tap(app.buttons["collection.filters.apply"])
+        expectVisible(3) // Includes the card with unavailable type and rarity.
+        tap(app.buttons["collection.filters.open"])
+        chooseFilter("Era", option: "Scarlet & Violet")
+        tap(app.buttons["collection.filters.apply"])
+        expectVisible(1)
+        tap(app.buttons["collection.filters.open"])
+        tap(app.buttons["collection.filters.reset"])
+        tap(app.buttons["collection.filters.cancel"])
+        expectVisible(1)
+        tap(app.buttons["collection.filters.open"])
+        tap(app.buttons["collection.filters.reset"])
+        tap(app.buttons["collection.filters.apply"])
+        expectVisible(4)
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+    }
+
     func testCompletingSetupDoesNotRepeatOrShowWhatsNew() {
         launch("fresh")
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.24"])
+        expectState(["intro=true", "seen=0.9.25"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.24"])
+        expectState(["intro=true", "seen=0.9.25"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -94,10 +159,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.24"])
+        expectState(["intro=true", "seen=0.9.25"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.24"])
+        expectState(["intro=true", "seen=0.9.25"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -107,10 +172,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.24"])
+        expectState(["intro=true", "seen=0.9.25"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.24"])
+        expectState(["intro=true", "seen=0.9.25"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

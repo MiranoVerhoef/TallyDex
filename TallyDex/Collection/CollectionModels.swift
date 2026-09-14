@@ -1,5 +1,137 @@
 import Foundation
 
+enum CollectionOwnershipFilter: String, CaseIterable, Identifiable, Sendable {
+    case all, owned, missing
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
+enum CollectionCardSort: String, CaseIterable, Identifiable, Sendable {
+    case releaseNewest, releaseOldest, setName, collectorNumber, cardName
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .releaseNewest: "Release date (newest)"
+        case .releaseOldest: "Release date (oldest)"
+        case .setName: "Set name"
+        case .collectorNumber: "Collector number"
+        case .cardName: "Card name"
+        }
+    }
+
+    func precedes(_ left: CatalogCardSearchResult, _ right: CatalogCardSearchResult) -> Bool {
+        switch self {
+        case .releaseNewest:
+            let l = left.setReleaseDate ?? "", r = right.setReleaseDate ?? ""
+            if l != r { return l > r }
+        case .releaseOldest:
+            let l = left.setReleaseDate.flatMap { $0.isEmpty ? nil : $0 } ?? "9999"
+            let r = right.setReleaseDate.flatMap { $0.isEmpty ? nil : $0 } ?? "9999"
+            if l != r { return l < r }
+        case .setName:
+            let order = left.setName.localizedCaseInsensitiveCompare(right.setName)
+            if order != .orderedSame { return order == .orderedAscending }
+        case .collectorNumber:
+            let l = Int(left.card.localID) ?? .max, r = Int(right.card.localID) ?? .max
+            if l != r { return l < r }
+        case .cardName:
+            let order = left.card.name.localizedCaseInsensitiveCompare(right.card.name)
+            if order != .orderedSame { return order == .orderedAscending }
+        }
+        if left.setName != right.setName { return left.setName < right.setName }
+        let order = left.card.localID.localizedStandardCompare(right.card.localID)
+        return order == .orderedSame ? left.card.id < right.card.id : order == .orderedAscending
+    }
+}
+
+/// Temporary browsing choices only: never mutate a folder's species rules,
+/// ownership, goals, or backups. Empty values mean no restriction.
+struct CollectionCardFilters: Equatable, Sendable {
+    var ownership: CollectionOwnershipFilter = .all
+    var type = ""
+    var seriesID = ""
+    var setID = ""
+    var rarity = ""
+    var releaseYear = 0
+    var sort: CollectionCardSort = .releaseNewest
+
+    func activeCount(defaultOwnership: CollectionOwnershipFilter) -> Int {
+        [ownership != defaultOwnership, !type.isEmpty, !seriesID.isEmpty,
+         !setID.isEmpty, !rarity.isEmpty, releaseYear != 0].filter { $0 }.count
+    }
+
+    func matches(_ result: CatalogCardSearchResult, seriesID resolvedSeriesID: String?,
+                 isOwned: Bool, progress: CollectionProgress) -> Bool {
+        let ownershipMatches: Bool = switch ownership {
+        case .all: true
+        case .owned: isOwned
+        case .missing: progress.completedSlots < progress.requiredSlots
+        }
+        return ownershipMatches
+            && (type.isEmpty || result.card.metadata?.types.contains { Self.normalized($0) == Self.normalized(type) } == true)
+            && (rarity.isEmpty || result.card.rarity.map { Self.normalized($0) == Self.normalized(rarity) } == true)
+            && (seriesID.isEmpty || resolvedSeriesID == seriesID)
+            && (setID.isEmpty || result.card.setID == setID)
+            && (releaseYear == 0 || result.setReleaseDate?.hasPrefix(String(releaseYear)) == true)
+    }
+
+    static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+struct CollectionCardFilterOptions: Sendable {
+    struct Choice: Identifiable, Equatable, Sendable {
+        let id: String
+        let name: String
+    }
+    let types: [String]
+    let rarities: [String]
+    let eras: [Choice]
+    let sets: [Choice]
+    let releaseYears: [Int]
+    let seriesBySetID: [String: String]
+    let missingTypeCount: Int
+    let missingRarityCount: Int
+
+    init(matches: [CatalogCardSearchResult], groups: [CatalogSeriesGroup]) {
+        func values(_ strings: [String]) -> [String] {
+            let cleaned = strings.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.sorted()
+            var unique: [String: String] = [:]
+            for value in cleaned where unique[CollectionCardFilters.normalized(value)] == nil {
+                unique[CollectionCardFilters.normalized(value)] = value
+            }
+            return unique.values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        }
+        types = values(matches.flatMap { $0.card.metadata?.types ?? [] })
+        rarities = values(matches.compactMap { $0.card.rarity })
+        missingTypeCount = matches.filter { result in
+            !(result.card.metadata?.types.contains { !CollectionCardFilters.normalized($0).isEmpty } ?? false)
+        }.count
+        missingRarityCount = matches.filter { CollectionCardFilters.normalized($0.card.rarity ?? "").isEmpty }.count
+        var mapping: [String: String] = [:]
+        for group in groups { for set in group.sets { mapping[set.id] = group.series.id } }
+        seriesBySetID = mapping
+        let matchingSetIDs = Set(matches.map { $0.card.setID })
+        var seenEras: Set<String> = []
+        eras = groups.compactMap { group in
+            guard group.sets.contains(where: { matchingSetIDs.contains($0.id) }), seenEras.insert(group.series.id).inserted else { return nil }
+            return Choice(id: group.series.id, name: group.series.name)
+        }
+        var matchingSets: [String: Choice] = [:]
+        for result in matches { matchingSets[result.card.setID] = Choice(id: result.card.setID, name: result.setName) }
+        sets = matchingSets.values.sorted {
+            let order = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
+        releaseYears = Set(matches.compactMap { $0.setReleaseDate.flatMap { Int($0.prefix(4)) } }).sorted(by: >)
+    }
+
+    func sets(in seriesID: String) -> [Choice] {
+        seriesID.isEmpty ? sets : sets.filter { seriesBySetID[$0.id] == seriesID }
+    }
+}
+
 struct CollectionVariantEntry: Equatable, Identifiable, Sendable {
     let cardID: String
     let variant: CatalogVariantKind
