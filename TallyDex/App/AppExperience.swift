@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.23",
-        headline: "Settings, simplified",
+        version: "0.9.24",
+        headline: "Reliability, checked",
         notes: [
             AppReleaseNote(
                 systemImage: "slider.horizontal.3",
-                title: "A cleaner Settings menu",
-                detail: "Focused pages for appearance and browsing, collection preferences, and prices keep everyday choices easy to find. Existing preferences stay unchanged."
+                title: "Setup and update checks",
+                detail: "Automated checks cover completing or skipping setup, showing update notes once, and preserving preferences across app restarts. The interface stays unchanged."
             ),
             AppReleaseNote(
-                systemImage: "bolt.fill",
-                title: "Original Energy sets only",
-                detail: "The extra Energy overview rows have been removed. Actual Energy sets, their cards, and your ownership remain intact."
+                systemImage: "clock.arrow.circlepath",
+                title: "Restore with confidence",
+                detail: "Regression checks cover preview cancellation, merge and replace, confirmation, exact quantities, and restoring the automatic rollback snapshot."
             ),
             AppReleaseNote(
-                systemImage: "photo.stack",
-                title: "Small bundled set covers",
-                detail: "Trick or Trade 2022–2024 and My First Battle now have bundled logos. Hidden Fates: Shiny Vault uses its parent logo with a clear label; Yellow A Alternate uses its original A symbol. Each asset is under 20 KB."
+                systemImage: "checklist",
+                title: "Shared cards, counted once",
+                detail: "Checks verify shared parent cards, pumpkin-stamped printings, and one- or two-Pokémon collections keep canonical ownership and independent printing counts."
             ),
         ]
     )

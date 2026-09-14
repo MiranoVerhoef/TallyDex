@@ -31,8 +31,16 @@ xcodebuild \
   -scheme TallyDex \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
   -derivedDataPath .build/DerivedData \
+  -parallel-testing-enabled NO \
   test
 ```
+
+The scheme includes unit tests and an isolated UI reliability suite. To run only
+one suite, add `-only-testing:TallyDexTests` or
+`-only-testing:TallyDexUITests`. UI fixtures explicitly opt in through launch
+arguments, use a separate UUID-scoped database and preference suite, and are
+excluded from Release builds. Use a separate release-only DerivedData directory
+when packaging an IPA; never package test-run products.
 
 ## Development releases
 
@@ -491,8 +499,9 @@ needed. **Browser Editor → Allow access while app is minimized** is off by def
 When enabled, the server remains available while iOS permits background execution;
 return to TallyDex if iOS suspends it.
 
-Next-version backlog: continue the verified missing-art audit, then use stored
-Pokédex IDs to strengthen species matching beyond the catalogue’s card titles.
+Pokédex-ID species matching is already implemented. Remaining backlog: continue
+the verified missing-art audit as provider coverage expands, and validate the
+camera matching experience on a physical iPhone before Apple-services work.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
@@ -590,6 +599,20 @@ Completed in v0.9.23:
   a native Shiny Vault label (not a claimed standalone official logo). These six
   assets are at most 420 × 160 pixels and under 20 KB each, with transparency.
   Set IDs, cards, and goals remain unchanged.
+
+Completed in v0.9.24:
+
+- Verified with 173 unit tests and six end-to-end UI tests.
+- Keeps the existing UI and preference keys unchanged.
+- Adds isolated end-to-end checks for completing/skipping setup, update notes
+  appearing once, restore-preview cancellation, confirmed restore/replace,
+  rollback, merge conflict handling, and preferences surviving relaunch/restore.
+- Exercises exact normal and Trick or Trade ownership through a file-backed
+  database restart, merge, replace, and rollback; one- and two-Pokémon collections
+  continue to reference the same canonical card instead of duplicating ownership.
+- Defensively deduplicates repeated canonical ownership references in value
+  summaries. Distinct variants remain separate, and unpriced stamped cards never
+  borrow an unstamped card's price.
 
 Supplemental cover sources:
 

@@ -5881,6 +5881,7 @@ struct CollectionImportPreviewView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityIdentifier("import.mode")
                 } footer: {
                     Text(mode == .merge
                          ? "Merge adds missing records and accepts newer changes. Your newer conflicting records stay untouched."
@@ -5920,6 +5921,7 @@ struct CollectionImportPreviewView: View {
                         }
                     }
                     .disabled(isApplying || !preview.hasChanges)
+                    .accessibilityIdentifier("import.apply")
                 } footer: {
                     Text("Before importing, TallyDex saves the current collection in Settings → Collection Backups so you can roll back.")
                 }
@@ -5938,6 +5940,7 @@ struct CollectionImportPreviewView: View {
                 titleVisibility: .visible
             ) {
                 Button("Replace Collection", role: .destructive) { applyImport() }
+                    .accessibilityIdentifier("import.confirm")
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will remove \(preview.removals) record(s) that are not in the backup. A rollback backup is created first.")
@@ -6122,6 +6125,7 @@ private struct CollectionBackupRestorePreviewView: View {
                         isConfirmingRestore = true
                     }
                     .disabled(isRestoring || !prepared.preview.hasChanges)
+                    .accessibilityIdentifier("restore.apply")
                 } footer: {
                     Text("Before restoring, TallyDex saves the current collection as another automatic backup so you can undo this restore.")
                 }
@@ -6140,6 +6144,7 @@ private struct CollectionBackupRestorePreviewView: View {
                 titleVisibility: .visible
             ) {
                 Button("Restore Collection", role: .destructive) { restore() }
+                    .accessibilityIdentifier("restore.confirm")
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This applies \(prepared.preview.additions) addition(s), \(prepared.preview.changes) change(s), and \(prepared.preview.removals) removal(s). A rollback backup is created first.")
