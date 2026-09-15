@@ -672,6 +672,13 @@ Completed in v0.9.27:
 - Verified with 186 unit tests and nine end-to-end UI tests on the iPhone 18 Pro
   iOS 27.0 simulator.
 
+Completed in v0.9.28:
+
+- Adds per-plan ordering by set release, newest release, Pokémon name, or Pokédex number.
+- Preserves Set release order for existing plans and supports changes through long-press → Edit.
+- Removes the duplicate add button from Binder Planner.
+- Verified with 187 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

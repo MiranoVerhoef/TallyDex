@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.28",
+          "buildVersion": "64",
+          "date": "2026-09-15",
+          "localizedDescription": "Binder plans can now be ordered by set release, newest release, Pokémon name, or Pokédex number. Existing plans keep Set release order. The duplicate add button has been removed, and ordering can be changed through long-press → Edit.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.28/TallyDex-v0.9.28.ipa",
+          "size": 32135356,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.27",
           "buildVersion": "63",
           "date": "2026-09-15",

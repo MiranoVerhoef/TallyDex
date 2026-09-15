@@ -52,23 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.27",
-        headline: "Plan the binder before filling it",
+        version: "0.9.28",
+        headline: "Flexible binder ordering",
         notes: [
             AppReleaseNote(
+                systemImage: "arrow.up.arrow.down",
+                title: "Choose the card order",
+                detail: "Sort plans by set release, newest release, Pokémon name, or Pokédex number."
+            ),
+            AppReleaseNote(
                 systemImage: "square.grid.3x3",
-                title: "Binder Planner",
-                detail: "Open Binder Planner from the top of Collection and turn any Pokémon collection or set into clean, paged pocket layouts."
-            ),
-            AppReleaseNote(
-                systemImage: "rectangle.split.3x3",
-                title: "Nine or twelve pockets",
-                detail: "Choose a 9-pocket or 12-pocket binder, include or hide missing cards, and save multiple plans locally without changing collection ownership."
-            ),
-            AppReleaseNote(
-                systemImage: "checkmark.circle",
-                title: "Goals and artwork stay accurate",
-                detail: "Master and Custom goals receive a pocket for every exact printing. Jumbo Promos now reuse their era’s normal promo artwork in the set list."
+                title: "Cleaner controls",
+                detail: "The duplicate add button is removed. Long-press a saved plan to edit its order."
             ),
         ]
     )
