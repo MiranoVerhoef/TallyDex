@@ -153,6 +153,77 @@ final class CollectionFoundationTests: XCTestCase {
         }
     }
 
+    func testBinderPocketLayoutsMatchPhysicalBinderFormats() {
+        let expected: [(BinderPocketLayout, Int, Int, Int, Int, Int)] = [
+            (.four, 2, 2, 20, 4, 160),
+            (.nine, 3, 3, 20, 9, 360),
+            (.twelve, 3, 4, 20, 12, 480),
+            (.twelveXL, 3, 4, 26, 12, 624),
+            (.sixteenXXL, 4, 4, 34, 16, 1_088),
+        ]
+
+        for (layout, rows, columns, pages, pocketsPerSide, capacity) in expected {
+            XCTAssertEqual(layout.rows, rows)
+            XCTAssertEqual(layout.columns, columns)
+            XCTAssertEqual(layout.doubleSidedPageCount, pages)
+            XCTAssertEqual(layout.pocketsPerSide, pocketsPerSide)
+            XCTAssertEqual(layout.capacity, capacity)
+        }
+    }
+
+    func testBinderPocketLayoutDecodesLegacyNumericValues() throws {
+        XCTAssertEqual(try JSONDecoder().decode(BinderPocketLayout.self, from: Data("9".utf8)), .nine)
+        XCTAssertEqual(try JSONDecoder().decode(BinderPocketLayout.self, from: Data("12".utf8)), .twelve)
+    }
+
+    func testBinderPlansTravelThroughExportImportAndBackupRestore() async throws {
+        let timestamp = Date(timeIntervalSince1970: 500)
+        let original = BinderPlan(
+            id: UUID(),
+            name: "Vault layout",
+            sourceKind: .set,
+            sourceID: "me01",
+            sourceName: "Mega Evolution",
+            pocketLayout: .twelveXL,
+            includesMissingCards: true,
+            cardOrder: .setRelease,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+        let repository = GRDBCollectionRepository(database: try .inMemory())
+        try await repository.saveBinderPlan(original)
+        let backup = try await repository.createBackup(reason: "Binder baseline", createdAt: timestamp)
+
+        let exported = try await repository.exportCollection(exportedAt: timestamp, appVersion: "test")
+        XCTAssertEqual(exported.binderPlans, [original])
+
+        let destination = GRDBCollectionRepository(database: try .inMemory())
+        try await destination.importCollection(exported, mode: .replace, importedAt: timestamp.addingTimeInterval(1))
+        let importedPlans = try await destination.fetchBinderPlans()
+        XCTAssertEqual(importedPlans, [original])
+
+        let changed = BinderPlan(
+            id: original.id,
+            name: "Changed",
+            sourceKind: original.sourceKind,
+            sourceID: original.sourceID,
+            sourceName: original.sourceName,
+            pocketLayout: .sixteenXXL,
+            includesMissingCards: false,
+            cardOrder: .newestRelease,
+            createdAt: original.createdAt,
+            updatedAt: timestamp.addingTimeInterval(2)
+        )
+        try await repository.saveBinderPlan(changed)
+        try await repository.restoreBackup(
+            id: backup.id,
+            safetyBackupReason: "Before binder restore",
+            restoredAt: timestamp.addingTimeInterval(3)
+        )
+        let restoredPlans = try await repository.fetchBinderPlans()
+        XCTAssertEqual(restoredPlans, [original])
+    }
+
     func testBinderCardOrderSupportsReleaseNameAndPokedexLayouts() {
         let oldest = filterResult(
             id: "oldest", setID: "base", types: ["Grass"], rarity: nil, date: "1999-01-09",

@@ -52,18 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.28",
-        headline: "Flexible binder ordering",
+        version: "0.9.29",
+        headline: "Binder formats that fit",
         notes: [
             AppReleaseNote(
-                systemImage: "arrow.up.arrow.down",
-                title: "Choose the card order",
-                detail: "Sort plans by set release, newest release, Pokémon name, or Pokédex number."
+                systemImage: "rectangle.split.3x3",
+                title: "Real binder sizes",
+                detail: "Plan with 4-, 9-, 12-, 12-pocket XL, or 16-pocket XXL layouts."
             ),
             AppReleaseNote(
-                systemImage: "square.grid.3x3",
-                title: "Cleaner controls",
-                detail: "The duplicate add button is removed. Long-press a saved plan to edit its order."
+                systemImage: "externaldrive.badge.checkmark",
+                title: "Plans stay protected",
+                detail: "Binder plans are now included in collection backups and exports."
             ),
         ]
     )

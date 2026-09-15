@@ -10,7 +10,7 @@ extension UTType {
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
-    static let currentSchemaVersion = 4
+    static let currentSchemaVersion = 5
 
     let format: String
     let schemaVersion: Int
@@ -21,6 +21,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
     let folders: [FolderRecord]
     let cardMetadata: [CardMetadataRecord]
     let exactOwnership: [ExactOwnershipRecord]
+    let binderPlans: [BinderPlan]
 
     init(
         format: String,
@@ -31,7 +32,8 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         setPreferences: [SetPreferenceRecord],
         folders: [FolderRecord],
         cardMetadata: [CardMetadataRecord],
-        exactOwnership: [ExactOwnershipRecord] = []
+        exactOwnership: [ExactOwnershipRecord] = [],
+        binderPlans: [BinderPlan] = []
     ) {
         self.format = format
         self.schemaVersion = schemaVersion
@@ -42,11 +44,12 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         self.folders = folders
         self.cardMetadata = cardMetadata
         self.exactOwnership = exactOwnership
+        self.binderPlans = binderPlans
     }
 
     private enum CodingKeys: String, CodingKey {
         case format, schemaVersion, exportedAt, appVersion, ownership
-        case setPreferences, folders, cardMetadata, exactOwnership
+        case setPreferences, folders, cardMetadata, exactOwnership, binderPlans
     }
 
     init(from decoder: Decoder) throws {
@@ -60,6 +63,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         folders = try values.decode([FolderRecord].self, forKey: .folders)
         cardMetadata = try values.decode([CardMetadataRecord].self, forKey: .cardMetadata)
         exactOwnership = try values.decodeIfPresent([ExactOwnershipRecord].self, forKey: .exactOwnership) ?? []
+        binderPlans = try values.decodeIfPresent([BinderPlan].self, forKey: .binderPlans) ?? []
     }
 
     struct OwnershipRecord: Codable, Equatable, Sendable {

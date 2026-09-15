@@ -12,6 +12,7 @@ final class CollectionStore {
     private(set) var goalsBySetID: [String: CollectionGoal] = [:]
     private(set) var setPreferencesByID: [String: SetCollectionPreference] = [:]
     private(set) var customFolders: [CustomCollectionFolder] = []
+    private(set) var binderPlans: [BinderPlan] = []
     private(set) var cardMetadataByID: [String: CardCollectionMetadata] = [:]
     private(set) var backups: [CollectionBackup] = []
     private(set) var isInitialLoading = true
@@ -38,6 +39,7 @@ final class CollectionStore {
         do {
             let repository = try resolveRepository()
             try await repository.prepareExactOwnershipMigration(createdAt: now())
+            try await migrateLegacyBinderPlans(using: repository)
             try await reloadCollectionState()
         } catch {
             loadMessage = "Your saved collection couldn’t be loaded."
@@ -219,6 +221,18 @@ final class CollectionStore {
         customFolders.removeAll { $0.id == id }
     }
 
+    func saveBinderPlan(_ plan: BinderPlan) async throws {
+        try await resolveRepository().saveBinderPlan(plan)
+        binderPlans.removeAll { $0.id == plan.id }
+        binderPlans.append(plan)
+        sortBinderPlans()
+    }
+
+    func deleteBinderPlan(id: UUID) async throws {
+        try await resolveRepository().deleteBinderPlan(id: id)
+        binderPlans.removeAll { $0.id == id }
+    }
+
     func quantity(cardID: String, variant: CatalogVariantKind) -> Int {
         if let loadedQuantity = quantitiesByCardID[cardID]?[variant] {
             return loadedQuantity
@@ -383,6 +397,7 @@ final class CollectionStore {
         async let printingEntries = repository.fetchOwnedPrintingEntries()
         async let preferences = repository.fetchSetPreferences()
         async let folders = repository.fetchCustomFolders()
+        async let plans = repository.fetchBinderPlans()
         async let metadata = repository.fetchAllCardMetadata()
         async let savedBackups = repository.fetchBackups()
         broadOwnedEntries = try await entries
@@ -391,9 +406,30 @@ final class CollectionStore {
         setPreferencesByID = try await preferences
         goalsBySetID = setPreferencesByID.mapValues(\.goal)
         customFolders = try await folders
+        binderPlans = try await plans
         cardMetadataByID = try await metadata
         backups = try await savedBackups
         quantitiesByCardID.removeAll()
+    }
+
+    private func migrateLegacyBinderPlans(using repository: any CollectionRepository) async throws {
+        let legacyPlans = BinderPlanStorage.load()
+        guard !legacyPlans.isEmpty else { return }
+        let currentPlans = try await repository.fetchBinderPlans()
+        let currentByID = Dictionary(uniqueKeysWithValues: currentPlans.map { ($0.id, $0) })
+        for plan in legacyPlans where currentByID[plan.id].map({ plan.updatedAt > $0.updatedAt }) ?? true {
+            try await repository.saveBinderPlan(plan)
+        }
+        BinderPlanStorage.remove()
+    }
+
+    private func sortBinderPlans() {
+        binderPlans.sort { left, right in
+            if left.updatedAt == right.updatedAt {
+                return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+            }
+            return left.updatedAt > right.updatedAt
+        }
     }
 
     private func rebuildAggregatedOwnership() {

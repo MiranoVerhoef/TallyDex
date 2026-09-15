@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.29",
+          "buildVersion": "65",
+          "date": "2026-09-15",
+          "localizedDescription": "Binder Planner now matches current 4-, 9-, 12-, 12-pocket XL, and 16-pocket XXL binder layouts and capacities. Existing plans migrate automatically and are included in collection backups and exports.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.29/TallyDex-v0.9.29.ipa",
+          "size": 32155002,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.28",
           "buildVersion": "64",
           "date": "2026-09-15",

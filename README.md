@@ -679,6 +679,13 @@ Completed in v0.9.28:
 - Removes the duplicate add button from Binder Planner.
 - Verified with 187 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
 
+Completed in v0.9.29:
+
+- Matches the current 4-, 9-, 12-, 12-pocket XL, and 16-pocket XXL Vault X binder formats and capacities.
+- Corrects 12-pocket pages to a four-column by three-row layout and reports when a plan needs multiple binders.
+- Migrates existing binder plans into collection storage so backups, restore previews, and portable exports include them.
+- Verified with 190 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),
