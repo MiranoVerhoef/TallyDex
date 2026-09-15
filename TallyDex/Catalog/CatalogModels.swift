@@ -163,6 +163,7 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     case prerelease
     case prereleaseStaff
     case trickOrTrade
+    case jumbo
 
     var displayName: String {
         switch self {
@@ -174,6 +175,7 @@ enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
         case .prerelease: "Prerelease"
         case .prereleaseStaff: "Prerelease Staff"
         case .trickOrTrade: "Trick or Trade"
+        case .jumbo: "Jumbo"
         }
     }
 }
@@ -205,7 +207,7 @@ struct CatalogPrinting: Codable, Equatable, Hashable, Identifiable, Sendable {
             components.append(Self.title(stamp))
         }
         if let foil, !foil.isEmpty { components.append("\(Self.title(foil)) foil") }
-        if size == "jumbo" { components.append("Jumbo") }
+        if size == "jumbo", kind != .jumbo { components.append("Jumbo") }
         return components.joined(separator: " · ")
     }
 
@@ -1054,6 +1056,142 @@ struct TrickOrTradeRelease: Equatable, Identifiable, Sendable {
                 let index = sets.firstIndex { ($0.releaseDate ?? "9999") < release.releaseDate } ?? sets.endIndex
                 sets.insert(release.set, at: index)
             }
+            return CatalogSeriesGroup(series: group.series, sets: sets)
+        }
+    }
+}
+
+/// Era-level views of the exact oversized printings published by TCGdex.
+/// Cards keep their canonical parent-set identity, so checking a jumbo here is
+/// immediately reflected in the same card's printing picker and vice versa.
+struct JumboPromoRelease: Equatable, Identifiable, Sendable {
+    let seriesID: String
+    let releaseDate: String
+    let jumboPrintingCount: Int
+    let cardIDs: [String]
+
+    var id: String { "tallydex-jumbo-\(seriesID)" }
+    var set: CatalogSet {
+        CatalogSet(
+            id: id,
+            seriesID: seriesID,
+            name: "Jumbo Promos",
+            abbreviation: nil,
+            logoURL: nil,
+            symbolURL: nil,
+            officialCardCount: jumboPrintingCount,
+            totalCardCount: jumboPrintingCount,
+            releaseDate: releaseDate,
+            rarityCounts: nil
+        )
+    }
+
+    /// Snapshot of English cards carrying `size: "jumbo"` in TCGdex's cards
+    /// database. Some cards have multiple distinct jumbo printings, hence 152 exact
+    /// printings across 145 canonical card records.
+    static let all: [JumboPromoRelease] = [
+        .init(seriesID: "me", releaseDate: "2025-09-26", jumboPrintingCount: 1, cardIDs: [
+            "mep-012",
+        ]),
+        .init(seriesID: "sv", releaseDate: "2023-03-31", jumboPrintingCount: 44, cardIDs: [
+            "sv03-125", "sv05-034", "sv05-081", "sv05-123", "sv06-040",
+            "sv06-130", "sv07-001", "sv07-041", "sv07-105", "sv07-128",
+            "sv08-048", "sv08-076", "sv08-130", "sv08.5-051", "sv08.5-076",
+            "sv08.5-082", "sv09-030", "sv09-069", "sv09-075", "sv09-114",
+            "sv10.5b-028", "svp-004", "svp-018", "svp-049", "svp-067",
+            "svp-068", "svp-072", "svp-078", "svp-081", "svp-084",
+            "svp-086", "svp-100", "svp-126", "svp-162", "svp-177",
+            "svp-193", "svp-196", "svp-205", "svp-208", "svp-500",
+        ]),
+        .init(seriesID: "swsh", releaseDate: "2020-02-07", jumboPrintingCount: 73, cardIDs: [
+            "swshp-SWSH001", "swshp-SWSH002", "swshp-SWSH003", "swshp-SWSH005",
+            "swshp-SWSH014", "swshp-SWSH015", "swshp-SWSH016", "swshp-SWSH017",
+            "swshp-SWSH021", "swshp-SWSH030", "swshp-SWSH043", "swshp-SWSH045",
+            "swshp-SWSH049", "swshp-SWSH055", "swshp-SWSH057", "swshp-SWSH061",
+            "swshp-SWSH078", "swshp-SWSH083", "swshp-SWSH084", "swshp-SWSH085",
+            "swshp-SWSH086", "swshp-SWSH097", "swshp-SWSH099", "swshp-SWSH102",
+            "swshp-SWSH103", "swshp-SWSH106", "swshp-SWSH107", "swshp-SWSH111",
+            "swshp-SWSH130", "swshp-SWSH131", "swshp-SWSH132", "swshp-SWSH133",
+            "swshp-SWSH134", "swshp-SWSH136", "swshp-SWSH137", "swshp-SWSH138",
+            "swshp-SWSH139", "swshp-SWSH154", "swshp-SWSH155", "swshp-SWSH159",
+            "swshp-SWSH163", "swshp-SWSH176", "swshp-SWSH180", "swshp-SWSH182",
+            "swshp-SWSH184", "swshp-SWSH195", "swshp-SWSH197", "swshp-SWSH198",
+            "swshp-SWSH214", "swshp-SWSH215", "swshp-SWSH219", "swshp-SWSH225",
+            "swshp-SWSH226", "swshp-SWSH227", "swshp-SWSH228", "swshp-SWSH230",
+            "swshp-SWSH249", "swshp-SWSH252", "swshp-SWSH254", "swshp-SWSH256",
+            "swshp-SWSH265", "swshp-SWSH268", "swshp-SWSH280", "swshp-SWSH281",
+            "swshp-SWSH286", "swshp-SWSH287", "swshp-SWSH292", "swshp-SWSH293",
+            "swshp-SWSH294", "swshp-SWSH295", "swshp-SWSH298", "swshp-SWSH299",
+            "swshp-SWSH301",
+        ]),
+        .init(seriesID: "sm", releaseDate: "2017-02-03", jumboPrintingCount: 1, cardIDs: [
+            "sm3-88",
+        ]),
+        .init(seriesID: "dp", releaseDate: "2007-05-23", jumboPrintingCount: 10, cardIDs: [
+            "dp1-103", "dp1-76", "dp1-93", "dpp-DP24", "dpp-DP26",
+            "dpp-DP27", "dpp-DP40", "dpp-DP50",
+        ]),
+        .init(seriesID: "ex", releaseDate: "2003-06-18", jumboPrintingCount: 6, cardIDs: [
+            "ex1-59", "ex1-74", "ex1-76", "ex1-94", "ex2-93",
+        ]),
+        .init(seriesID: "ecard", releaseDate: "2002-01-01", jumboPrintingCount: 8, cardIDs: [
+            "bog-1", "bog-2", "bog-4", "bog-5", "bog-6", "bog-7", "bog-8", "bog-9",
+        ]),
+        .init(seriesID: "neo", releaseDate: "2000-12-16", jumboPrintingCount: 3, cardIDs: [
+            "neo1-54", "neo1-57", "neo1-81",
+        ]),
+        .init(seriesID: "gym", releaseDate: "2000-08-14", jumboPrintingCount: 2, cardIDs: [
+            "gym1-11", "gym2-14",
+        ]),
+        .init(seriesID: "base", releaseDate: "1999-01-09", jumboPrintingCount: 4, cardIDs: [
+            "base1-44", "base1-46", "base1-58", "base1-63",
+        ]),
+    ]
+
+    static func release(setID: String) -> JumboPromoRelease? {
+        all.first { $0.id == setID }
+    }
+
+    static func contains(cardID: String) -> Bool {
+        all.contains { $0.cardIDs.contains(cardID) }
+    }
+
+    static func printings(cardID: String, providerPrintings: [CatalogPrinting]) -> [CatalogPrinting] {
+        guard contains(cardID: cardID) else { return providerPrintings }
+        return providerPrintings.map { printing in
+            guard printing.size == "jumbo", printing.kind != .jumbo else { return printing }
+            return CatalogPrinting(
+                cardID: printing.cardID,
+                providerID: printing.providerID,
+                rawType: printing.rawType,
+                kind: .jumbo,
+                subtype: printing.subtype,
+                size: printing.size,
+                stamps: printing.stamps,
+                foil: printing.foil,
+                languages: printing.languages,
+                cardmarketProductID: printing.cardmarketProductID,
+                tcgplayerProductID: printing.tcgplayerProductID,
+                cardtraderProductID: printing.cardtraderProductID
+            )
+        }
+    }
+
+    static func adding(to groups: [CatalogSeriesGroup]) -> [CatalogSeriesGroup] {
+        groups.map { group in
+            // The provider's old Miscellaneous/Jumbo cards shell has no card
+            // records. Replace it with one useful checklist in each source era.
+            var sets = group.sets.filter {
+                $0.id != "jumbo" && release(setID: $0.id) == nil
+            }
+            guard let release = all.first(where: { $0.seriesID == group.id }) else {
+                return CatalogSeriesGroup(series: group.series, sets: sets)
+            }
+            let promoIndex = sets.firstIndex {
+                $0.name.localizedCaseInsensitiveContains("Black Star Promo")
+                    || $0.name.localizedCaseInsensitiveContains("Wizards Black Star")
+            }
+            sets.insert(release.set, at: promoIndex.map { $0 + 1 } ?? 0)
             return CatalogSeriesGroup(series: group.series, sets: sets)
         }
     }

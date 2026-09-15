@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.25",
-        headline: "Collections, focused",
+        version: "0.9.26",
+        headline: "Jumbo cards, in their proper eras",
         notes: [
             AppReleaseNote(
-                systemImage: "slider.horizontal.3",
-                title: "One compact Filter sheet",
-                detail: "Narrow a Pokémon collection by type, era, exact set, and rarity. Ownership, release year, and sorting are together in the same sheet."
+                systemImage: "rectangle.portrait.on.rectangle.portrait.angled",
+                title: "Jumbo Promos by era",
+                detail: "Browse one Jumbo Promos checklist inside each supported era, including Mega Evolution, instead of an empty Miscellaneous set."
             ),
             AppReleaseNote(
-                systemImage: "clock.arrow.circlepath",
-                title: "Browse without changing totals",
-                detail: "Apply or cancel your choices, reset to the collection’s default view, and see how many cards are shown. Ownership, species rules, completion, and value totals stay unchanged."
+                systemImage: "checkmark.circle",
+                title: "One shared checkmark",
+                detail: "A jumbo checked in its era checklist is also checked on the original card’s Jumbo printing, and changes made from either place stay in sync."
             ),
             AppReleaseNote(
-                systemImage: "checklist",
-                title: "Honest metadata filters",
-                detail: "Type and rarity choices come from available provider details. Cards without those fields stay visible with All types and All rarities; nothing is guessed from card names."
+                systemImage: "square.stack.3d.up",
+                title: "Exact oversized printings",
+                detail: "Cards with multiple jumbo releases keep separate entries and product identities. Regular-size copies remain separate from their jumbo versions."
             ),
         ]
     )

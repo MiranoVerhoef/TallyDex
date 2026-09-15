@@ -612,6 +612,15 @@ private struct CatalogSetArtwork: View {
             .foregroundStyle(.indigo)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        } else if JumboPromoRelease.release(setID: set.id) != nil {
+            VStack(spacing: 5) {
+                Image(systemName: "rectangle.portrait.on.rectangle.portrait.angled")
+                    .font(.title2)
+                Text("JUMBO").font(.caption2.weight(.heavy))
+            }
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
         } else if set.seriesID == "mc", set.preferredArtworkReference == nil {
             McDonaldsCollectionBadge(year: set.releaseDate.map { String($0.prefix(4)) })
         } else {
@@ -753,6 +762,8 @@ private struct CatalogSetLink: View {
         NavigationLink {
             if let release = TrickOrTradeRelease.release(setID: set.id) {
                 TrickOrTradeChecklistView(release: release)
+            } else if let release = JumboPromoRelease.release(setID: set.id) {
+                JumboPromoChecklistView(release: release)
             } else {
                 CatalogSetDetailView(set: set)
             }
@@ -927,6 +938,172 @@ private struct TrickOrTradeChecklistView: View {
             do {
                 try await collectionStore.setPrintingQuantity(quantity, cardID: card.id, printing: chosen)
             } catch { message = "The stamped printing couldn’t be saved. Please try again." }
+        }
+    }
+}
+
+private struct JumboPromoChecklistEntry: Identifiable {
+    let card: CatalogCard
+    let printing: CatalogPrinting
+
+    var id: String { printing.id }
+}
+
+private struct JumboPromoChecklistView: View {
+    let release: JumboPromoRelease
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var cards: [CatalogCard] = []
+    @State private var printings: [String: [CatalogPrinting]] = [:]
+    @State private var searchText = ""
+    @State private var filter = SetCardFilter.all
+    @State private var isLoading = true
+    @State private var updating: Set<String> = []
+    @State private var message: String?
+    @State private var isEditing = false
+
+    private var entries: [JumboPromoChecklistEntry] {
+        let cardsByID = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
+        return release.cardIDs.flatMap { cardID in
+            guard let card = cardsByID[cardID] else { return [JumboPromoChecklistEntry]() }
+            return (printings[cardID] ?? [])
+                .filter { $0.size == "jumbo" }
+                .sorted { $0.providerID < $1.providerID }
+                .map { JumboPromoChecklistEntry(card: card, printing: $0) }
+        }
+    }
+
+    private func owns(_ entry: JumboPromoChecklistEntry) -> Bool {
+        collectionStore.printingQuantity(
+            cardID: entry.card.id,
+            printingID: entry.printing.providerID
+        ) > 0
+    }
+
+    private var included: Bool {
+        let preference = collectionStore.preference(for: release.id)
+        return preference.goal != .custom || preference.includedVariants.contains(.jumbo)
+    }
+
+    private var visibleEntries: [JumboPromoChecklistEntry] {
+        entries.filter { entry in
+            let card = entry.card
+            let matches = searchText.isEmpty
+                || card.name.localizedCaseInsensitiveContains(searchText)
+                || card.localID.localizedCaseInsensitiveContains(searchText)
+                || card.setID.localizedCaseInsensitiveContains(searchText)
+            return matches && (filter == .all || (filter == .owned ? owns(entry) : !owns(entry)))
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    CardCompletionIndicator(progress: .init(
+                        completedSlots: included ? entries.filter(owns).count : 0,
+                        requiredSlots: included ? release.jumboPrintingCount : 0
+                    ))
+                    Text(included
+                         ? "\(entries.filter(owns).count) of \(release.jumboPrintingCount) jumbo cards"
+                         : "Jumbo is excluded by your custom goal")
+                        .font(.subheadline)
+                    if isLoading { Spacer(); ProgressView().controlSize(.small) }
+                }
+                Picker("Cards", selection: $filter) {
+                    Text("All").tag(SetCardFilter.all)
+                    Text("Owned").tag(SetCardFilter.owned)
+                    Text("Missing").tag(SetCardFilter.missing)
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text("These are oversized box and product cards from this era. Ownership is shared with the same Jumbo printing shown in its original set.")
+            }
+
+            if let message {
+                Text(message).font(.footnote).foregroundStyle(.orange)
+            }
+
+            Section {
+                ForEach(visibleEntries) { entry in
+                    HStack(spacing: 12) {
+                        NavigationLink {
+                            CatalogCardDetailView(card: entry.card)
+                        } label: {
+                            HStack(spacing: 12) {
+                                CachedCardImage(card: entry.card).frame(width: 48, height: 67)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(entry.card.name).font(.subheadline.weight(.semibold))
+                                    Text("\(entry.card.setID.uppercased()) · #\(entry.card.localID)")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    Text(collectorPrintingLabel(
+                                        entry.printing,
+                                        within: (printings[entry.card.id] ?? []).filter { $0.size == "jumbo" }
+                                    ))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        Button { toggle(entry) } label: {
+                            Image(systemName: owns(entry) ? "checkmark.circle.fill" : "circle")
+                                .font(.title2)
+                                .foregroundStyle(owns(entry) ? Color.accentColor : .secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(updating.contains(entry.id))
+                        .accessibilityLabel("\(owns(entry) ? "Remove" : "Own") \(entry.card.name) jumbo printing")
+                    }
+                    .padding(.vertical, 3)
+                }
+            }
+        }
+        .navigationTitle(release.set.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Name, set, or collector number")
+        .toolbar { Button("Goal", systemImage: "slider.horizontal.3") { isEditing = true } }
+        .sheet(isPresented: $isEditing) {
+            CatalogSetCollectionSettingsView(set: release.set).presentationDetents([.medium])
+        }
+        .task { await load() }
+        .refreshable { await load(forceRefresh: true) }
+    }
+
+    private func load(forceRefresh: Bool = false) async {
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            cards = try await catalogStore.cards(for: release.set, forceRefresh: forceRefresh)
+            _ = await catalogStore.prepareVariants(
+                for: cards,
+                forcePriceRefresh: forceRefresh
+            )
+            printings = await catalogStore.cachedPrintings(for: cards)
+            let loadedCount = entries.count
+            if loadedCount < release.jumboPrintingCount {
+                message = "Loaded \(loadedCount) of \(release.jumboPrintingCount) jumbo printings. Pull down to retry the missing details."
+            }
+        } catch {
+            message = "The Jumbo Promos checklist couldn’t load. Check your connection and pull down to retry."
+        }
+    }
+
+    private func toggle(_ entry: JumboPromoChecklistEntry) {
+        updating.insert(entry.id)
+        let quantity = owns(entry) ? 0 : 1
+        Task {
+            defer { updating.remove(entry.id) }
+            do {
+                try await collectionStore.setPrintingQuantity(
+                    quantity,
+                    cardID: entry.card.id,
+                    printing: entry.printing
+                )
+            } catch {
+                message = "The jumbo printing couldn’t be saved. Please try again."
+            }
         }
     }
 }

@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.26",
+          "buildVersion": "62",
+          "date": "2026-09-15",
+          "localizedDescription": "Adds Jumbo Promos as a real checklist inside each supported era instead of an empty Miscellaneous set. The release maps 145 canonical cards to 152 verified jumbo printings across Mega Evolution, Scarlet & Violet, Sword & Shield, Sun & Moon, Diamond & Pearl, EX, E-Card, Neo, Gym, and Base eras. Cards with multiple oversized products keep separate entries. Jumbo ownership uses the exact provider printing identity, so checking a jumbo in its era checklist or on the original card detail stays synchronized in both places while regular-size ownership remains separate. Jumbo is also available to custom goals, filters, backups, and marketplace identifiers. A compact generated badge keeps the set list visually consistent, and What's New explains the feature once after updating.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.26/TallyDex-v0.9.26.ipa",
+          "size": 31983619,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.25",
           "buildVersion": "61",
           "date": "2026-09-14",
