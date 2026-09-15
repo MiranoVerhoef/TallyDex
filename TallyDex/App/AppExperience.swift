@@ -52,23 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.26",
-        headline: "Jumbo cards, in their proper eras",
+        version: "0.9.27",
+        headline: "Plan the binder before filling it",
         notes: [
             AppReleaseNote(
-                systemImage: "rectangle.portrait.on.rectangle.portrait.angled",
-                title: "Jumbo Promos by era",
-                detail: "Browse one Jumbo Promos checklist inside each supported era, including Mega Evolution, instead of an empty Miscellaneous set."
+                systemImage: "square.grid.3x3",
+                title: "Binder Planner",
+                detail: "Open Binder Planner from the top of Collection and turn any Pokémon collection or set into clean, paged pocket layouts."
+            ),
+            AppReleaseNote(
+                systemImage: "rectangle.split.3x3",
+                title: "Nine or twelve pockets",
+                detail: "Choose a 9-pocket or 12-pocket binder, include or hide missing cards, and save multiple plans locally without changing collection ownership."
             ),
             AppReleaseNote(
                 systemImage: "checkmark.circle",
-                title: "One shared checkmark",
-                detail: "A jumbo checked in its era checklist is also checked on the original card’s Jumbo printing, and changes made from either place stay in sync."
-            ),
-            AppReleaseNote(
-                systemImage: "square.stack.3d.up",
-                title: "Exact oversized printings",
-                detail: "Cards with multiple jumbo releases keep separate entries and product identities. Regular-size copies remain separate from their jumbo versions."
+                title: "Goals and artwork stay accurate",
+                detail: "Master and Custom goals receive a pocket for every exact printing. Jumbo Promos now reuse their era’s normal promo artwork in the set list."
             ),
         ]
     )

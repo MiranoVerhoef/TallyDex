@@ -652,6 +652,26 @@ Completed in v0.9.26:
 - Verified with 183 unit tests and eight end-to-end UI tests on the iPhone 18 Pro
   iOS 27.0 simulator.
 
+Completed in v0.9.27:
+
+- Adds Binder Planner as a prominent entry at the top of Collection. Plans can
+  use an existing one- or two-Pokémon collection or any catalogue set without
+  changing ownership or the source collection.
+- Generates clean physical pages for 9-pocket and 12-pocket binders. Missing
+  cards can remain visible as planned spaces or be hidden for an owned-only
+  layout, with page navigation and owned/missing status on every pocket.
+- Follows each set's current Normal, Master, or Custom goal. Master and Custom
+  plans create separate pockets for exact printings when provider metadata is
+  available; legacy broad ownership fills one compatible pocket rather than
+  incorrectly filling every printing.
+- Saves multiple editable plans locally on the device. Plans can be renamed or
+  deleted and are deliberately separate from collection ownership.
+- Jumbo Promos rows now reuse the same bundled or remote logo as the matching
+  normal promo set for their era, keeping those rows consistent with the set list.
+- Updates the one-time What’s New sheet for version 0.9.27.
+- Verified with 186 unit tests and nine end-to-end UI tests on the iPhone 18 Pro
+  iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

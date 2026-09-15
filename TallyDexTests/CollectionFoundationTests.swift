@@ -103,6 +103,72 @@ final class CollectionFoundationTests: XCTestCase {
             category: "Pokémon", illustrator: nil, rarity: rarity, metadata: metadata), setName: "Promos", setReleaseDate: date)
     }
 
+    func testBinderPlansPersistMultipleValidatedLayouts() throws {
+        let suite = "BinderPlanStorageTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date(timeIntervalSince1970: 100)
+        let plans = [
+            BinderPlan(
+                id: UUID(), name: "Lucario Binder", sourceKind: .collection,
+                sourceID: UUID().uuidString, sourceName: "Lucario", pocketLayout: .nine,
+                includesMissingCards: true, createdAt: now, updatedAt: now
+            ),
+            BinderPlan(
+                id: UUID(), name: "Mega Evolution", sourceKind: .set,
+                sourceID: "me01", sourceName: "Mega Evolution", pocketLayout: .twelve,
+                includesMissingCards: false, createdAt: now, updatedAt: now.addingTimeInterval(1)
+            ),
+        ]
+
+        try BinderPlanStorage.save(plans, to: defaults)
+
+        XCTAssertEqual(BinderPlanStorage.load(from: defaults), Array(plans.reversed()))
+        XCTAssertThrowsError(try BinderPlanStorage.save([
+            BinderPlan(
+                id: UUID(), name: "", sourceKind: .set, sourceID: "", sourceName: "",
+                pocketLayout: .nine, includesMissingCards: true,
+                createdAt: now, updatedAt: now
+            ),
+        ], to: defaults)) { error in
+            XCTAssertEqual(error as? CollectionRepositoryError, .invalidBinderPlan)
+        }
+    }
+
+    func testBinderLayoutCreatesExactGoalSlotsAndUsesOneBroadFallback() {
+        let cardID = "test-001"
+        let card = CatalogCard(
+            id: cardID, setID: "test", localID: "001", name: "Lucario",
+            imageURL: nil, category: "Pokémon", illustrator: nil, rarity: nil
+        )
+        let set = CatalogSet(
+            id: "test", seriesID: "test", name: "Test", abbreviation: nil,
+            logoURL: nil, symbolURL: nil, officialCardCount: 1, totalCardCount: 1,
+            releaseDate: nil, rarityCounts: nil
+        )
+        let normalOne = printing(cardID: cardID, id: "normal-one", kind: .normal)
+        let normalTwo = printing(cardID: cardID, id: "normal-two", kind: .normal)
+        let reverse = printing(cardID: cardID, id: "reverse", kind: .reverseHolo)
+        let slots = BinderPlanLayoutBuilder.slots(
+            cards: [card],
+            set: set,
+            preference: preference(setID: set.id, goal: .master),
+            availableVariants: [cardID: [.normal, .reverseHolo]],
+            availablePrintings: [cardID: [normalOne, normalTwo, reverse]],
+            broadOwnedEntries: [
+                .init(cardID: cardID, variant: .normal, quantity: 1, updatedAt: .now),
+            ],
+            exactOwnedEntries: [
+                .init(cardID: cardID, printingID: reverse.providerID, variant: .reverseHolo, quantity: 1, updatedAt: .now),
+            ]
+        )
+
+        XCTAssertEqual(slots.count, 3)
+        XCTAssertEqual(slots.filter(\.isOwned).count, 2)
+        XCTAssertEqual(slots.filter { $0.variant == .normal && $0.isOwned }.count, 1)
+        XCTAssertEqual(slots.first { $0.printingID == reverse.providerID }?.isOwned, true)
+    }
+
     @MainActor
     func testSharedCanonicalPrintingsSurviveDiskRestartMergeReplaceAndRollback() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

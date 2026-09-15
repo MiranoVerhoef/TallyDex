@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.27",
+          "buildVersion": "63",
+          "date": "2026-09-15",
+          "localizedDescription": "Adds Binder Planner at the top of Collection. Create and save multiple local plans from any Pokémon collection or catalogue set, choose 9-pocket or 12-pocket pages, and include missing cards as planned spaces or show owned cards only. Plans follow each set's current Normal, Master, or Custom goal; exact printings receive separate pockets when provider metadata is available, while one legacy broad ownership entry fills only one compatible pocket. Binder plans never change card ownership or collection membership. Jumbo Promos rows now reuse the matching normal promo artwork for their era. Updated What's New explains the release once after updating.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.27/TallyDex-v0.9.27.ipa",
+          "size": 32128520,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.26",
           "buildVersion": "62",
           "date": "2026-09-15",
