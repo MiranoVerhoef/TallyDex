@@ -769,6 +769,24 @@ enum BinderPlanSourceKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
+enum BinderCardOrder: String, Codable, CaseIterable, Identifiable, Sendable {
+    case setRelease
+    case newestRelease
+    case pokemonName
+    case pokedexNumber
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .setRelease: "Set release order"
+        case .newestRelease: "Release year · newest first"
+        case .pokemonName: "Pokémon name · A–Z"
+        case .pokedexNumber: "Pokédex number"
+        }
+    }
+}
+
 struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let name: String
@@ -777,14 +795,88 @@ struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
     let sourceName: String
     let pocketLayout: BinderPocketLayout
     let includesMissingCards: Bool
+    let cardOrder: BinderCardOrder?
     let createdAt: Date
     let updatedAt: Date
+
+    var effectiveCardOrder: BinderCardOrder { cardOrder ?? .setRelease }
+
+    init(
+        id: UUID,
+        name: String,
+        sourceKind: BinderPlanSourceKind,
+        sourceID: String,
+        sourceName: String,
+        pocketLayout: BinderPocketLayout,
+        includesMissingCards: Bool,
+        cardOrder: BinderCardOrder = .setRelease,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.sourceKind = sourceKind
+        self.sourceID = sourceID
+        self.sourceName = sourceName
+        self.pocketLayout = pocketLayout
+        self.includesMissingCards = includesMissingCards
+        self.cardOrder = cardOrder
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
 
     var isValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !sourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !sourceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && (sourceKind != .collection || UUID(uuidString: sourceID) != nil)
+    }
+}
+
+enum BinderPlanOrdering {
+    static func sorted(
+        _ results: [CatalogCardSearchResult],
+        by order: BinderCardOrder
+    ) -> [CatalogCardSearchResult] {
+        results.sorted { left, right in
+            switch order {
+            case .setRelease:
+                return releaseOrder(left, right, newestFirst: false)
+            case .newestRelease:
+                return releaseOrder(left, right, newestFirst: true)
+            case .pokemonName:
+                let name = left.card.name.localizedCaseInsensitiveCompare(right.card.name)
+                if name != .orderedSame { return name == .orderedAscending }
+                return releaseOrder(left, right, newestFirst: false)
+            case .pokedexNumber:
+                let leftDex = left.card.metadata?.dexIDs.first(where: { $0 > 0 }) ?? .max
+                let rightDex = right.card.metadata?.dexIDs.first(where: { $0 > 0 }) ?? .max
+                if leftDex != rightDex { return leftDex < rightDex }
+                let name = left.card.name.localizedCaseInsensitiveCompare(right.card.name)
+                if name != .orderedSame { return name == .orderedAscending }
+                return releaseOrder(left, right, newestFirst: false)
+            }
+        }
+    }
+
+    private static func releaseOrder(
+        _ left: CatalogCardSearchResult,
+        _ right: CatalogCardSearchResult,
+        newestFirst: Bool
+    ) -> Bool {
+        if left.setReleaseDate != right.setReleaseDate {
+            switch (left.setReleaseDate, right.setReleaseDate) {
+            case let (leftDate?, rightDate?): return newestFirst ? leftDate > rightDate : leftDate < rightDate
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): break
+            }
+        }
+        let setName = left.setName.localizedCaseInsensitiveCompare(right.setName)
+        if setName != .orderedSame { return setName == .orderedAscending }
+        let localID = left.card.localID.localizedStandardCompare(right.card.localID)
+        if localID != .orderedSame { return localID == .orderedAscending }
+        return left.card.id < right.card.id
     }
 }
 
