@@ -181,18 +181,20 @@ final class CatalogStore {
 
     func cards(for set: CatalogSet, forceRefresh: Bool = false) async throws -> [CatalogCard] {
         let repository = try resolveRepository()
-        if let release = TrickOrTradeRelease.release(setID: set.id) {
+        let supplementalCardIDs = TrickOrTradeRelease.release(setID: set.id)?.cardIDs
+            ?? JumboPromoRelease.release(setID: set.id)?.cardIDs
+        if let supplementalCardIDs {
             if forceRefresh { await refreshSearchIndex(in: repository) }
-            var indexed = try await repository.fetchSearchResults(cardIDs: release.cardIDs)
+            var indexed = try await repository.fetchSearchResults(cardIDs: supplementalCardIDs)
             let found = Set(indexed.map(\.id))
-            for id in release.cardIDs where !found.contains(id) {
+            for id in supplementalCardIDs where !found.contains(id) {
                 let snapshot = try await provider.fetchCard(id: id)
                 guard snapshot.card.id == id else { throw TCGdexError.invalidResponse }
                 try await repository.replaceCard(snapshot)
                 indexed.append(CatalogCardSearchResult(card: snapshot.card, setName: set.name))
             }
             let byID = Dictionary(uniqueKeysWithValues: indexed.map { ($0.id, $0.card) })
-            return release.cardIDs.compactMap { byID[$0] }
+            return supplementalCardIDs.compactMap { byID[$0] }
         }
         let cachedCards = try await repository.fetchCards(setID: set.id)
         let refreshKey = setRefreshKey(set.id)
@@ -220,7 +222,8 @@ final class CatalogStore {
         let cards = try await cards(for: set, forceRefresh: true)
         guard !cards.isEmpty else { return cards }
         _ = await prepareVariants(for: cards)
-        if TrickOrTradeRelease.release(setID: set.id) != nil {
+        if TrickOrTradeRelease.release(setID: set.id) != nil
+            || JumboPromoRelease.release(setID: set.id) != nil {
             return try await cardsForChecklist(cardIDs: cards.map(\.id))
         }
         return try await resolveRepository().fetchCards(setID: set.id)
@@ -323,6 +326,9 @@ final class CatalogStore {
         for id in cardIDs where TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(id) }) {
             result[id, default: []].insert(.trickOrTrade)
         }
+        for id in cardIDs where JumboPromoRelease.contains(cardID: id) {
+            result[id, default: []].insert(.jumbo)
+        }
         return result
     }
 
@@ -421,6 +427,9 @@ final class CatalogStore {
         for card in cards where TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(card.id) }) {
             cached[card.id, default: []].insert(.trickOrTrade)
         }
+        for card in cards where JumboPromoRelease.contains(cardID: card.id) {
+            cached[card.id, default: []].insert(.jumbo)
+        }
         return cached
     }
 
@@ -432,7 +441,13 @@ final class CatalogStore {
         result.reserveCapacity(cards.count)
         for card in cards {
             let printings = (try? await repository.fetchPrintings(cardID: card.id)) ?? []
-            result[card.id] = TrickOrTradeRelease.printings(cardID: card.id, providerPrintings: printings)
+            result[card.id] = JumboPromoRelease.printings(
+                cardID: card.id,
+                providerPrintings: TrickOrTradeRelease.printings(
+                    cardID: card.id,
+                    providerPrintings: printings
+                )
+            )
         }
         return result
     }
@@ -500,11 +515,25 @@ final class CatalogStore {
         let variants = try await repository.fetchVariants(cardID: card.id)
         let printings = try await repository.fetchPrintings(cardID: card.id)
         let pricesByCardID = try await repository.fetchPrices(cardIDs: [card.id])
+        var enrichedVariants = variants.union(
+            TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(card.id) })
+                ? [.trickOrTrade]
+                : []
+        )
+        if JumboPromoRelease.contains(cardID: card.id) {
+            enrichedVariants.insert(.jumbo)
+        }
         return CatalogCardSnapshot(
             card: cachedCard,
-            variants: variants.union(TrickOrTradeRelease.all.contains(where: { $0.cardIDs.contains(card.id) }) ? [.trickOrTrade] : []),
+            variants: enrichedVariants,
             prices: pricesByCardID[card.id] ?? [],
-            printings: TrickOrTradeRelease.printings(cardID: card.id, providerPrintings: printings)
+            printings: JumboPromoRelease.printings(
+                cardID: card.id,
+                providerPrintings: TrickOrTradeRelease.printings(
+                    cardID: card.id,
+                    providerPrintings: printings
+                )
+            )
         )
     }
 
@@ -564,7 +593,9 @@ final class CatalogStore {
             }
             .sorted { ($0.releaseDate ?? "") > ($1.releaseDate ?? "") }
         let sets = announcedSets + cachedSets
-        groups = TrickOrTradeRelease.adding(to: CatalogSeriesGrouping.groups(series: series, sets: sets))
+        groups = JumboPromoRelease.adding(to: TrickOrTradeRelease.adding(
+            to: CatalogSeriesGrouping.groups(series: series, sets: sets)
+        ))
     }
 
     /// Rechecks announced and recently released sets more frequently than the

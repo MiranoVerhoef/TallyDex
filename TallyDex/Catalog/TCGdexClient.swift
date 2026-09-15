@@ -815,7 +815,7 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
         case .normal: normal
         case .reverseHolo: reverseHolofoil
         case .holo: holofoil
-        case .firstEdition, .watermarkedPromo, .prerelease, .prereleaseStaff, .trickOrTrade: nil
+        case .firstEdition, .watermarkedPromo, .prerelease, .prereleaseStaff, .trickOrTrade, .jumbo: nil
         }
         guard let updatedAt = tcgdexDate(updated),
               let amount = market?.marketPrice,
@@ -882,6 +882,7 @@ private struct DetailedVariantDTO: Decodable, Sendable {
     }
 
     var primaryKind: CatalogVariantKind? {
+        if size == "jumbo" { return .jumbo }
         if stamp?.contains("staff") == true { return .prereleaseStaff }
         if stamp?.contains("pre-release") == true { return .prerelease }
         if stamp?.contains("w-promo") == true { return .watermarkedPromo }
@@ -916,6 +917,10 @@ private struct DetailedVariantDTO: Decodable, Sendable {
 
     var availableKinds: Set<CatalogVariantKind> {
         var kinds = Set<CatalogVariantKind>()
+        if size == "jumbo" {
+            kinds.insert(.jumbo)
+            return kinds
+        }
         switch type {
         case "normal": kinds.insert(.normal)
         case "reverse": kinds.insert(.reverseHolo)

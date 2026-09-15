@@ -67,6 +67,50 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(TrickOrTradeRelease.printings(cardID: holo.cardID, providerPrintings: result), result)
     }
 
+    func testJumboPromosAreSplitByEraAndReplaceEmptyMiscellaneousShell() throws {
+        XCTAssertEqual(JumboPromoRelease.all.map(\.seriesID), [
+            "me", "sv", "swsh", "sm", "dp", "ex", "ecard", "neo", "gym", "base",
+        ])
+        XCTAssertEqual(JumboPromoRelease.all.flatMap(\.cardIDs).count, 145)
+        XCTAssertEqual(Set(JumboPromoRelease.all.flatMap(\.cardIDs)).count, 145)
+        XCTAssertEqual(JumboPromoRelease.all.map(\.jumboPrintingCount).reduce(0, +), 152)
+
+        let oldShell = set(id: "jumbo", seriesID: "misc", name: "Jumbo cards")
+        let groups = [
+            CatalogSeriesGroup(
+                series: .init(id: "me", name: "Mega Evolution", logoURL: nil),
+                sets: [set(id: "mep", seriesID: "me", name: "MEP Black Star Promos")]
+            ),
+            CatalogSeriesGroup(
+                series: .init(id: "misc", name: "Miscellaneous", logoURL: nil),
+                sets: [oldShell]
+            ),
+        ]
+        let added = JumboPromoRelease.adding(to: groups)
+        XCTAssertEqual(added[0].sets.map(\.id), ["mep", "tallydex-jumbo-me"])
+        XCTAssertTrue(added.flatMap(\.sets).allSatisfy { $0.id != "jumbo" })
+        XCTAssertEqual(JumboPromoRelease.adding(to: added), added)
+    }
+
+    func testJumboPrintingKeepsProviderIdentityForSharedOwnership() throws {
+        let original = CatalogPrinting(
+            cardID: "mep-012", providerID: "provider-jumbo", rawType: "holo",
+            kind: .holo, subtype: nil, size: "jumbo", stamps: [], foil: nil,
+            languages: ["en"], cardmarketProductID: 858147,
+            tcgplayerProductID: 663178, cardtraderProductID: nil
+        )
+        let normalized = try XCTUnwrap(
+            JumboPromoRelease.printings(
+                cardID: original.cardID,
+                providerPrintings: [original]
+            ).first
+        )
+        XCTAssertEqual(normalized.providerID, original.providerID)
+        XCTAssertEqual(normalized.kind, .jumbo)
+        XCTAssertEqual(normalized.displayName, "Jumbo")
+        XCTAssertEqual(normalized.cardmarketProductID, original.cardmarketProductID)
+    }
+
     @MainActor
     func testTrickOrTradeUsesCanonicalIndexWithoutCreatingDuplicateCardsOrSets() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
@@ -724,6 +768,37 @@ final class CatalogFoundationTests: XCTestCase {
         let snapshot = try await client.fetchCard(id: "me04-001")
 
         XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
+    }
+
+    func testTCGdexDecodesJumboAsAnExactSharedPrinting() async throws {
+        let response = #"""
+        {
+          "id": "mep-012",
+          "localId": "012",
+          "name": "Mega Lucario ex",
+          "set": { "id": "mep" },
+          "variants": { "holo": true },
+          "variants_detailed": [
+            { "type": "holo", "size": "standard", "variantId": "standard" },
+            { "type": "holo", "size": "jumbo", "variantId": "provider-jumbo",
+              "thirdParty": { "cardmarket": 858147, "tcgplayer": 663178 } }
+          ]
+        }
+        """#
+        let client = TCGdexClient(
+            httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]),
+            retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero)
+        )
+
+        let snapshot = try await client.fetchCard(id: "mep-012")
+
+        XCTAssertEqual(snapshot.variants, [.holo, .jumbo])
+        let jumbo = try XCTUnwrap(snapshot.printings.first { $0.size == "jumbo" })
+        XCTAssertEqual(jumbo.providerID, "provider-jumbo")
+        XCTAssertEqual(jumbo.kind, .jumbo)
+        XCTAssertEqual(jumbo.displayName, "Jumbo")
     }
 
     func testVariantOverridesFillKnownTCGdexGaps() {

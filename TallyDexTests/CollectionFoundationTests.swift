@@ -229,6 +229,35 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(store.ownedCardIDs, [cardID])
     }
 
+    @MainActor
+    func testJumboChecklistAndParentCardShareExactOwnership() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let store = CollectionStore(repository: repository)
+        await store.start()
+        let cardID = "mep-012"
+        let jumbo = CatalogPrinting(
+            cardID: cardID, providerID: "provider-jumbo", rawType: "holo",
+            kind: .jumbo, subtype: nil, size: "jumbo", stamps: [], foil: nil,
+            languages: ["en"], cardmarketProductID: 858147,
+            tcgplayerProductID: 663178, cardtraderProductID: nil
+        )
+        let regular = CatalogPrinting(
+            cardID: cardID, providerID: "provider-standard", rawType: "holo",
+            kind: .holo, subtype: nil, size: "standard", stamps: [], foil: nil,
+            languages: ["en"], cardmarketProductID: 858146,
+            tcgplayerProductID: 663177, cardtraderProductID: nil
+        )
+
+        try await store.setPrintingQuantity(1, cardID: cardID, printing: jumbo)
+        XCTAssertEqual(store.printingQuantity(cardID: cardID, printingID: jumbo.providerID), 1)
+        XCTAssertEqual(store.printingQuantity(cardID: cardID, printingID: regular.providerID), 0)
+        XCTAssertEqual(store.quantity(cardID: cardID, variant: .jumbo), 1)
+        XCTAssertEqual(store.quantity(cardID: cardID, variant: .holo), 0)
+
+        try await store.setPrintingQuantity(0, cardID: cardID, printing: jumbo)
+        XCTAssertEqual(store.printingQuantity(cardID: cardID, printingID: jumbo.providerID), 0)
+    }
+
     func testExactPrintingProgressRecognizesStableIdentityWhenKindMetadataChanges() throws {
         let release = TrickOrTradeRelease.all[2]
         let id = "sv03-130"

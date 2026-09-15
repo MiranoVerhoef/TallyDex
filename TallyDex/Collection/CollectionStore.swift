@@ -55,6 +55,13 @@ final class CollectionStore {
             setID: setID,
             goal: CollectionSettings.preferredDefaultGoal
         )
+        if JumboPromoRelease.release(setID: setID) != nil {
+            return SetCollectionPreference(
+                setID: setID, status: fallback.status, goal: fallback.goal,
+                includedVariants: [.jumbo], includesSecretCards: true,
+                updatedAt: fallback.updatedAt
+            )
+        }
         guard TrickOrTradeRelease.release(setID: setID) != nil else { return fallback }
         return SetCollectionPreference(
             setID: setID, status: fallback.status, goal: fallback.goal,

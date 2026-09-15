@@ -9,8 +9,8 @@ collection-counting card index.
 ## Requirements
 
 - macOS 26.2 or later
-- Xcode 26.6
-- iOS 26.5 Simulator runtime
+- Xcode 27.0
+- iOS 27.0 Simulator runtime
 
 ## Build
 
@@ -18,7 +18,7 @@ collection-counting card index.
 xcodebuild \
   -project TallyDex.xcodeproj \
   -scheme TallyDex \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
   -derivedDataPath .build/DerivedData \
   build
 ```
@@ -29,7 +29,7 @@ xcodebuild \
 xcodebuild \
   -project TallyDex.xcodeproj \
   -scheme TallyDex \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
   -derivedDataPath .build/DerivedData \
   -parallel-testing-enabled NO \
   test
@@ -633,6 +633,24 @@ Completed in v0.9.25:
 - Selecting an era narrows the set choices and clears an incompatible selected
   set. Existing one-/two-Pokémon species matching, exact-printing checkmarks,
   settings, card-detail collapse defaults, and collection membership are unchanged.
+
+Completed in v0.9.26:
+
+- Replaces TCGdex's empty Miscellaneous “Jumbo cards” shell with era-level
+  “Jumbo Promos” checklists. Mega Evolution, Scarlet & Violet, Sword & Shield,
+  and every older era with verified jumbo metadata get their own row.
+- Uses 145 canonical card records and 152 exact oversized printings from the
+  live English TCGdex data. Cards with two distinct jumbo products keep two
+  independently trackable entries rather than being collapsed by card number.
+- The era checklist and original card detail share the same provider printing
+  identity. Checking or removing a jumbo in either view immediately applies to
+  both, while regular-size ownership remains separate.
+- Adds Jumbo as a first-class printing type for custom goals, filters, exact
+  ownership, backups, and marketplace identifiers. A compact generated badge
+  keeps the set list visually consistent without adding another bundled image.
+- Updates the one-time What’s New sheet for version 0.9.26.
+- Verified with 183 unit tests and eight end-to-end UI tests on the iPhone 18 Pro
+  iOS 27.0 simulator.
 
 Supplemental cover sources:
 
