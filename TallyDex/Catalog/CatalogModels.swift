@@ -1071,13 +1071,32 @@ struct JumboPromoRelease: Equatable, Identifiable, Sendable {
     let cardIDs: [String]
 
     var id: String { "tallydex-jumbo-\(seriesID)" }
+    /// Existing promo artwork reused by the virtual checklist. EX-era jumbo
+    /// products use the Nintendo promos mark; the older Wizards eras share the
+    /// Wizards Black Star Promos mark.
+    var artworkSetID: String {
+        switch seriesID {
+        case "me": "mep"
+        case "sv": "svp"
+        case "swsh": "swshp"
+        case "sm": "smp"
+        case "dp": "dpp"
+        case "ex": "np"
+        default: "basep"
+        }
+    }
+
     var set: CatalogSet {
+        catalogSet(copyingArtworkFrom: nil)
+    }
+
+    func catalogSet(copyingArtworkFrom artworkSet: CatalogSet?) -> CatalogSet {
         CatalogSet(
             id: id,
             seriesID: seriesID,
             name: "Jumbo Promos",
             abbreviation: nil,
-            logoURL: nil,
+            logoURL: artworkSet?.logoURL,
             symbolURL: nil,
             officialCardCount: jumboPrintingCount,
             totalCardCount: jumboPrintingCount,
@@ -1178,7 +1197,11 @@ struct JumboPromoRelease: Equatable, Identifiable, Sendable {
     }
 
     static func adding(to groups: [CatalogSeriesGroup]) -> [CatalogSeriesGroup] {
-        groups.map { group in
+        let artworkSetsByID = Dictionary(
+            groups.flatMap(\.sets).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return groups.map { group in
             // The provider's old Miscellaneous/Jumbo cards shell has no card
             // records. Replace it with one useful checklist in each source era.
             var sets = group.sets.filter {
@@ -1191,7 +1214,8 @@ struct JumboPromoRelease: Equatable, Identifiable, Sendable {
                 $0.name.localizedCaseInsensitiveContains("Black Star Promo")
                     || $0.name.localizedCaseInsensitiveContains("Wizards Black Star")
             }
-            sets.insert(release.set, at: promoIndex.map { $0 + 1 } ?? 0)
+            let jumboSet = release.catalogSet(copyingArtworkFrom: artworkSetsByID[release.artworkSetID])
+            sets.insert(jumboSet, at: promoIndex.map { $0 + 1 } ?? 0)
             return CatalogSeriesGroup(series: group.series, sets: sets)
         }
     }
