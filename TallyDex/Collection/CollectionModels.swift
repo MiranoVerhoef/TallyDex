@@ -747,6 +747,178 @@ enum CollectionFolderIcon: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum BinderPocketLayout: Int, Codable, CaseIterable, Identifiable, Sendable {
+    case nine = 9
+    case twelve = 12
+
+    var id: Int { rawValue }
+    var displayName: String { "\(rawValue)-pocket" }
+    var rows: Int { self == .nine ? 3 : 4 }
+    var columns: Int { 3 }
+}
+
+enum BinderPlanSourceKind: String, Codable, CaseIterable, Sendable {
+    case collection
+    case set
+
+    var displayName: String {
+        switch self {
+        case .collection: "Collection"
+        case .set: "Set"
+        }
+    }
+}
+
+struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
+    let id: UUID
+    let name: String
+    let sourceKind: BinderPlanSourceKind
+    let sourceID: String
+    let sourceName: String
+    let pocketLayout: BinderPocketLayout
+    let includesMissingCards: Bool
+    let createdAt: Date
+    let updatedAt: Date
+
+    var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !sourceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !sourceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (sourceKind != .collection || UUID(uuidString: sourceID) != nil)
+    }
+}
+
+enum BinderPlanStorage {
+    static let key = "binderPlanner.plans.v1"
+
+    static func load(from defaults: UserDefaults = .standard) -> [BinderPlan] {
+        guard let data = defaults.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([BinderPlan].self, from: data) else {
+            return []
+        }
+        var seen = Set<UUID>()
+        return decoded
+            .filter { $0.isValid && seen.insert($0.id).inserted }
+            .sorted { left, right in
+                if left.updatedAt == right.updatedAt { return left.name < right.name }
+                return left.updatedAt > right.updatedAt
+            }
+    }
+
+    static func save(_ plans: [BinderPlan], to defaults: UserDefaults = .standard) throws {
+        guard plans.allSatisfy(\.isValid), Set(plans.map(\.id)).count == plans.count else {
+            throw CollectionRepositoryError.invalidBinderPlan
+        }
+        defaults.set(try JSONEncoder().encode(plans), forKey: key)
+    }
+}
+
+struct BinderPlanSlotDefinition: Equatable, Identifiable, Sendable {
+    let cardID: String
+    let printingID: String?
+    let variant: CatalogVariantKind?
+    let label: String?
+    let isOwned: Bool
+
+    var id: String {
+        if let printingID { return "\(cardID)|printing|\(printingID)" }
+        if let variant { return "\(cardID)|variant|\(variant.rawValue)" }
+        return "\(cardID)|normal-goal"
+    }
+}
+
+enum BinderPlanLayoutBuilder {
+    static func slots(
+        cards: [CatalogCard],
+        set: CatalogSet,
+        preference: SetCollectionPreference,
+        availableVariants: [String: Set<CatalogVariantKind>],
+        availablePrintings: [String: [CatalogPrinting]],
+        broadOwnedEntries: [CollectionVariantEntry],
+        exactOwnedEntries: [CollectionPrintingEntry]
+    ) -> [BinderPlanSlotDefinition] {
+        let broadByCardID = Dictionary(
+            grouping: broadOwnedEntries.filter { $0.quantity > 0 },
+            by: \.cardID
+        )
+        let exactByCardID = Dictionary(
+            grouping: exactOwnedEntries.filter { $0.quantity > 0 },
+            by: \.cardID
+        )
+        var slots: [BinderPlanSlotDefinition] = []
+
+        for card in cards where CollectionProgressCalculator.includes(
+            card: card, set: set, preference: preference
+        ) {
+            let broad = broadByCardID[card.id] ?? []
+            let exact = exactByCardID[card.id] ?? []
+            let knownVariants = availableVariants[card.id] ?? []
+            let supplementalVariant: CatalogVariantKind? = if JumboPromoRelease.release(setID: set.id) != nil {
+                .jumbo
+            } else if TrickOrTradeRelease.release(setID: set.id) != nil {
+                .trickOrTrade
+            } else {
+                nil
+            }
+
+            if preference.goal == .normal, supplementalVariant == nil {
+                slots.append(BinderPlanSlotDefinition(
+                    cardID: card.id,
+                    printingID: nil,
+                    variant: nil,
+                    label: nil,
+                    isOwned: broad.contains { $0.quantity > 0 } || exact.contains { $0.quantity > 0 }
+                ))
+                continue
+            }
+
+            let requiredVariants: Set<CatalogVariantKind>
+            if let supplementalVariant {
+                requiredVariants = [supplementalVariant]
+            } else if knownVariants.isEmpty {
+                requiredVariants = switch preference.goal {
+                case .normal, .master: [.normal]
+                case .custom: preference.includedVariants.contains(.normal) ? [.normal] : []
+                }
+            } else {
+                requiredVariants = preference.visibleVariants(in: knownVariants)
+            }
+
+            for variant in CatalogVariantKind.allCases where requiredVariants.contains(variant) {
+                let exactOptions = (availablePrintings[card.id] ?? [])
+                    .filter { $0.kind == variant }
+                    .sorted { $0.providerID < $1.providerID }
+                guard !exactOptions.isEmpty else {
+                    slots.append(BinderPlanSlotDefinition(
+                        cardID: card.id,
+                        printingID: nil,
+                        variant: variant,
+                        label: variant.displayName,
+                        isOwned: broad.contains { $0.variant == variant }
+                            || exact.contains { $0.variant == variant }
+                    ))
+                    continue
+                }
+
+                var broadFallbacks = broad.contains { $0.variant == variant } ? 1 : 0
+                for printing in exactOptions {
+                    let hasExactCopy = exact.contains { $0.printingID == printing.providerID }
+                    let usesFallback = !hasExactCopy && broadFallbacks > 0
+                    if usesFallback { broadFallbacks -= 1 }
+                    slots.append(BinderPlanSlotDefinition(
+                        cardID: card.id,
+                        printingID: printing.providerID,
+                        variant: variant,
+                        label: printing.displayName,
+                        isOwned: hasExactCopy || usesFallback
+                    ))
+                }
+            }
+        }
+        return slots
+    }
+}
+
 struct CollectionBackup: Equatable, Identifiable, Sendable {
     let id: UUID
     let createdAt: Date
@@ -811,6 +983,7 @@ protocol CollectionRepository: Sendable {
 enum CollectionRepositoryError: Error, Equatable {
     case invalidQuantity
     case invalidCustomFolder
+    case invalidBinderPlan
     case invalidBackup
     case invalidImport
     case importTooLarge(maximumByteCount: Int)

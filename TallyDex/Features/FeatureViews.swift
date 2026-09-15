@@ -4145,6 +4145,532 @@ struct SearchView: View {
     }
 }
 
+private struct BinderPlanEditorRequest: Identifiable {
+    let id = UUID()
+    let plan: BinderPlan?
+}
+
+private struct BinderSetChoice: Identifiable {
+    let catalogSet: CatalogSet
+    let seriesName: String
+    var id: String { catalogSet.id }
+}
+
+private struct BinderPlannerView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var plans = BinderPlanStorage.load()
+    @State private var editorRequest: BinderPlanEditorRequest?
+    @State private var deletingPlan: BinderPlan?
+    @State private var message: String?
+
+    var body: some View {
+        List {
+            Section {
+                Button {
+                    editorRequest = BinderPlanEditorRequest(plan: nil)
+                } label: {
+                    Label("Create binder plan", systemImage: "plus.circle.fill")
+                }
+            } footer: {
+                Text("Build automatic pages from a set or Pokémon collection. Plans are stored locally and never change card ownership.")
+            }
+
+            Section("Saved plans") {
+                if plans.isEmpty {
+                    ContentUnavailableView(
+                        "No Binder Plans",
+                        systemImage: "square.grid.3x3",
+                        description: Text("Choose a collection or set and TallyDex will arrange its required cards into pages.")
+                    )
+                } else {
+                    ForEach(plans) { plan in
+                        NavigationLink {
+                            BinderPlanDetailView(plan: plan)
+                        } label: {
+                            BinderPlanRow(plan: plan)
+                        }
+                        .contextMenu {
+                            Button("Edit", systemImage: "pencil") {
+                                editorRequest = BinderPlanEditorRequest(plan: plan)
+                            }
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                deletingPlan = plan
+                            }
+                        }
+                        .swipeActions {
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                deletingPlan = plan
+                            }
+                            Button("Edit", systemImage: "pencil") {
+                                editorRequest = BinderPlanEditorRequest(plan: plan)
+                            }
+                            .tint(.blue)
+                        }
+                    }
+                }
+            }
+
+            if let message {
+                Section { Text(message).foregroundStyle(.orange) }
+            }
+        }
+        .navigationTitle("Binder Planner")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            Button("New plan", systemImage: "plus") {
+                editorRequest = BinderPlanEditorRequest(plan: nil)
+            }
+        }
+        .sheet(item: $editorRequest) { request in
+            BinderPlanEditorView(
+                plan: request.plan,
+                folders: collectionStore.customFolders,
+                groups: catalogStore.groups
+            ) { save($0) }
+        }
+        .confirmationDialog(
+            "Delete \(deletingPlan?.name ?? "this binder plan")?",
+            isPresented: Binding(
+                get: { deletingPlan != nil },
+                set: { if !$0 { deletingPlan = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Plan", role: .destructive) {
+                guard let plan = deletingPlan else { return }
+                let updated = plans.filter { $0.id != plan.id }
+                do {
+                    try BinderPlanStorage.save(updated)
+                    plans = BinderPlanStorage.load()
+                } catch {
+                    message = "The binder plan couldn’t be deleted."
+                }
+                deletingPlan = nil
+            }
+            Button("Cancel", role: .cancel) { deletingPlan = nil }
+        } message: {
+            Text("Only the saved layout will be deleted. Your cards and collections stay unchanged.")
+        }
+    }
+
+    private func save(_ plan: BinderPlan) {
+        var updated = plans.filter { $0.id != plan.id }
+        updated.append(plan)
+        do {
+            try BinderPlanStorage.save(updated)
+            plans = BinderPlanStorage.load()
+            message = nil
+            editorRequest = nil
+        } catch {
+            message = "The binder plan couldn’t be saved."
+        }
+    }
+}
+
+private struct BinderPlanRow: View {
+    let plan: BinderPlan
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "square.grid.3x3.fill")
+                .font(.title2)
+                .foregroundStyle(.indigo)
+                .frame(width: 44, height: 50)
+                .background(.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(plan.name).font(.body.weight(.semibold))
+                Text("\(plan.sourceName) · \(plan.pocketLayout.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(plan.includesMissingCards ? "Owned and missing" : "Owned cards only")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct BinderPlanEditorView: View {
+    let plan: BinderPlan?
+    let folders: [CustomCollectionFolder]
+    let groups: [CatalogSeriesGroup]
+    let onSave: (BinderPlan) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var sourceKind: BinderPlanSourceKind
+    @State private var selectedCollectionID: UUID?
+    @State private var selectedSetID: String?
+    @State private var pocketLayout: BinderPocketLayout
+    @State private var includesMissingCards: Bool
+
+    private var setChoices: [BinderSetChoice] {
+        groups.flatMap { group in
+            group.sets.map { BinderSetChoice(catalogSet: $0, seriesName: group.series.name) }
+        }
+    }
+
+    private var selectedSource: (id: String, name: String)? {
+        switch sourceKind {
+        case .collection:
+            guard let selectedCollectionID,
+                  let folder = folders.first(where: { $0.id == selectedCollectionID }) else { return nil }
+            return (folder.id.uuidString, folder.name)
+        case .set:
+            guard let selectedSetID,
+                  let choice = setChoices.first(where: { $0.id == selectedSetID }) else { return nil }
+            return (choice.catalogSet.id, choice.catalogSet.name)
+        }
+    }
+
+    private var canSave: Bool { selectedSource != nil }
+
+    init(
+        plan: BinderPlan?,
+        folders: [CustomCollectionFolder],
+        groups: [CatalogSeriesGroup],
+        onSave: @escaping (BinderPlan) -> Void
+    ) {
+        self.plan = plan
+        self.folders = folders
+        self.groups = groups
+        self.onSave = onSave
+        let initialKind = plan?.sourceKind ?? (folders.isEmpty ? .set : .collection)
+        _name = State(initialValue: plan?.name ?? "")
+        _sourceKind = State(initialValue: initialKind)
+        _selectedCollectionID = State(initialValue:
+            plan?.sourceKind == .collection ? UUID(uuidString: plan?.sourceID ?? "") : folders.first?.id
+        )
+        _selectedSetID = State(initialValue:
+            plan?.sourceKind == .set ? plan?.sourceID : groups.first?.sets.first?.id
+        )
+        _pocketLayout = State(initialValue: plan?.pocketLayout ?? .nine)
+        _includesMissingCards = State(initialValue: plan?.includesMissingCards ?? true)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Plan") {
+                    TextField("Name (optional)", text: $name)
+                    Picker("Pocket layout", selection: $pocketLayout) {
+                        ForEach(BinderPocketLayout.allCases) { layout in
+                            Text(layout.displayName).tag(layout)
+                        }
+                    }
+                    Toggle("Include missing cards", isOn: $includesMissingCards)
+                }
+
+                Section {
+                    Picker("Source", selection: $sourceKind) {
+                        ForEach(BinderPlanSourceKind.allCases, id: \.self) { kind in
+                            Text(kind.displayName).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if sourceKind == .collection {
+                        if folders.isEmpty {
+                            Label("Create a Pokémon collection first.", systemImage: "rectangle.stack.badge.plus")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Collection", selection: $selectedCollectionID) {
+                                ForEach(folders) { folder in
+                                    Text(folder.name).tag(folder.id as UUID?)
+                                }
+                            }
+                        }
+                    } else if setChoices.isEmpty {
+                        ProgressView("Loading sets…")
+                    } else {
+                        Picker("Set", selection: $selectedSetID) {
+                            ForEach(setChoices) { choice in
+                                Text("\(choice.seriesName) · \(choice.catalogSet.name)")
+                                    .tag(choice.catalogSet.id as String?)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Source")
+                } footer: {
+                    Text("The plan follows each set’s current Normal, Master, or Custom goal. Exact printings receive separate pockets when TCGdex provides them.")
+                }
+            }
+            .navigationTitle(plan == nil ? "New Binder Plan" : "Edit Binder Plan")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }.disabled(!canSave)
+                }
+            }
+        }
+    }
+
+    private func save() {
+        guard let source = selectedSource else { return }
+        let now = Date()
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        onSave(BinderPlan(
+            id: plan?.id ?? UUID(),
+            name: trimmedName.isEmpty ? "\(source.name) Binder" : trimmedName,
+            sourceKind: sourceKind,
+            sourceID: source.id,
+            sourceName: source.name,
+            pocketLayout: pocketLayout,
+            includesMissingCards: includesMissingCards,
+            createdAt: plan?.createdAt ?? now,
+            updatedAt: now
+        ))
+        dismiss()
+    }
+}
+
+private struct BinderPocketItem: Identifiable {
+    let definition: BinderPlanSlotDefinition
+    let result: CatalogCardSearchResult
+    var id: String { definition.id }
+}
+
+private struct BinderPlanDetailView: View {
+    let plan: BinderPlan
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @State private var items: [BinderPocketItem] = []
+    @State private var isLoading = true
+    @State private var message: String?
+    @State private var pageIndex = 0
+
+    private var visibleItems: [BinderPocketItem] {
+        plan.includesMissingCards ? items : items.filter { $0.definition.isOwned }
+    }
+
+    private var pages: [[BinderPocketItem]] {
+        stride(from: 0, to: visibleItems.count, by: plan.pocketLayout.rawValue).map { start in
+            Array(visibleItems[start..<min(start + plan.pocketLayout.rawValue, visibleItems.count)])
+        }
+    }
+
+    private var currentPage: [BinderPocketItem] {
+        guard pages.indices.contains(pageIndex) else { return [] }
+        return pages[pageIndex]
+    }
+
+    private var ownedCount: Int { items.filter { $0.definition.isOwned }.count }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 12) {
+                    Label("\(plan.pocketLayout.displayName)", systemImage: "square.grid.3x3")
+                    Spacer()
+                    Text("\(ownedCount) of \(items.count) slots owned")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline.weight(.semibold))
+
+                if isLoading {
+                    ProgressView("Building binder pages…")
+                        .frame(maxWidth: .infinity, minHeight: 260)
+                } else if let message {
+                    ContentUnavailableView(
+                        "Binder Unavailable",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(message)
+                    )
+                } else if visibleItems.isEmpty {
+                    ContentUnavailableView(
+                        plan.includesMissingCards ? "No Cards" : "No Owned Cards",
+                        systemImage: "square.grid.3x3",
+                        description: Text(plan.includesMissingCards
+                            ? "This source does not currently contain any binder slots."
+                            : "Edit the plan to include missing cards, or mark a card as owned.")
+                    )
+                } else {
+                    HStack {
+                        Button("Previous", systemImage: "chevron.left") {
+                            pageIndex = max(0, pageIndex - 1)
+                        }
+                        .labelStyle(.iconOnly)
+                        .disabled(pageIndex == 0)
+                        Spacer()
+                        Text("Page \(pageIndex + 1) of \(pages.count)")
+                            .font(.headline.monospacedDigit())
+                        Spacer()
+                        Button("Next", systemImage: "chevron.right") {
+                            pageIndex = min(pages.count - 1, pageIndex + 1)
+                        }
+                        .labelStyle(.iconOnly)
+                        .disabled(pageIndex >= pages.count - 1)
+                    }
+                    .buttonStyle(.bordered)
+
+                    BinderPageView(items: currentPage, layout: plan.pocketLayout)
+                }
+            }
+            .padding()
+        }
+        .navigationTitle(plan.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: plan.updatedAt) { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            let sourceSet: CatalogSet?
+            let results: [CatalogCardSearchResult]
+            switch plan.sourceKind {
+            case .collection:
+                guard let folderID = UUID(uuidString: plan.sourceID),
+                      let folder = collectionStore.customFolders.first(where: { $0.id == folderID }) else {
+                    message = "The source collection no longer exists. Edit or delete this binder plan."
+                    return
+                }
+                let rules = folder.effectivePokemonRules
+                results = try await rules.isEmpty
+                    ? catalogStore.cards(matchingName: folder.cardNameQuery)
+                    : catalogStore.cards(matchingPokemonRules: rules)
+                sourceSet = nil
+            case .set:
+                guard let set = catalogStore.groups.flatMap(\.sets).first(where: { $0.id == plan.sourceID }) else {
+                    message = "The source set is not available in the current catalogue."
+                    return
+                }
+                let cards = try await catalogStore.cards(for: set)
+                results = cards.map { CatalogCardSearchResult(card: $0, setName: set.name, setReleaseDate: set.releaseDate) }
+                sourceSet = set
+            }
+
+            let sortedResults = results.sorted(by: binderCardOrder)
+            let cards = sortedResults.map(\.card)
+            let variants = await catalogStore.prepareVariants(for: cards, refreshCachedDetails: false)
+            let printings = await catalogStore.cachedPrintings(for: cards)
+            let setsByID = Dictionary(
+                catalogStore.groups.flatMap(\.sets).map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            let resultsByCardID = Dictionary(
+                sortedResults.map { ($0.card.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            var definitions: [BinderPlanSlotDefinition] = []
+
+            if let sourceSet {
+                definitions = BinderPlanLayoutBuilder.slots(
+                    cards: cards,
+                    set: sourceSet,
+                    preference: collectionStore.preference(for: sourceSet.id),
+                    availableVariants: variants,
+                    availablePrintings: printings,
+                    broadOwnedEntries: collectionStore.broadOwnedEntries,
+                    exactOwnedEntries: collectionStore.exactOwnedEntries
+                )
+            } else {
+                for card in cards {
+                    let set = setsByID[card.setID] ?? CatalogSet(
+                        id: card.setID, seriesID: "", name: resultsByCardID[card.id]?.setName ?? card.setID,
+                        abbreviation: nil, logoURL: nil, symbolURL: nil,
+                        officialCardCount: 0, totalCardCount: 0, releaseDate: nil, rarityCounts: nil
+                    )
+                    definitions += BinderPlanLayoutBuilder.slots(
+                        cards: [card],
+                        set: set,
+                        preference: collectionStore.preference(for: card.setID),
+                        availableVariants: variants,
+                        availablePrintings: printings,
+                        broadOwnedEntries: collectionStore.broadOwnedEntries,
+                        exactOwnedEntries: collectionStore.exactOwnedEntries
+                    )
+                }
+            }
+            items = definitions.compactMap { definition in
+                resultsByCardID[definition.cardID].map {
+                    BinderPocketItem(definition: definition, result: $0)
+                }
+            }
+            pageIndex = 0
+        } catch {
+            message = "TallyDex couldn’t build these pages. Check your connection and try again."
+        }
+    }
+
+    private func binderCardOrder(_ left: CatalogCardSearchResult, _ right: CatalogCardSearchResult) -> Bool {
+        if left.setReleaseDate != right.setReleaseDate {
+            return (left.setReleaseDate ?? "") < (right.setReleaseDate ?? "")
+        }
+        if left.setName != right.setName {
+            return left.setName.localizedCaseInsensitiveCompare(right.setName) == .orderedAscending
+        }
+        return left.card.localID.localizedStandardCompare(right.card.localID) == .orderedAscending
+    }
+}
+
+private struct BinderPageView: View {
+    let items: [BinderPocketItem]
+    let layout: BinderPocketLayout
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: layout.columns)
+    }
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(0..<layout.rawValue, id: \.self) { index in
+                if items.indices.contains(index) {
+                    BinderPocketView(item: items[index])
+                } else {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(.secondary.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [5]))
+                        .aspectRatio(245 / 380, contentMode: .fit)
+                }
+            }
+        }
+        .padding(10)
+        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+private struct BinderPocketView: View {
+    let item: BinderPocketItem
+
+    var body: some View {
+        NavigationLink {
+            CatalogCardDetailView(card: item.result.card)
+        } label: {
+            VStack(spacing: 5) {
+                CachedCardImage(card: item.result.card)
+                    .aspectRatio(245 / 337, contentMode: .fit)
+                    .opacity(item.definition.isOwned ? 1 : 0.32)
+                    .overlay(alignment: .topTrailing) {
+                        Image(systemName: item.definition.isOwned ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(item.definition.isOwned ? Color.green : .secondary)
+                            .background(.regularMaterial, in: Circle())
+                            .padding(4)
+                    }
+                Text(item.result.card.name)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                if let label = item.definition.label {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(6)
+            .background(.background, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(item.result.card.name), \(item.definition.label ?? "card"), \(item.definition.isOwned ? "owned" : "missing")")
+    }
+}
+
 struct CollectionView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
@@ -4178,6 +4704,27 @@ struct CollectionView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    NavigationLink {
+                        BinderPlannerView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "square.grid.3x3.fill")
+                                .font(.title2)
+                                .foregroundStyle(.indigo)
+                                .frame(width: 44, height: 50)
+                                .background(.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Binder Planner").font(.body.weight(.semibold))
+                                Text("Arrange collections and sets into pocket pages")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
                 if !ownedCardIDs.isEmpty {
                     Section {
                         CollectionValueSummaryView(summary: valueSummary)
