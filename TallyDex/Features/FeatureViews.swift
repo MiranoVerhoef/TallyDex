@@ -4159,7 +4159,6 @@ private struct BinderSetChoice: Identifiable {
 private struct BinderPlannerView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
-    @State private var plans = BinderPlanStorage.load()
     @State private var editorRequest: BinderPlanEditorRequest?
     @State private var deletingPlan: BinderPlan?
     @State private var message: String?
@@ -4173,18 +4172,18 @@ private struct BinderPlannerView: View {
                     Label("Create binder plan", systemImage: "plus.circle.fill")
                 }
             } footer: {
-                Text("Build automatic pages from a set or Pokémon collection. Plans are stored locally and never change card ownership.")
+                Text("Build automatic pages from a set or Pokémon collection. Plans are included in collection backups and never change card ownership.")
             }
 
             Section("Saved plans") {
-                if plans.isEmpty {
+                if collectionStore.binderPlans.isEmpty {
                     ContentUnavailableView(
                         "No Binder Plans",
                         systemImage: "square.grid.3x3",
                         description: Text("Choose a collection or set and TallyDex will arrange its required cards into pages.")
                     )
                 } else {
-                    ForEach(plans) { plan in
+                    ForEach(collectionStore.binderPlans) { plan in
                         NavigationLink {
                             BinderPlanDetailView(plan: plan)
                         } label: {
@@ -4234,12 +4233,13 @@ private struct BinderPlannerView: View {
         ) {
             Button("Delete Plan", role: .destructive) {
                 guard let plan = deletingPlan else { return }
-                let updated = plans.filter { $0.id != plan.id }
-                do {
-                    try BinderPlanStorage.save(updated)
-                    plans = BinderPlanStorage.load()
-                } catch {
-                    message = "The binder plan couldn’t be deleted."
+                Task {
+                    do {
+                        try await collectionStore.deleteBinderPlan(id: plan.id)
+                        message = nil
+                    } catch {
+                        message = "The binder plan couldn’t be deleted."
+                    }
                 }
                 deletingPlan = nil
             }
@@ -4250,15 +4250,14 @@ private struct BinderPlannerView: View {
     }
 
     private func save(_ plan: BinderPlan) {
-        var updated = plans.filter { $0.id != plan.id }
-        updated.append(plan)
-        do {
-            try BinderPlanStorage.save(updated)
-            plans = BinderPlanStorage.load()
-            message = nil
-            editorRequest = nil
-        } catch {
-            message = "The binder plan couldn’t be saved."
+        Task {
+            do {
+                try await collectionStore.saveBinderPlan(plan)
+                message = nil
+                editorRequest = nil
+            } catch {
+                message = "The binder plan couldn’t be saved."
+            }
         }
     }
 }
@@ -4275,7 +4274,7 @@ private struct BinderPlanRow: View {
                 .background(.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 4) {
                 Text(plan.name).font(.body.weight(.semibold))
-                Text("\(plan.sourceName) · \(plan.pocketLayout.displayName)")
+                Text("\(plan.sourceName) · \(plan.pocketLayout.shortName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(plan.effectiveCardOrder.displayName)
@@ -4351,10 +4350,14 @@ private struct BinderPlanEditorView: View {
             Form {
                 Section {
                     TextField("Name (optional)", text: $name)
-                    Picker("Pocket layout", selection: $pocketLayout) {
+                    Picker("Binder size", selection: $pocketLayout) {
                         ForEach(BinderPocketLayout.allCases) { layout in
                             Text(layout.displayName).tag(layout)
                         }
+                    }
+                    LabeledContent("Layout") {
+                        Text(pocketLayout.formatSummary)
+                            .foregroundStyle(.secondary)
                     }
                     Picker("Card order", selection: $cardOrder) {
                         ForEach(BinderCardOrder.allCases) { order in
@@ -4456,8 +4459,8 @@ private struct BinderPlanDetailView: View {
     }
 
     private var pages: [[BinderPocketItem]] {
-        stride(from: 0, to: visibleItems.count, by: plan.pocketLayout.rawValue).map { start in
-            Array(visibleItems[start..<min(start + plan.pocketLayout.rawValue, visibleItems.count)])
+        stride(from: 0, to: visibleItems.count, by: plan.pocketLayout.pocketsPerSide).map { start in
+            Array(visibleItems[start..<min(start + plan.pocketLayout.pocketsPerSide, visibleItems.count)])
         }
     }
 
@@ -4468,13 +4471,17 @@ private struct BinderPlanDetailView: View {
 
     private var ownedCount: Int { items.filter { $0.definition.isOwned }.count }
 
+    private var binderCount: Int {
+        max(1, Int(ceil(Double(visibleItems.count) / Double(plan.pocketLayout.capacity))))
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Label("\(plan.pocketLayout.displayName)", systemImage: "square.grid.3x3")
-                        Text(plan.effectiveCardOrder.displayName)
+                        Label(plan.pocketLayout.shortName, systemImage: "square.grid.3x3")
+                        Text("\(plan.pocketLayout.formatSummary) · \(plan.effectiveCardOrder.displayName)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -4509,8 +4516,15 @@ private struct BinderPlanDetailView: View {
                         .labelStyle(.iconOnly)
                         .disabled(pageIndex == 0)
                         Spacer()
-                        Text("Page \(pageIndex + 1) of \(pages.count)")
-                            .font(.headline.monospacedDigit())
+                        VStack(spacing: 2) {
+                            Text("Side \(pageIndex + 1) of \(pages.count)")
+                                .font(.headline.monospacedDigit())
+                            if binderCount > 1 {
+                                Text("\(binderCount) binders needed")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         Spacer()
                         Button("Next", systemImage: "chevron.right") {
                             pageIndex = min(pages.count - 1, pageIndex + 1)
@@ -4624,7 +4638,7 @@ private struct BinderPageView: View {
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 10) {
-            ForEach(0..<layout.rawValue, id: \.self) { index in
+            ForEach(0..<layout.pocketsPerSide, id: \.self) { index in
                 if items.indices.contains(index) {
                     BinderPocketView(item: items[index])
                 } else {

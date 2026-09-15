@@ -169,6 +169,21 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v13-binder-plans") { database in
+            try database.create(table: "binderPlan") { table in
+                table.column("id", .text).primaryKey()
+                table.column("name", .text).notNull()
+                table.column("sourceKind", .text).notNull()
+                table.column("sourceID", .text).notNull()
+                table.column("sourceName", .text).notNull()
+                table.column("pocketLayout", .text).notNull()
+                table.column("includesMissingCards", .boolean).notNull()
+                table.column("cardOrder", .text)
+                table.column("createdAt", .datetime).notNull()
+                table.column("updatedAt", .datetime).notNull().indexed()
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -355,6 +370,20 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 ORDER BY name COLLATE NOCASE, createdAt, id
                 """
             ).compactMap(Self.customFolder)
+        }
+    }
+
+    func fetchBinderPlans() async throws -> [BinderPlan] {
+        try await database.queue.read { database in
+            try Row.fetchAll(
+                database,
+                sql: """
+                SELECT id, name, sourceKind, sourceID, sourceName, pocketLayout,
+                       includesMissingCards, cardOrder, createdAt, updatedAt
+                FROM binderPlan
+                ORDER BY updatedAt DESC, name COLLATE NOCASE, id
+                """
+            ).compactMap(Self.binderPlan)
         }
     }
 
@@ -632,6 +661,50 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func saveBinderPlan(_ plan: BinderPlan) async throws {
+        guard plan.isValid else { throw CollectionRepositoryError.invalidBinderPlan }
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO binderPlan
+                    (id, name, sourceKind, sourceID, sourceName, pocketLayout,
+                     includesMissingCards, cardOrder, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    sourceKind = excluded.sourceKind,
+                    sourceID = excluded.sourceID,
+                    sourceName = excluded.sourceName,
+                    pocketLayout = excluded.pocketLayout,
+                    includesMissingCards = excluded.includesMissingCards,
+                    cardOrder = excluded.cardOrder,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    plan.id.uuidString,
+                    plan.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    plan.sourceKind.rawValue,
+                    plan.sourceID,
+                    plan.sourceName,
+                    plan.pocketLayout.rawValue,
+                    plan.includesMissingCards,
+                    plan.cardOrder?.rawValue,
+                    plan.createdAt,
+                    plan.updatedAt,
+                ]
+            )
+        }
+    }
+
+    func deleteBinderPlan(id: UUID) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: "DELETE FROM binderPlan WHERE id = ?",
+                arguments: [id.uuidString]
+            )
+        }
+    }
+
     func saveCardMetadata(_ metadata: CardCollectionMetadata) async throws {
         try await database.queue.write { database in
             try database.execute(
@@ -821,12 +894,34 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 updatedAt: $0["updatedAt"]
             )
         }
+        let binderPlans = try Row.fetchAll(
+            database,
+            sql: """
+            SELECT id, name, sourceKind, sourceID, sourceName, pocketLayout,
+                   includesMissingCards, cardOrder, createdAt, updatedAt
+            FROM binderPlan
+            """
+        ).map {
+            CollectionBackupPayload.Plan(
+                id: $0["id"],
+                name: $0["name"],
+                sourceKind: $0["sourceKind"],
+                sourceID: $0["sourceID"],
+                sourceName: $0["sourceName"],
+                pocketLayout: $0["pocketLayout"],
+                includesMissingCards: $0["includesMissingCards"],
+                cardOrder: $0["cardOrder"],
+                createdAt: $0["createdAt"],
+                updatedAt: $0["updatedAt"]
+            )
+        }
         return CollectionBackupPayload(
             variants: variants,
             exactPrintings: exactPrintings,
             preferences: preferences,
             folders: folders,
-            metadata: metadata
+            metadata: metadata,
+            binderPlans: binderPlans
         )
     }
 
@@ -908,7 +1003,28 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     quantity: item.quantity,
                     updatedAt: item.updatedAt
                 )
-            }.sorted { ($0.cardID, $0.printingID) < ($1.cardID, $1.printingID) }
+            }.sorted { ($0.cardID, $0.printingID) < ($1.cardID, $1.printingID) },
+            binderPlans: (payload.binderPlans ?? []).compactMap { item in
+                let cardOrder = item.cardOrder.flatMap(BinderCardOrder.init(rawValue:))
+                guard let id = UUID(uuidString: item.id),
+                      let sourceKind = BinderPlanSourceKind(rawValue: item.sourceKind),
+                      let pocketLayout = BinderPocketLayout(rawValue: item.pocketLayout),
+                      item.cardOrder == nil || cardOrder != nil else {
+                    return nil
+                }
+                return BinderPlan(
+                    id: id,
+                    name: item.name,
+                    sourceKind: sourceKind,
+                    sourceID: item.sourceID,
+                    sourceName: item.sourceName,
+                    pocketLayout: pocketLayout,
+                    includesMissingCards: item.includesMissingCards,
+                    cardOrder: cardOrder ?? .setRelease,
+                    createdAt: item.createdAt,
+                    updatedAt: item.updatedAt
+                )
+            }.sorted { $0.id.uuidString < $1.id.uuidString }
         )
     }
 
@@ -957,6 +1073,20 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             },
             metadata: document.cardMetadata.map {
                 .init(cardID: $0.cardID, isWishlisted: $0.isWishlisted, notes: $0.notes, updatedAt: $0.updatedAt)
+            },
+            binderPlans: document.binderPlans.map {
+                .init(
+                    id: $0.id.uuidString,
+                    name: $0.name,
+                    sourceKind: $0.sourceKind.rawValue,
+                    sourceID: $0.sourceID,
+                    sourceName: $0.sourceName,
+                    pocketLayout: $0.pocketLayout.rawValue,
+                    includesMissingCards: $0.includesMissingCards,
+                    cardOrder: $0.cardOrder?.rawValue,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
             }
         )
     }
@@ -983,7 +1113,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
               }),
               Set(document.folders.map(\.id)).count == document.folders.count,
               document.cardMetadata.allSatisfy({ !$0.cardID.isEmpty }),
-              Set(document.cardMetadata.map(\.cardID)).count == document.cardMetadata.count else {
+              Set(document.cardMetadata.map(\.cardID)).count == document.cardMetadata.count,
+              document.binderPlans.allSatisfy(\.isValid),
+              Set(document.binderPlans.map(\.id)).count == document.binderPlans.count else {
             throw CollectionRepositoryError.invalidImport
         }
     }
@@ -1112,6 +1244,19 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 return changed.isEmpty ? "Saved details will change" : "Changes: \(changed.joined(separator: ", "))"
             }
         )
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.binderPlans.map { ($0.id, $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.binderPlans.map { ($0.id, $0) }),
+            date: \.updatedAt,
+            category: "Binder plan",
+            keyText: { $0.uuidString },
+            title: { $0.name },
+            changeDetail: { previous, replacement in
+                previous.name == replacement.name
+                    ? "Binder size, source, or ordering will change"
+                    : "\(previous.name) → \(replacement.name)"
+            }
+        )
         return .init(
             additions: additions,
             changes: changes,
@@ -1227,6 +1372,38 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 arguments: [item.cardID, item.isWishlisted, item.notes, item.updatedAt]
             )
         }
+
+        let currentBinderPlans = Dictionary(uniqueKeysWithValues: current.binderPlans.map { ($0.id, $0) })
+        for item in incoming.binderPlans {
+            if let saved = currentBinderPlans[item.id], item.updatedAt <= saved.updatedAt {
+                continue
+            }
+            try database.execute(
+                sql: """
+                INSERT INTO binderPlan
+                    (id, name, sourceKind, sourceID, sourceName, pocketLayout,
+                     includesMissingCards, cardOrder, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET name = excluded.name,
+                    sourceKind = excluded.sourceKind, sourceID = excluded.sourceID,
+                    sourceName = excluded.sourceName, pocketLayout = excluded.pocketLayout,
+                    includesMissingCards = excluded.includesMissingCards,
+                    cardOrder = excluded.cardOrder, updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    item.id.uuidString,
+                    item.name,
+                    item.sourceKind.rawValue,
+                    item.sourceID,
+                    item.sourceName,
+                    item.pocketLayout.rawValue,
+                    item.includesMissingCards,
+                    item.cardOrder?.rawValue,
+                    item.createdAt,
+                    item.updatedAt,
+                ]
+            )
+        }
     }
 
     private static func insertBackup(
@@ -1258,6 +1435,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         try database.execute(sql: "DELETE FROM collectionSetPreference")
         try database.execute(sql: "DELETE FROM customCollectionFolder")
         try database.execute(sql: "DELETE FROM collectionCardMetadata")
+        if payload.binderPlans != nil {
+            try database.execute(sql: "DELETE FROM binderPlan")
+        }
 
         for item in payload.variants {
             try database.execute(
@@ -1324,6 +1504,28 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 arguments: [item.cardID, item.isWishlisted, item.notes, item.updatedAt]
             )
         }
+        for item in payload.binderPlans ?? [] {
+            try database.execute(
+                sql: """
+                INSERT INTO binderPlan
+                    (id, name, sourceKind, sourceID, sourceName, pocketLayout,
+                     includesMissingCards, cardOrder, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    item.id,
+                    item.name,
+                    item.sourceKind,
+                    item.sourceID,
+                    item.sourceName,
+                    item.pocketLayout,
+                    item.includesMissingCards,
+                    item.cardOrder,
+                    item.createdAt,
+                    item.updatedAt,
+                ]
+            )
+        }
     }
 
     private static func pruneBackups(in database: Database) throws {
@@ -1355,6 +1557,32 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             displayMode: displayMode,
             iconName: row["iconName"],
             coverCardID: row["coverCardID"],
+            createdAt: row["createdAt"],
+            updatedAt: row["updatedAt"]
+        )
+    }
+
+    private static func binderPlan(_ row: Row) -> BinderPlan? {
+        let rawID: String = row["id"]
+        let rawSourceKind: String = row["sourceKind"]
+        let rawPocketLayout: String = row["pocketLayout"]
+        let rawCardOrder: String? = row["cardOrder"]
+        let cardOrder = rawCardOrder.flatMap(BinderCardOrder.init(rawValue:))
+        guard let id = UUID(uuidString: rawID),
+              let sourceKind = BinderPlanSourceKind(rawValue: rawSourceKind),
+              let pocketLayout = BinderPocketLayout(rawValue: rawPocketLayout),
+              rawCardOrder == nil || cardOrder != nil else {
+            return nil
+        }
+        return BinderPlan(
+            id: id,
+            name: row["name"],
+            sourceKind: sourceKind,
+            sourceID: row["sourceID"],
+            sourceName: row["sourceName"],
+            pocketLayout: pocketLayout,
+            includesMissingCards: row["includesMissingCards"],
+            cardOrder: cardOrder ?? .setRelease,
             createdAt: row["createdAt"],
             updatedAt: row["updatedAt"]
         )
@@ -1432,9 +1660,23 @@ private struct CollectionBackupPayload: Codable {
         let updatedAt: Date
     }
 
+    struct Plan: Codable, Equatable {
+        let id: String
+        let name: String
+        let sourceKind: String
+        let sourceID: String
+        let sourceName: String
+        let pocketLayout: String
+        let includesMissingCards: Bool
+        let cardOrder: String?
+        let createdAt: Date
+        let updatedAt: Date
+    }
+
     let variants: [Variant]
     let exactPrintings: [ExactPrinting]?
     let preferences: [Preference]
     let folders: [Folder]
     let metadata: [Metadata]
+    let binderPlans: [Plan]?
 }

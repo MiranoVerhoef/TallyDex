@@ -747,14 +747,86 @@ enum CollectionFolderIcon: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-enum BinderPocketLayout: Int, Codable, CaseIterable, Identifiable, Sendable {
-    case nine = 9
-    case twelve = 12
+enum BinderPocketLayout: String, Codable, CaseIterable, Identifiable, Sendable {
+    case four = "4-pocket"
+    case nine = "9-pocket"
+    case twelve = "12-pocket"
+    case twelveXL = "12-pocket-xl"
+    case sixteenXXL = "16-pocket-xxl"
 
-    var id: Int { rawValue }
-    var displayName: String { "\(rawValue)-pocket" }
-    var rows: Int { self == .nine ? 3 : 4 }
-    var columns: Int { 3 }
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .four: "4-pocket · 160 cards"
+        case .nine: "9-pocket · 360 cards"
+        case .twelve: "12-pocket · 480 cards"
+        case .twelveXL: "12-pocket XL · 624 cards"
+        case .sixteenXXL: "16-pocket XXL · 1,088 cards"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .four: "4-pocket"
+        case .nine: "9-pocket"
+        case .twelve: "12-pocket"
+        case .twelveXL: "12-pocket XL"
+        case .sixteenXXL: "16-pocket XXL"
+        }
+    }
+
+    var rows: Int {
+        switch self {
+        case .four: 2
+        case .nine, .twelve, .twelveXL: 3
+        case .sixteenXXL: 4
+        }
+    }
+
+    var columns: Int {
+        switch self {
+        case .four: 2
+        case .nine: 3
+        case .twelve, .twelveXL, .sixteenXXL: 4
+        }
+    }
+
+    var pocketsPerSide: Int { rows * columns }
+
+    var doubleSidedPageCount: Int {
+        switch self {
+        case .four, .nine, .twelve: 20
+        case .twelveXL: 26
+        case .sixteenXXL: 34
+        }
+    }
+
+    var capacity: Int { pocketsPerSide * doubleSidedPageCount * 2 }
+
+    var formatSummary: String {
+        "\(columns) × \(rows) · \(doubleSidedPageCount) double-sided pages"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let rawValue = try? container.decode(String.self),
+           let layout = Self(rawValue: rawValue) {
+            self = layout
+            return
+        }
+
+        // Versions through 0.9.28 stored the pocket count as a JSON number.
+        switch try container.decode(Int.self) {
+        case 9: self = .nine
+        case 12: self = .twelve
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported binder pocket layout"
+            )
+        }
+    }
 }
 
 enum BinderPlanSourceKind: String, Codable, CaseIterable, Sendable {
@@ -903,6 +975,10 @@ enum BinderPlanStorage {
         }
         defaults.set(try JSONEncoder().encode(plans), forKey: key)
     }
+
+    static func remove(from defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: key)
+    }
 }
 
 struct BinderPlanSlotDefinition: Equatable, Identifiable, Sendable {
@@ -1031,6 +1107,7 @@ protocol CollectionRepository: Sendable {
     func fetchSetGoals() async throws -> [String: CollectionGoal]
     func fetchSetPreferences() async throws -> [String: SetCollectionPreference]
     func fetchCustomFolders() async throws -> [CustomCollectionFolder]
+    func fetchBinderPlans() async throws -> [BinderPlan]
     func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata
     func fetchAllCardMetadata() async throws -> [String: CardCollectionMetadata]
     func fetchBackups() async throws -> [CollectionBackup]
@@ -1056,6 +1133,8 @@ protocol CollectionRepository: Sendable {
     func deleteSetPreference(setID: String) async throws
     func saveCustomFolder(_ folder: CustomCollectionFolder) async throws
     func deleteCustomFolder(id: UUID) async throws
+    func saveBinderPlan(_ plan: BinderPlan) async throws
+    func deleteBinderPlan(id: UUID) async throws
     func saveCardMetadata(_ metadata: CardCollectionMetadata) async throws
     func setQuantity(
         _ quantity: Int,
