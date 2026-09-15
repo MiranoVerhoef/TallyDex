@@ -560,10 +560,11 @@ enum BundledSetLogo {
     private static var cachedImages: [String: UIImage] = [:]
 
     static func image(for set: CatalogSet) -> UIImage? {
+        let artworkSetID = JumboPromoRelease.release(setID: set.id)?.artworkSetID ?? set.id
         let normalizedName = set.name
             .replacingOccurrences(of: "’", with: "'")
             .lowercased()
-        guard let fileStem = fileStemsByID[set.id] ?? fileStemsByName[normalizedName] else {
+        guard let fileStem = fileStemsByID[artworkSetID] ?? fileStemsByName[normalizedName] else {
             return nil
         }
         if let image = cachedImages[fileStem] {
@@ -612,15 +613,6 @@ private struct CatalogSetArtwork: View {
             .foregroundStyle(.indigo)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-        } else if JumboPromoRelease.release(setID: set.id) != nil {
-            VStack(spacing: 5) {
-                Image(systemName: "rectangle.portrait.on.rectangle.portrait.angled")
-                    .font(.title2)
-                Text("JUMBO").font(.caption2.weight(.heavy))
-            }
-            .foregroundStyle(.orange)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
         } else if set.seriesID == "mc", set.preferredArtworkReference == nil {
             McDonaldsCollectionBadge(year: set.releaseDate.map { String($0.prefix(4)) })
         } else {

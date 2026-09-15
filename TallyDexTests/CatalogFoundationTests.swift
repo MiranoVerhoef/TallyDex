@@ -76,10 +76,14 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(JumboPromoRelease.all.map(\.jumboPrintingCount).reduce(0, +), 152)
 
         let oldShell = set(id: "jumbo", seriesID: "misc", name: "Jumbo cards")
+        let promoLogo = try XCTUnwrap(URL(string: "https://example.com/mep-promos.png"))
         let groups = [
             CatalogSeriesGroup(
                 series: .init(id: "me", name: "Mega Evolution", logoURL: nil),
-                sets: [set(id: "mep", seriesID: "me", name: "MEP Black Star Promos")]
+                sets: [set(
+                    id: "mep", seriesID: "me", name: "MEP Black Star Promos",
+                    logoURL: promoLogo
+                )]
             ),
             CatalogSeriesGroup(
                 series: .init(id: "misc", name: "Miscellaneous", logoURL: nil),
@@ -88,8 +92,33 @@ final class CatalogFoundationTests: XCTestCase {
         ]
         let added = JumboPromoRelease.adding(to: groups)
         XCTAssertEqual(added[0].sets.map(\.id), ["mep", "tallydex-jumbo-me"])
+        XCTAssertEqual(added[0].sets[1].logoURL, promoLogo)
         XCTAssertTrue(added.flatMap(\.sets).allSatisfy { $0.id != "jumbo" })
         XCTAssertEqual(JumboPromoRelease.adding(to: added), added)
+    }
+
+    @MainActor
+    func testJumboPromosReuseTheirEraPromoArtworkIncludingBundledLogos() throws {
+        let expectedArtworkIDs = [
+            "me": "mep", "sv": "svp", "swsh": "swshp", "sm": "smp",
+            "dp": "dpp", "ex": "np", "ecard": "basep", "neo": "basep",
+            "gym": "basep", "base": "basep",
+        ]
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: JumboPromoRelease.all.map { ($0.seriesID, $0.artworkSetID) }),
+            expectedArtworkIDs
+        )
+
+        for release in JumboPromoRelease.all where release.artworkSetID != "np" {
+            let source = set(
+                id: release.artworkSetID,
+                seriesID: release.seriesID,
+                name: "Promo artwork"
+            )
+            let sourceImage = try XCTUnwrap(BundledSetLogo.image(for: source))
+            let jumboImage = try XCTUnwrap(BundledSetLogo.image(for: release.set))
+            XCTAssertTrue(sourceImage === jumboImage, "Expected shared artwork for \(release.id)")
+        }
     }
 
     func testJumboPrintingKeepsProviderIdentityForSharedOwnership() throws {
@@ -2978,6 +3007,7 @@ final class CatalogFoundationTests: XCTestCase {
         seriesID: String,
         name: String,
         abbreviation: String? = nil,
+        logoURL: URL? = nil,
         rarityCounts: [CatalogRarityCount]? = nil
     ) -> CatalogSet {
         CatalogSet(
@@ -2985,7 +3015,7 @@ final class CatalogFoundationTests: XCTestCase {
             seriesID: seriesID,
             name: name,
             abbreviation: abbreviation,
-            logoURL: nil,
+            logoURL: logoURL,
             symbolURL: nil,
             officialCardCount: 1,
             totalCardCount: 1,
