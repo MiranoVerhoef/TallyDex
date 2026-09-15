@@ -4217,11 +4217,6 @@ private struct BinderPlannerView: View {
         }
         .navigationTitle("Binder Planner")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            Button("New plan", systemImage: "plus") {
-                editorRequest = BinderPlanEditorRequest(plan: nil)
-            }
-        }
         .sheet(item: $editorRequest) { request in
             BinderPlanEditorView(
                 plan: request.plan,
@@ -4283,7 +4278,7 @@ private struct BinderPlanRow: View {
                 Text("\(plan.sourceName) · \(plan.pocketLayout.displayName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(plan.includesMissingCards ? "Owned and missing" : "Owned cards only")
+                Text(plan.effectiveCardOrder.displayName)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -4304,6 +4299,7 @@ private struct BinderPlanEditorView: View {
     @State private var selectedSetID: String?
     @State private var pocketLayout: BinderPocketLayout
     @State private var includesMissingCards: Bool
+    @State private var cardOrder: BinderCardOrder
 
     private var setChoices: [BinderSetChoice] {
         groups.flatMap { group in
@@ -4347,19 +4343,29 @@ private struct BinderPlanEditorView: View {
         )
         _pocketLayout = State(initialValue: plan?.pocketLayout ?? .nine)
         _includesMissingCards = State(initialValue: plan?.includesMissingCards ?? true)
+        _cardOrder = State(initialValue: plan?.effectiveCardOrder ?? .setRelease)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Plan") {
+                Section {
                     TextField("Name (optional)", text: $name)
                     Picker("Pocket layout", selection: $pocketLayout) {
                         ForEach(BinderPocketLayout.allCases) { layout in
                             Text(layout.displayName).tag(layout)
                         }
                     }
+                    Picker("Card order", selection: $cardOrder) {
+                        ForEach(BinderCardOrder.allCases) { order in
+                            Text(order.displayName).tag(order)
+                        }
+                    }
                     Toggle("Include missing cards", isOn: $includesMissingCards)
+                } header: {
+                    Text("Plan")
+                } footer: {
+                    Text("Long-press a saved plan and choose Edit whenever you want to change its layout or card order.")
                 }
 
                 Section {
@@ -4422,6 +4428,7 @@ private struct BinderPlanEditorView: View {
             sourceName: source.name,
             pocketLayout: pocketLayout,
             includesMissingCards: includesMissingCards,
+            cardOrder: cardOrder,
             createdAt: plan?.createdAt ?? now,
             updatedAt: now
         ))
@@ -4465,7 +4472,12 @@ private struct BinderPlanDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    Label("\(plan.pocketLayout.displayName)", systemImage: "square.grid.3x3")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label("\(plan.pocketLayout.displayName)", systemImage: "square.grid.3x3")
+                        Text(plan.effectiveCardOrder.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Text("\(ownedCount) of \(items.count) slots owned")
                         .foregroundStyle(.secondary)
@@ -4547,7 +4559,7 @@ private struct BinderPlanDetailView: View {
                 sourceSet = set
             }
 
-            let sortedResults = results.sorted(by: binderCardOrder)
+            let sortedResults = BinderPlanOrdering.sorted(results, by: plan.effectiveCardOrder)
             let cards = sortedResults.map(\.card)
             let variants = await catalogStore.prepareVariants(for: cards, refreshCachedDetails: false)
             let printings = await catalogStore.cachedPrintings(for: cards)
@@ -4600,15 +4612,6 @@ private struct BinderPlanDetailView: View {
         }
     }
 
-    private func binderCardOrder(_ left: CatalogCardSearchResult, _ right: CatalogCardSearchResult) -> Bool {
-        if left.setReleaseDate != right.setReleaseDate {
-            return (left.setReleaseDate ?? "") < (right.setReleaseDate ?? "")
-        }
-        if left.setName != right.setName {
-            return left.setName.localizedCaseInsensitiveCompare(right.setName) == .orderedAscending
-        }
-        return left.card.localID.localizedStandardCompare(right.card.localID) == .orderedAscending
-    }
 }
 
 private struct BinderPageView: View {

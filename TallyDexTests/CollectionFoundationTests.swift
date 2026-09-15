@@ -93,13 +93,22 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual([new, old].sorted(by: CollectionCardSort.cardName.precedes).map(\.id), ["a", "b"])
     }
 
-    private func filterResult(id: String, setID: String, types: [String]?, rarity: String?, date: String?) -> CatalogCardSearchResult {
+    private func filterResult(
+        id: String,
+        setID: String,
+        types: [String]?,
+        rarity: String?,
+        date: String?,
+        name: String = "Lucario GX",
+        dexID: Int = 448,
+        localID: String = "1"
+    ) -> CatalogCardSearchResult {
         let metadata = types.map {
-            CatalogCardMetadata(dexIDs: [448], hp: nil, types: $0, evolvesFrom: nil, stage: nil, suffix: nil,
+            CatalogCardMetadata(dexIDs: [dexID], hp: nil, types: $0, evolvesFrom: nil, stage: nil, suffix: nil,
                 attacks: [], abilities: [], weaknesses: [], resistances: [], retreatCost: nil, regulationMark: nil,
                 legality: nil, rulesText: nil, trainerType: nil, energyType: nil, flavorText: nil, updatedAt: nil)
         }
-        return .init(card: CatalogCard(id: id, setID: setID, localID: "1", name: "Lucario GX", imageURL: nil,
+        return .init(card: CatalogCard(id: id, setID: setID, localID: localID, name: name, imageURL: nil,
             category: "Pokémon", illustrator: nil, rarity: rarity, metadata: metadata), setName: "Promos", setReleaseDate: date)
     }
 
@@ -112,18 +121,27 @@ final class CollectionFoundationTests: XCTestCase {
             BinderPlan(
                 id: UUID(), name: "Lucario Binder", sourceKind: .collection,
                 sourceID: UUID().uuidString, sourceName: "Lucario", pocketLayout: .nine,
-                includesMissingCards: true, createdAt: now, updatedAt: now
+                includesMissingCards: true, cardOrder: .pokemonName, createdAt: now, updatedAt: now
             ),
             BinderPlan(
                 id: UUID(), name: "Mega Evolution", sourceKind: .set,
                 sourceID: "me01", sourceName: "Mega Evolution", pocketLayout: .twelve,
-                includesMissingCards: false, createdAt: now, updatedAt: now.addingTimeInterval(1)
+                includesMissingCards: false, cardOrder: .newestRelease,
+                createdAt: now, updatedAt: now.addingTimeInterval(1)
             ),
         ]
 
         try BinderPlanStorage.save(plans, to: defaults)
 
         XCTAssertEqual(BinderPlanStorage.load(from: defaults), Array(plans.reversed()))
+
+        var legacyJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try JSONEncoder().encode([plans[0]])) as? [[String: Any]]
+        )
+        legacyJSON[0].removeValue(forKey: "cardOrder")
+        defaults.set(try JSONSerialization.data(withJSONObject: legacyJSON), forKey: BinderPlanStorage.key)
+        XCTAssertEqual(BinderPlanStorage.load(from: defaults).first?.effectiveCardOrder, .setRelease)
+
         XCTAssertThrowsError(try BinderPlanStorage.save([
             BinderPlan(
                 id: UUID(), name: "", sourceKind: .set, sourceID: "", sourceName: "",
@@ -133,6 +151,27 @@ final class CollectionFoundationTests: XCTestCase {
         ], to: defaults)) { error in
             XCTAssertEqual(error as? CollectionRepositoryError, .invalidBinderPlan)
         }
+    }
+
+    func testBinderCardOrderSupportsReleaseNameAndPokedexLayouts() {
+        let oldest = filterResult(
+            id: "oldest", setID: "base", types: ["Grass"], rarity: nil, date: "1999-01-09",
+            name: "Bulbasaur", dexID: 1, localID: "44"
+        )
+        let middle = filterResult(
+            id: "middle", setID: "hgss", types: ["Lightning"], rarity: nil, date: "2010-02-10",
+            name: "Pikachu", dexID: 25, localID: "70"
+        )
+        let newest = filterResult(
+            id: "newest", setID: "mega", types: ["Fighting"], rarity: nil, date: "2026-08-28",
+            name: "Lucario", dexID: 448, localID: "12"
+        )
+        let mixed = [middle, newest, oldest]
+
+        XCTAssertEqual(BinderPlanOrdering.sorted(mixed, by: .setRelease).map(\.id), ["oldest", "middle", "newest"])
+        XCTAssertEqual(BinderPlanOrdering.sorted(mixed, by: .newestRelease).map(\.id), ["newest", "middle", "oldest"])
+        XCTAssertEqual(BinderPlanOrdering.sorted(mixed, by: .pokemonName).map(\.id), ["oldest", "newest", "middle"])
+        XCTAssertEqual(BinderPlanOrdering.sorted(mixed, by: .pokedexNumber).map(\.id), ["oldest", "middle", "newest"])
     }
 
     func testBinderLayoutCreatesExactGoalSlotsAndUsesOneBroadFallback() {
