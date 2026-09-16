@@ -694,6 +694,13 @@ Completed in v0.9.30:
 - Uses returned immutable image URLs directly and caches resolver and overlay responses with ETags.
 - Verified with 193 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
 
+Completed in v0.9.31:
+
+- Keeps 30th Celebration and its Classic Collection inside Mega Evolution instead of creating a new catalogue group.
+- Leaves future overlay sets out of browsing until their placement is verified.
+- Simplifies the TallyDex Assets service result to Connected without exposing library counts.
+- Verified with 193 unit tests and ten end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

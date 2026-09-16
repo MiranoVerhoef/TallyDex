@@ -1633,21 +1633,29 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(requestCount, 2)
     }
 
-    func testConfiguredProviderMergesTallyDexOverlayIntoSupplementalSeries() async throws {
+    func testConfiguredProviderKeepsVerifiedOverlaySetsInTheirExistingSeries() async throws {
         let stub = HTTPClientStub(responses: [
             HTTPResponse(
-                data: Data(#"[{"id":"sv","name":"Scarlet & Violet"}]"#.utf8),
+                data: Data(#"[{"id":"me","name":"Mega Evolution"}]"#.utf8),
                 statusCode: 200, retryAfter: nil
             ),
             HTTPResponse(
                 data: Data(#"""
                 {
                     "schemaVersion":1,"revision":"r1","series":[],
-                    "sets":[{"id":"early","language":"en","name":"Early Set","logo":null,"symbol":null}],
-                    "cards":[{"id":"early-1","setId":"early","localId":"1","name":"Early Card"}]
+                    "sets":[
+                        {"id":"30c","language":"en","name":"30th Celebration","logo":null,"symbol":null},
+                        {"id":"30ccc","language":"en","name":"30th Celebration Classic Collection","logo":null,"symbol":null},
+                        {"id":"unplaced","language":"en","name":"Unplaced Set","logo":null,"symbol":null}
+                    ],
+                    "cards":[{"id":"30c-1","setId":"30c","localId":"1","name":"Celebration Card"}]
                 }
                 """#.utf8),
                 statusCode: 200, retryAfter: nil, etag: #""r1""#
+            ),
+            HTTPResponse(
+                data: Data(#"{"id":"me","name":"Mega Evolution","logo":null,"sets":[]}"#.utf8),
+                statusCode: 200, retryAfter: nil
             ),
         ])
         let provider = ConfiguredCatalogProvider(
@@ -1656,13 +1664,14 @@ final class CatalogFoundationTests: XCTestCase {
         )
 
         let index = try await provider.fetchSeriesIndex()
-        XCTAssertEqual(index.map(\.id), ["sv", "tallydex-assets"])
-        let supplemental = try await provider.fetchSeries(id: "tallydex-assets")
-        XCTAssertEqual(supplemental.series.name, "TallyDex Early Access")
-        XCTAssertEqual(supplemental.sets.map(\.id), ["early"])
-        XCTAssertEqual(supplemental.sets.first?.totalCardCount, 1)
+        XCTAssertEqual(index.map(\.id), ["me"])
+        let megaEvolution = try await provider.fetchSeries(id: "me")
+        XCTAssertEqual(megaEvolution.series.name, "Mega Evolution")
+        XCTAssertEqual(megaEvolution.sets.map(\.id), ["30c", "30ccc"])
+        XCTAssertTrue(megaEvolution.sets.allSatisfy { $0.seriesID == "me" })
+        XCTAssertEqual(megaEvolution.sets.first?.totalCardCount, 1)
         let requestCount = await stub.requestCount
-        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(requestCount, 3)
     }
 
     func testConfiguredProviderFollowsIndependentAssetsMetadataURL() async throws {

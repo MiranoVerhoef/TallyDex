@@ -7094,12 +7094,14 @@ private struct AdvancedAPISettingsView: View {
                         .accessibilityLabel("About TallyDex Assets")
                     }
                 }
+                .accessibilityIdentifier("assets.enabled")
                 HStack {
                     LabeledContent("Service", value: "api.tallydex.nl")
                     Spacer()
                     Button { Task { await checkAssets() } } label: {
                         if isCheckingAssets { ProgressView() } else { Text("Check") }
                     }
+                    .accessibilityIdentifier("assets.service.check")
                     .disabled(isCheckingAssets || !assetsEnabled)
                 }
                 if let assetsCheckResult {
@@ -7210,10 +7212,8 @@ private struct AdvancedAPISettingsView: View {
                   object["status"] as? String == "ready" else {
                 throw TCGdexError.invalidResponse
             }
-            let library = object["library"] as? [String: Any]
-            let cardCount = library?["cards"] as? Int ?? 0
             assetsCheckSucceeded = true
-            assetsCheckResult = "Connected · \(cardCount.formatted()) local card assets"
+            assetsCheckResult = "Connected"
         } catch is CancellationError {
             return
         } catch {

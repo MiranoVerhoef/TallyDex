@@ -52,18 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.30",
-        headline: "Earlier cards, resolved cleanly",
+        version: "0.9.31",
+        headline: "Correct placement, cleaner status",
         notes: [
             AppReleaseNote(
-                systemImage: "photo.stack",
-                title: "TallyDex Assets",
-                detail: "Find early and missing catalogue records and artwork through the new Assets API."
+                systemImage: "square.grid.2x2",
+                title: "Mega Evolution placement",
+                detail: "30th Celebration and its Classic Collection stay with Mega Evolution."
             ),
             AppReleaseNote(
-                systemImage: "hand.raised",
-                title: "Optional by design",
-                detail: "Turn the service off at any time in Settings → Advanced."
+                systemImage: "checkmark.circle",
+                title: "Cleaner service check",
+                detail: "TallyDex Assets now reports a simple connection result."
             ),
         ]
     )

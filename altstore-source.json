@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.31",
+          "buildVersion": "67",
+          "date": "2026-09-16",
+          "localizedDescription": "Keeps 30th Celebration and its Classic Collection inside Mega Evolution, removes the unrequested Early Access catalogue group, and simplifies the TallyDex Assets service result to Connected without showing library counts.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.31/TallyDex-v0.9.31.ipa",
+          "size": 32253296,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.30",
           "buildVersion": "66",
           "date": "2026-09-16",

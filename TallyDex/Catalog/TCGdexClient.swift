@@ -222,7 +222,10 @@ actor TallyDexAssetsDirectory {
 
 /// Reads preferences per request, so saving an endpoint does not require a restart.
 struct ConfiguredCatalogProvider: CatalogProvider {
-    private static let supplementalSeriesID = "tallydex-assets"
+    private static let verifiedOverlaySeriesBySetID = [
+        "30c": "me",
+        "30ccc": "me",
+    ]
     private let httpClient: any HTTPClient
     private let customURLOverride: URL?
     private let enabledOverride: Bool?
@@ -307,33 +310,19 @@ struct ConfiguredCatalogProvider: CatalogProvider {
             result.append(.init(id: series.id, name: series.name, logoURL: series.logo))
             known.insert(series.id)
         }
-        if overlay.sets.contains(where: { $0.seriesID == nil }),
-           !known.contains(Self.supplementalSeriesID) {
-            result.append(.init(
-                id: Self.supplementalSeriesID,
-                name: "TallyDex Early Access",
-                logoURL: nil
-            ))
-        }
         return result
     }
 
     func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
         let overlay = try await overlay()
-        if id == Self.supplementalSeriesID {
-            guard let overlay else { throw TCGdexError.httpError(statusCode: 404) }
-            return CatalogSeriesSnapshot(
-                series: .init(id: id, name: "TallyDex Early Access", logoURL: nil),
-                sets: overlay.sets.filter { $0.seriesID == nil }.map { overlaySet($0, overlay: overlay) }
-            )
-        }
         do {
             let upstream = try await fetch { try await $0.fetchSeries(id: id) }
             guard let overlay else { return upstream }
             var sets = upstream.sets
             let known = Set(sets.map(\.id))
-            sets.append(contentsOf: overlay.sets.filter { $0.seriesID == id && !known.contains($0.id) }
-                .map { overlaySet($0, overlay: overlay) })
+            sets.append(contentsOf: overlay.sets
+                .filter { resolvedSeriesID(for: $0) == id && !known.contains($0.id) }
+                .compactMap { overlaySet($0, overlay: overlay) })
             return .init(series: upstream.series, sets: sets)
         } catch is CancellationError {
             throw CancellationError()
@@ -341,7 +330,8 @@ struct ConfiguredCatalogProvider: CatalogProvider {
             guard let series = overlay?.series.first(where: { $0.id == id }), let overlay else { throw error }
             return .init(
                 series: .init(id: series.id, name: series.name, logoURL: series.logo),
-                sets: overlay.sets.filter { $0.seriesID == id }.map { overlaySet($0, overlay: overlay) }
+                sets: overlay.sets.filter { resolvedSeriesID(for: $0) == id }
+                    .compactMap { overlaySet($0, overlay: overlay) }
             )
         }
     }
@@ -362,9 +352,10 @@ struct ConfiguredCatalogProvider: CatalogProvider {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            guard let overlay, let set = overlay.sets.first(where: { $0.id == id }) else { throw error }
+            guard let overlay, let set = overlay.sets.first(where: { $0.id == id }),
+                  let catalogSet = overlaySet(set, overlay: overlay) else { throw error }
             return .init(
-                set: overlaySet(set, overlay: overlay),
+                set: catalogSet,
                 cards: overlay.cards.filter { $0.setID == id }.map(\.catalogCard)
                     .sorted { $0.localID.localizedStandardCompare($1.localID) == .orderedAscending }
             )
@@ -404,11 +395,12 @@ struct ConfiguredCatalogProvider: CatalogProvider {
     private func overlaySet(
         _ set: TallyDexAssetsOverlay.Set,
         overlay: TallyDexAssetsOverlay
-    ) -> CatalogSet {
+    ) -> CatalogSet? {
+        guard let seriesID = resolvedSeriesID(for: set) else { return nil }
         let count = overlay.cards.lazy.filter { $0.setID == set.id }.count
         return CatalogSet(
             id: set.id,
-            seriesID: set.seriesID ?? Self.supplementalSeriesID,
+            seriesID: seriesID,
             name: set.name,
             abbreviation: set.abbreviation,
             logoURL: set.logo,
@@ -418,6 +410,10 @@ struct ConfiguredCatalogProvider: CatalogProvider {
             releaseDate: set.releaseDate,
             rarityCounts: nil
         )
+    }
+
+    private func resolvedSeriesID(for set: TallyDexAssetsOverlay.Set) -> String? {
+        set.seriesID ?? Self.verifiedOverlaySeriesBySetID[set.id]
     }
 }
 
