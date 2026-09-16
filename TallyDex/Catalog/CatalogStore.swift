@@ -62,11 +62,11 @@ final class CatalogStore {
     private static let apiConfigurationKey = "catalog.lastAPIConfiguration"
     private var configuredAPIFingerprint: String? {
         guard provider is ConfiguredCatalogProvider else { return nil }
-        return "\(TallyDexAssetsAPISettings.enabled)|\(CatalogAPISettings.customEnabled)|\(CatalogAPISettings.customURL.absoluteString)"
+        return "\(CatalogAPISettings.customEnabled)|\(CatalogAPISettings.customURL.absoluteString)"
     }
 
     init(
-        provider: any CatalogProvider = ConfiguredCatalogProvider(useAssets: nil),
+        provider: any CatalogProvider = ConfiguredCatalogProvider(),
         repository: (any CatalogRepository)? = nil,
         bundle: Bundle = .main,
         now: @escaping @Sendable () -> Date = Date.init

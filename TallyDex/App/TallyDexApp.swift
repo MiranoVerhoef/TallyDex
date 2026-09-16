@@ -18,9 +18,6 @@ struct TallyDexApp: App {
     @State private var appNavigation = AppNavigationStore()
 
     init() {
-        UserDefaults.standard.register(defaults: [
-            TallyDexAssetsAPISettings.enabledKey: true,
-        ])
 #if DEBUG
         if let fixture = ReliabilityUITestFixture.current {
             _catalogStore = State(initialValue: fixture.makeCatalogStore())

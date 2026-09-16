@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.32",
+          "buildVersion": "68",
+          "date": "2026-09-17",
+          "localizedDescription": "Removes the TallyDex Assets integration and restores the proven v0.9.29 TCGdex and bundled artwork data flow.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.32/TallyDex-v0.9.32.ipa",
+          "size": 32562480,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.31",
           "buildVersion": "67",
           "date": "2026-09-16",

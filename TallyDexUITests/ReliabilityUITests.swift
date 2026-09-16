@@ -175,12 +175,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.31"])
+        expectState(["intro=true", "seen=0.9.32"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.31"])
+        expectState(["intro=true", "seen=0.9.32"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -188,10 +188,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.31"])
+        expectState(["intro=true", "seen=0.9.32"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.31"])
+        expectState(["intro=true", "seen=0.9.32"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -201,44 +201,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.31"])
+        expectState(["intro=true", "seen=0.9.32"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.31"])
+        expectState(["intro=true", "seen=0.9.32"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
-    }
-
-    func testTallyDexAssetsSettingIsOptionalAndServiceCheckIsCompact() {
-        launch("restore")
-        settings()
-        let advanced = button("Advanced")
-        for _ in 0..<4 where !advanced.exists { app.swipeUp() }
-        tap(advanced)
-        XCTAssertTrue(app.navigationBars["Advanced"].waitForExistence(timeout: 10))
-
-        let toggle = app.switches["assets.enabled"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 10))
-        XCTAssertEqual(toggle.value as? String, "1")
-        let check = app.buttons["assets.service.check"]
-        XCTAssertTrue(check.exists)
-        XCTAssertTrue(check.isEnabled)
-
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        XCTAssertEqual(toggle.value as? String, "0")
-        XCTAssertFalse(check.isEnabled)
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        XCTAssertEqual(toggle.value as? String, "1")
-
-        tap(check)
-        XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 12))
-        XCTAssertFalse(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "local card assets")
-        ).firstMatch.exists)
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "TallyDex Assets advanced settings"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
     }
 
     func testRestoreCancelConfirmRollbackAndPreferencePersistence() {

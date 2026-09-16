@@ -52,18 +52,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.31",
-        headline: "Correct placement, cleaner status",
+        version: "0.9.32",
+        headline: "Standard data flow restored",
         notes: [
             AppReleaseNote(
-                systemImage: "square.grid.2x2",
-                title: "Mega Evolution placement",
-                detail: "30th Celebration and its Classic Collection stay with Mega Evolution."
-            ),
-            AppReleaseNote(
-                systemImage: "checkmark.circle",
-                title: "Cleaner service check",
-                detail: "TallyDex Assets now reports a simple connection result."
+                systemImage: "arrow.uturn.backward.circle",
+                title: "Assets integration removed",
+                detail: "Card data and artwork again use the v0.9.29 TCGdex and bundled fallback flow."
             ),
         ]
     )

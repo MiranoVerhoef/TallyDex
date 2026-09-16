@@ -701,6 +701,13 @@ Completed in v0.9.31:
 - Simplifies the TallyDex Assets service result to Connected without exposing library counts.
 - Verified with 193 unit tests and ten end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
 
+Completed in v0.9.32:
+
+- Removes the TallyDex Assets API integration and restores the v0.9.29 TCGdex and bundled artwork flow.
+- Removes its Advanced setting, service check, resolver, overlay catalogue merging, and related network requests.
+- Keeps the separate repository security hardening and all collection data migrations intact.
+- Verified with 190 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),
