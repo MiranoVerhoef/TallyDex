@@ -107,14 +107,16 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 
 ### Before public release
 
-- [ ] Choose and validate a one-time purchase model before App Store release.
-  Compare a paid-up-front app with a free download plus one permanent
-  **TallyDex Pro** unlock. The preferred starting point is a useful free core
-  for browsing, searching, and recording ownership, with advanced convenience
-  features considered for the lifetime unlock. Define the exact boundary before
-  implementation; never lock existing local collection data behind a purchase.
-  StoreKit work must include purchase restoration, clear offline/error states,
-  Family Sharing eligibility, and sandbox testing. No subscription is planned.
+- [ ] Add a 14-day full-feature trial followed by one permanent lifetime unlock.
+  The trial must never auto-renew or charge automatically. Use Apple's
+  non-subscription trial structure and a paid non-consumable In-App Purchase for
+  lifetime access. Before the trial starts, clearly show its duration, the
+  lifetime price, and what changes when the trial ends. Existing collection data
+  must remain readable and exportable after expiry. StoreKit work must cover
+  purchase restoration, receipt and DeviceCheck-based trial validation, refunds
+  and revocations, offline and pending states, Family Sharing eligibility, and
+  sandbox testing. Decide separately whether existing beta users are grandfathered.
+  No subscription is planned.
 
 ### Next fixes requested — 2026-09-13
 
@@ -379,41 +381,40 @@ Completed in v0.9.10:
 4. Clearing thumbnail or all automatic artwork also resets set warm-up records, so
    the next set visit repopulates the cleared cache.
 
-Research and later builds:
+### Actually remaining — audited 2026-09-17
 
-1. Collection type, era/set, and rarity filters are implemented in v0.9.25 through
-   one compact Filter sheet; see the completed-build notes below.
-2. Add Cardmarket low prices and TCGplayer low, mid, high, and direct-low values.
-   Treat them as market statistics, never as substitutes for a missing exact
-   printing price.
-3. Add regulation marks and TCGdex-reported Standard/Expanded legality, with
-   refresh dates because tournament legality changes over time.
-4. Show provider-reported Normal, Holo, Reverse, and First Edition set counts,
-   clearly labelled as TCGdex totals.
-5. Add optional filters for the stored HP, type, evolution, regulation, legality,
-   attacks, abilities, and other rich card fields. Scanner ranking may use this
-   only as supporting evidence.
-6. Add optional booster membership and pack artwork where TCGdex supplies it;
-   incomplete provider coverage must be shown honestly.
-7. Continue the missing-art audit for the remaining verified provider gaps. Add a
-   fallback only where set, collector number, source permission, and image identity
-   can all be verified; otherwise keep the honest TallyDex placeholder.
-8. Research another permitted card/catalogue/price API, including its licence,
-   attribution, rate limits, coverage, and whether it can be an optional provider
-   without weakening TCGdex correctness.
-9. Activate country-specific Cardmarket listings only if permitted official API
-   access becomes available; the provider boundary and preferences already exist.
-10. After Apple Developer Program enrollment: implement the selected one-time
-    purchase model and test purchase restoration before public release. Private
-    iCloud sync, TestFlight, and—only with an independently controlled HTTPS
-    domain—true universal card links with rich previews remain later Apple-service
-    work.
-11. Binder planner.
-12. Finish automatic live card scanning after the remaining catalogue and
-    collection work: improve live-frame OCR, confidence ranking, glare handling,
-    top-loader detection, and real-device validation. Promote Auto from Beta to the
-    default camera mode once it reliably identifies a varied real-card test set and
-    falls back to confirmation instead of presenting low-confidence false matches.
+1. Implement and test the 14-day trial plus lifetime unlock described above.
+   App Store Connect product setup, real sandbox purchases, TestFlight, and the
+   final release require Apple Developer Program enrollment.
+2. Finish the learned camera detector. Scan Lab, its reviewed-data goals, export,
+   integrity checks, and Create ML training tool are complete. The remaining work
+   is to collect and review the real dataset, train and measure the model, integrate
+   the accepted Core ML model into TallyDex, and validate automatic capture on a
+   physical iPhone across glare, sleeves, top loaders, angles, and hard negatives.
+3. Complete public-release preparation: choose whether existing beta users receive
+   lifetime access, test purchase restore/refund/revocation/offline behavior, add
+   App Store privacy and product metadata, and complete a TestFlight release pass.
+
+Optional later enhancements, not current blockers:
+
+- Add provider-supplied Cardmarket low and TCGplayer low/mid/high/direct-low market
+  statistics if exact-printing data is available.
+- Add provider-reported Normal, Holo, Reverse, and First Edition set totals.
+- Expand Collection filters beyond the implemented ownership, type, era, set,
+  rarity, release-year, and sort controls to HP, evolution, regulation, legality,
+  attacks, and abilities where metadata exists.
+- Add booster membership and pack artwork where provider coverage is sufficient.
+- Activate country-specific Cardmarket listings only if permitted official API
+  access becomes available.
+- After enrollment, consider private iCloud sync and—only with an independently
+  controlled HTTPS domain—universal card links with rich previews.
+
+No active app work is needed for Energy coverage, ordinary TCGdex catalogue and
+artwork additions, or missing-art provider gaps. TallyDex already refreshes the
+provider catalogue and uses its verified fallback chain; unavailable identities
+remain honest placeholders until upstream data changes. Regulation marks,
+Standard/Expanded legality with the provider update date, Collection filters, and
+Binder Planner are already implemented.
 
 v0.6.0 indexes owned cards and their printings for fast collection lookups and
 calculates every card’s goal progress in a single pass per set. Card grids,
@@ -512,9 +513,10 @@ needed. **Browser Editor → Allow access while app is minimized** is off by def
 When enabled, the server remains available while iOS permits background execution;
 return to TallyDex if iOS suspends it.
 
-Pokédex-ID species matching is already implemented. Remaining backlog: continue
-the verified missing-art audit as provider coverage expands, and validate the
-camera matching experience on a physical iPhone before Apple-services work.
+Pokédex-ID species matching is already implemented. The active camera backlog is
+the reviewed Scan Lab dataset, trained detector integration, and physical-iPhone
+validation. Missing-art gaps are provider-dependent and are not an active manual
+catalogue project.
 
 Apple services remain last because they require Apple Developer Program and App
 Store Connect setup. TCGdex supplies Cardmarket 1-day, 7-day, and 30-day average
