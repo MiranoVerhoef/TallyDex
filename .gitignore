@@ -6,3 +6,22 @@ xcuserdata/
 *.xcuserstate
 .swiftpm/
 artifacts/
+
+# Secrets / local configuration
+.env
+.env.*
+*.env
+Secrets.xcconfig
+Config.local.xcconfig
+
+# Apple signing material
+*.p12
+*.p8
+*.pem
+*.key
+*.cer
+*.mobileprovision
+
+# Local credentials / sensitive config
+credentials.json
+secrets.json
