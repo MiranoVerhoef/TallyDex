@@ -105,6 +105,17 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 
 ## Roadmap order
 
+### Before public release
+
+- [ ] Choose and validate a one-time purchase model before App Store release.
+  Compare a paid-up-front app with a free download plus one permanent
+  **TallyDex Pro** unlock. The preferred starting point is a useful free core
+  for browsing, searching, and recording ownership, with advanced convenience
+  features considered for the lifetime unlock. Define the exact boundary before
+  implementation; never lock existing local collection data behind a purchase.
+  StoreKit work must include purchase restoration, clear offline/error states,
+  Family Sharing eligibility, and sandbox testing. No subscription is planned.
+
 ### Next fixes requested — 2026-09-13
 
 - [x] Single loading indicator beside set goal-slot counts. Card-list loading and
@@ -123,12 +134,12 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
   Dragon Discovery under Scarlet & Violet. Each release remains its own set with
   unchanged IDs, ownership, goals, and backups; this is grouping, not merging cards
   into an unrelated expansion or changing Master completion requirements.
-- [ ] Add missing Energy cards and supplemental Energy sets under the appropriate
-  series/era. Audit which cards belong to an expansion versus a separate Energy
-  release, preserving exact identities and avoiding duplicate collection totals.
-  v0.9.22 verified the existing SVE (24) and MEE (8) coverage. The supplemental
+- [x] Add available supplemental Energy sets under the appropriate series/era.
+  v0.9.22 verified the existing SVE (24) and MEE (8) coverage while preserving
+  exact identities and avoiding duplicate collection totals. The supplemental
   read-only Energy overview was removed in v0.9.23; actual Energy sets stay intact.
-  Older unnumbered designs absent from TCGdex remain pending verified identities.
+  Older unnumbered designs absent from TCGdex are provider-dependent and are not
+  an active manual-catalogue task.
 - [x] Custom TCGdex API channel at `tcgdex.tallydex.nl`, configurable and checkable
   in Advanced settings, with official-provider fallback and bundled thumbnails.
 
@@ -392,9 +403,11 @@ Research and later builds:
    without weakening TCGdex correctness.
 9. Activate country-specific Cardmarket listings only if permitted official API
    access becomes available; the provider boundary and preferences already exist.
-10. After Apple Developer Program enrollment: private iCloud sync, TestFlight, an
-    optional StoreKit Tip Jar, and—only with an independently controlled HTTPS
-    domain—true universal card links with rich previews.
+10. After Apple Developer Program enrollment: implement the selected one-time
+    purchase model and test purchase restoration before public release. Private
+    iCloud sync, TestFlight, and—only with an independently controlled HTTPS
+    domain—true universal card links with rich previews remain later Apple-service
+    work.
 11. Binder planner.
 12. Finish automatic live card scanning after the remaining catalogue and
     collection work: improve live-frame OCR, confidence ranking, glare handling,
