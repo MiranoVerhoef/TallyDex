@@ -686,6 +686,14 @@ Completed in v0.9.29:
 - Migrates existing binder plans into collection storage so backups, restore previews, and portable exports include them.
 - Verified with 190 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
 
+Completed in v0.9.30:
+
+- Integrates the optional TallyDex Assets API as the first card artwork and metadata resolver.
+- Merges locally supplied overlay cards and sets into the catalogue while preserving TCGdex fallbacks.
+- Adds a clear Advanced setting and service check; disabling it stops requests to api.tallydex.nl.
+- Uses returned immutable image URLs directly and caches resolver and overlay responses with ETags.
+- Verified with 193 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

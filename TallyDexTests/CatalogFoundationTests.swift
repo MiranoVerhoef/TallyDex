@@ -5,6 +5,28 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    private var previousAssetsSetting: Any?
+
+    override func setUp() {
+        super.setUp()
+        previousAssetsSetting = UserDefaults.standard.object(
+            forKey: TallyDexAssetsAPISettings.enabledKey
+        )
+        UserDefaults.standard.set(false, forKey: TallyDexAssetsAPISettings.enabledKey)
+    }
+
+    override func tearDown() {
+        if let previousAssetsSetting {
+            UserDefaults.standard.set(
+                previousAssetsSetting,
+                forKey: TallyDexAssetsAPISettings.enabledKey
+            )
+        } else {
+            UserDefaults.standard.removeObject(forKey: TallyDexAssetsAPISettings.enabledKey)
+        }
+        super.tearDown()
+    }
+
     func testSharedOwnershipReferencesDoNotDoubleValueOrPriceUnquotedStamps() {
         let normal = CollectionVariantEntry(cardID: "swsh8-16", variant: .normal, quantity: 3,
             updatedAt: Date(timeIntervalSince1970: 100))
@@ -1566,6 +1588,114 @@ final class CatalogFoundationTests: XCTestCase {
         catch { XCTAssertEqual(error as? TCGdexError, .notModified) }
         let unchangedCount = await stub.requestCount
         XCTAssertEqual(unchangedCount, 1)
+    }
+
+    func testTallyDexAssetsResolverUsesReturnedImageURLDirectly() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let png = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let source = Data(#"""
+        {
+            "schemaVersion":1,"language":"en","cardID":"early-1",
+            "metadata":null,
+            "image":{"source":"tallydex","lowURL":"https://assets.tallydex.nl/immutable/thumbnail.webp","highURL":"https://assets.tallydex.nl/immutable/detail.webp","override":false,"sha256":"abc"},
+            "revision":"revision-1","officialState":"missing"
+        }
+        """#.utf8)
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: source, statusCode: 200, retryAfter: nil, etag: #""revision-1""#),
+            HTTPResponse(data: png, statusCode: 200, retryAfter: nil),
+        ])
+        let directory = TallyDexAssetsDirectory()
+        let cache = CatalogArtworkCache(
+            rootDirectory: root, httpClient: stub, assetsDirectory: directory
+        )
+        let reference = CatalogArtworkReference(
+            url: URL(string: "https://api.tallydex.nl/v1/en/cards/early-1/source")!,
+            category: .cardThumbnails,
+            offlineSetID: "early",
+            assetsCardID: "early-1"
+        )
+
+        let resolved = try await cache.data(for: reference)
+        XCTAssertEqual(resolved, png)
+        let requestedURLs = await stub.requestURLs.map(\.absoluteString)
+        XCTAssertEqual(requestedURLs, [
+            "https://api.tallydex.nl/v1/en/cards/early-1/source",
+            "https://assets.tallydex.nl/immutable/thumbnail.webp",
+        ])
+        let cached = try await cache.data(for: reference)
+        XCTAssertEqual(cached, png)
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    func testConfiguredProviderMergesTallyDexOverlayIntoSupplementalSeries() async throws {
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(
+                data: Data(#"[{"id":"sv","name":"Scarlet & Violet"}]"#.utf8),
+                statusCode: 200, retryAfter: nil
+            ),
+            HTTPResponse(
+                data: Data(#"""
+                {
+                    "schemaVersion":1,"revision":"r1","series":[],
+                    "sets":[{"id":"early","language":"en","name":"Early Set","logo":null,"symbol":null}],
+                    "cards":[{"id":"early-1","setId":"early","localId":"1","name":"Early Card"}]
+                }
+                """#.utf8),
+                statusCode: 200, retryAfter: nil, etag: #""r1""#
+            ),
+        ])
+        let provider = ConfiguredCatalogProvider(
+            httpClient: stub, useCustom: false, useAssets: true,
+            assetsDirectory: TallyDexAssetsDirectory(), etagStore: nil
+        )
+
+        let index = try await provider.fetchSeriesIndex()
+        XCTAssertEqual(index.map(\.id), ["sv", "tallydex-assets"])
+        let supplemental = try await provider.fetchSeries(id: "tallydex-assets")
+        XCTAssertEqual(supplemental.series.name, "TallyDex Early Access")
+        XCTAssertEqual(supplemental.sets.map(\.id), ["early"])
+        XCTAssertEqual(supplemental.sets.first?.totalCardCount, 1)
+        let requestCount = await stub.requestCount
+        XCTAssertEqual(requestCount, 2)
+    }
+
+    func testConfiguredProviderFollowsIndependentAssetsMetadataURL() async throws {
+        let source = Data(#"""
+        {
+            "schemaVersion":1,"language":"en","cardID":"early-1",
+            "metadata":{"source":"tallydex","url":"https://api.tallydex.nl/v1/en/cards/early-1","override":false},
+            "image":null,"revision":"r1","officialState":"missing"
+        }
+        """#.utf8)
+        let metadata = Data(#"""
+        {
+            "id":"early-1","localId":"1","name":"Early Card","set":{"id":"early"},
+            "variants":{"normal":true}
+        }
+        """#.utf8)
+        let stub = HTTPClientStub(responses: [
+            HTTPResponse(data: source, statusCode: 200, retryAfter: nil),
+            HTTPResponse(data: metadata, statusCode: 200, retryAfter: nil),
+        ])
+        let provider = ConfiguredCatalogProvider(
+            httpClient: stub, useCustom: false, useAssets: true,
+            assetsDirectory: TallyDexAssetsDirectory(), etagStore: nil
+        )
+
+        let card = try await provider.fetchCard(id: "early-1")
+        XCTAssertEqual(card.card.name, "Early Card")
+        XCTAssertEqual(card.variants, [.normal])
+        let requestedURLs = await stub.requestURLs.map(\.absoluteString)
+        XCTAssertEqual(requestedURLs, [
+            "https://api.tallydex.nl/v1/en/cards/early-1/source",
+            "https://api.tallydex.nl/v1/en/cards/early-1",
+        ])
     }
 
     func testETagsDoNotCrossAPISourcesOrSurviveSwitchingBack() async throws {

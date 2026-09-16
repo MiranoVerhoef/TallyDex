@@ -2196,6 +2196,7 @@ private struct CatalogCardTile: View {
 
 private struct CachedCardImage: View {
     let card: CatalogCard
+    @AppStorage(TallyDexAssetsAPISettings.enabledKey) private var assetsEnabled = true
     @AppStorage(CatalogAPISettings.urlKey) private var apiURL = CatalogAPISettings.defaultURL
     @AppStorage(CatalogAPISettings.enabledKey) private var apiEnabled = true
     @State private var imageData: Data?
@@ -2220,7 +2221,7 @@ private struct CachedCardImage: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .task(id: "\(card.id)|\(card.imageURL?.absoluteString ?? "")|\(apiURL)|\(apiEnabled)") {
+        .task(id: "\(card.id)|\(card.imageURL?.absoluteString ?? "")|\(assetsEnabled)|\(apiURL)|\(apiEnabled)") {
             let data = try? await CatalogArtworkCache.shared.bestAvailableData(for: card.thumbnailArtworkReferences)
             guard !Task.isCancelled else { return }
             imageData = data
@@ -2230,6 +2231,7 @@ private struct CachedCardImage: View {
 
 private struct CardDetailArtworkView: View {
     let card: CatalogCard
+    @AppStorage(TallyDexAssetsAPISettings.enabledKey) private var assetsEnabled = true
     @AppStorage(CatalogAPISettings.urlKey) private var apiURL = CatalogAPISettings.defaultURL
     @AppStorage(CatalogAPISettings.enabledKey) private var apiEnabled = true
     @State private var imageData: Data?
@@ -2268,7 +2270,7 @@ private struct CardDetailArtworkView: View {
                 Label("Share Card", systemImage: "square.and.arrow.up")
             }
         }
-        .task(id: "\(card.id)|\(card.imageURL?.absoluteString ?? "")|\(apiURL)|\(apiEnabled)") {
+        .task(id: "\(card.id)|\(card.imageURL?.absoluteString ?? "")|\(assetsEnabled)|\(apiURL)|\(apiEnabled)") {
             imageData = nil
             didFinishLoading = false
             let data = try? await CatalogArtworkCache.shared.bestAvailableData(for: card)
@@ -7065,6 +7067,7 @@ private struct MissingArtworkReportView: View {
 
 private struct AdvancedAPISettingsView: View {
     @Environment(CatalogStore.self) private var catalogStore
+    @AppStorage(TallyDexAssetsAPISettings.enabledKey) private var assetsEnabled = true
     @AppStorage(CatalogAPISettings.urlKey) private var savedURL = CatalogAPISettings.defaultURL
     @AppStorage(CatalogAPISettings.enabledKey) private var customEnabled = true
     @State private var draftURL = ""
@@ -7073,9 +7076,43 @@ private struct AdvancedAPISettingsView: View {
     @State private var checkSucceeded = false
     @State private var validationMessage: String?
     @State private var isShowingAPIInfo = false
+    @State private var isShowingAssetsInfo = false
+    @State private var isCheckingAssets = false
+    @State private var assetsCheckResult: String?
+    @State private var assetsCheckSucceeded = false
 
     var body: some View {
         Form {
+            Section {
+                Toggle(isOn: $assetsEnabled) {
+                    HStack(spacing: 8) {
+                        Text("Use TallyDex Assets")
+                        Button { isShowingAssetsInfo = true } label: {
+                            Image(systemName: "info.circle")
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("About TallyDex Assets")
+                    }
+                }
+                HStack {
+                    LabeledContent("Service", value: "api.tallydex.nl")
+                    Spacer()
+                    Button { Task { await checkAssets() } } label: {
+                        if isCheckingAssets { ProgressView() } else { Text("Check") }
+                    }
+                    .disabled(isCheckingAssets || !assetsEnabled)
+                }
+                if let assetsCheckResult {
+                    Label(
+                        assetsCheckResult,
+                        systemImage: assetsCheckSucceeded ? "checkmark.circle" : "exclamationmark.triangle"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(assetsCheckSucceeded ? Color.green : Color.orange)
+                }
+            } header: { Text("TallyDex Assets") } footer: {
+                Text("Adds early and missing catalogue records and artwork before the normal TCGdex fallbacks. Turn this off to stop TallyDex Assets API requests; already cached and kept-offline images remain on your device.")
+            }
             Section {
                 Toggle(isOn: $customEnabled) {
                     HStack(spacing: 8) {
@@ -7111,12 +7148,13 @@ private struct AdvancedAPISettingsView: View {
                 Text("Use an HTTPS hostname or /v2/en API root. The official API is always the fallback. Saving does not change your collection or remove offline downloads.")
             }
             Section {
-                LabeledContent("1", value: "TallyDex API")
-                LabeledContent("2", value: "Official TCGdex API")
-                LabeledContent("3", value: "Verified parent set")
-                LabeledContent("4", value: "Bundled thumbnails")
-                LabeledContent("5", value: "Pokémon official image host")
-                LabeledContent("6", value: "Placeholder")
+                LabeledContent("1", value: "TallyDex Assets API")
+                LabeledContent("2", value: "TallyDex API")
+                LabeledContent("3", value: "Official TCGdex API")
+                LabeledContent("4", value: "Verified parent set")
+                LabeledContent("5", value: "Bundled thumbnails")
+                LabeledContent("6", value: "Pokémon official image host")
+                LabeledContent("7", value: "Placeholder")
             } header: { Text("Card Image Fallback Order") } footer: {
                 Text("Only exact card IDs and collector numbers are used. Bundled images are thumbnails, not high-resolution artwork. Cached and kept-offline images remain available without a connection.")
             }
@@ -7141,11 +7179,46 @@ private struct AdvancedAPISettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { draftURL = savedURL }
         .onChange(of: draftURL) { _, _ in checkResult = nil; validationMessage = nil }
+        .onChange(of: assetsEnabled) { _, _ in
+            assetsCheckResult = nil
+            Task { await catalogStore.refresh() }
+        }
         .onChange(of: customEnabled) { _, _ in Task { await catalogStore.refresh() } }
+        .alert("TallyDex Assets", isPresented: $isShowingAssetsInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("TallyDex Assets resolves card data and artwork independently. It uses official TCGdex content when available and fills verified gaps from the TallyDex asset library.")
+        }
         .alert("TallyDex API", isPresented: $isShowingAPIInfo) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("The TallyDex API runs the development version of the TCGdex API for faster updates to cards and catalogue data. The official TCGdex API remains available as an automatic fallback.")
+        }
+    }
+
+    @MainActor private func checkAssets() async {
+        isCheckingAssets = true
+        assetsCheckResult = nil
+        defer { isCheckingAssets = false }
+        do {
+            var request = URLRequest(url: TallyDexAssetsAPISettings.baseURL.appending(path: "v1/status"))
+            request.timeoutInterval = 8
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let response = try await URLSessionHTTPClient().send(request)
+            guard (200..<300).contains(response.statusCode),
+                  let object = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+                  object["status"] as? String == "ready" else {
+                throw TCGdexError.invalidResponse
+            }
+            let library = object["library"] as? [String: Any]
+            let cardCount = library?["cards"] as? Int ?? 0
+            assetsCheckSucceeded = true
+            assetsCheckResult = "Connected · \(cardCount.formatted()) local card assets"
+        } catch is CancellationError {
+            return
+        } catch {
+            assetsCheckSucceeded = false
+            assetsCheckResult = "Connection unavailable. Normal TCGdex fallbacks remain active."
         }
     }
 

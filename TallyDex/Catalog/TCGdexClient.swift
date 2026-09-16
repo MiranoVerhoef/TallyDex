@@ -27,29 +27,234 @@ enum CatalogAPISettings {
     }
 }
 
+enum TallyDexAssetsAPISettings {
+    static let enabledKey = "catalog.assetsAPI.enabled"
+    static let baseURL = URL(string: "https://api.tallydex.nl/")!
+
+    static var enabled: Bool {
+        UserDefaults.standard.bool(forKey: enabledKey)
+    }
+}
+
+enum TallyDexAssetsSource: String, Decodable, Sendable {
+    case tcgdex
+    case tallydex
+}
+
+struct TallyDexAssetsMetadataResolution: Decodable, Equatable, Sendable {
+    let source: TallyDexAssetsSource
+    let url: URL
+    let override: Bool
+}
+
+struct TallyDexAssetsImageResolution: Decodable, Equatable, Sendable {
+    let source: TallyDexAssetsSource
+    let lowURL: URL
+    let highURL: URL
+    let override: Bool
+    let sha256: String?
+}
+
+struct TallyDexCardSourceResolution: Decodable, Equatable, Sendable {
+    let schemaVersion: Int
+    let language: String
+    let cardID: String
+    let metadata: TallyDexAssetsMetadataResolution?
+    let image: TallyDexAssetsImageResolution?
+    let revision: String
+    let officialState: String?
+}
+
+struct TallyDexAssetsOverlay: Decodable, Equatable, Sendable {
+    struct Series: Decodable, Equatable, Sendable {
+        let id: String
+        let language: String?
+        let name: String
+        let logo: URL?
+    }
+
+    struct Set: Decodable, Equatable, Sendable {
+        let id: String
+        let language: String?
+        let name: String
+        let seriesID: String?
+        let abbreviation: String?
+        let logo: URL?
+        let symbol: URL?
+        let releaseDate: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case id, language, name, abbreviation, logo, symbol, releaseDate
+            case seriesID = "seriesId"
+        }
+    }
+
+    struct Card: Decodable, Equatable, Sendable {
+        let id: String
+        let setID: String
+        let localID: String
+        let name: String
+
+        private enum CodingKeys: String, CodingKey {
+            case id, name
+            case setID = "setId"
+            case localID = "localId"
+        }
+
+        var catalogCard: CatalogCard {
+            CatalogCard(
+                id: id, setID: setID, localID: localID, name: name,
+                imageURL: nil, category: nil, illustrator: nil, rarity: nil
+            )
+        }
+    }
+
+    let schemaVersion: Int
+    let revision: String
+    let publishedAt: String?
+    let series: [Series]
+    let sets: [Set]
+    let cards: [Card]
+}
+
+/// Small ETag-aware directory for the optional TallyDex resolver and overlay.
+/// Responses stay in memory only; immutable artwork is cached by ArtworkCache.
+actor TallyDexAssetsDirectory {
+    static let shared = TallyDexAssetsDirectory()
+
+    private struct SourceEntry {
+        let value: TallyDexCardSourceResolution
+        let etag: String?
+        let expires: Date
+    }
+    private struct OverlayEntry {
+        let value: TallyDexAssetsOverlay
+        let etag: String?
+        let expires: Date
+    }
+
+    private var sourceEntries: [String: SourceEntry] = [:]
+    private var sourceTasks: [String: Task<(TallyDexCardSourceResolution, String?), Error>] = [:]
+    private var overlayEntry: OverlayEntry?
+    private var overlayTask: Task<(TallyDexAssetsOverlay, String?), Error>?
+
+    func source(
+        cardID: String,
+        httpClient: any HTTPClient,
+        baseURL: URL = TallyDexAssetsAPISettings.baseURL
+    ) async throws -> TallyDexCardSourceResolution {
+        if let entry = sourceEntries[cardID], entry.expires > Date() { return entry.value }
+        if let task = sourceTasks[cardID] { return try await task.value.0 }
+        let existing = sourceEntries[cardID]
+        let endpoint = baseURL.appending(path: "v1/en/cards/\(cardID)/source")
+        let task = Task<(TallyDexCardSourceResolution, String?), Error> {
+            var request = URLRequest(url: endpoint)
+            request.timeoutInterval = 8
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            if let etag = existing?.etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+            let response = try await httpClient.send(request)
+            if response.statusCode == 304, let existing { return (existing.value, existing.etag) }
+            guard (200..<300).contains(response.statusCode) else {
+                throw TCGdexError.httpError(statusCode: response.statusCode)
+            }
+            let value = try JSONDecoder().decode(TallyDexCardSourceResolution.self, from: response.data)
+            guard value.schemaVersion == 1, value.language == "en", value.cardID == cardID,
+                  Self.isSafe(value.metadata?.url), Self.isSafe(value.image?.lowURL),
+                  Self.isSafe(value.image?.highURL) else { throw TCGdexError.invalidResponse }
+            return (value, response.etag)
+        }
+        sourceTasks[cardID] = task
+        defer { sourceTasks[cardID] = nil }
+        let result = try await task.value
+        try Task.checkCancellation()
+        sourceEntries[cardID] = SourceEntry(
+            value: result.0, etag: result.1, expires: Date().addingTimeInterval(5 * 60)
+        )
+        return result.0
+    }
+
+    func overlay(
+        httpClient: any HTTPClient,
+        baseURL: URL = TallyDexAssetsAPISettings.baseURL
+    ) async throws -> TallyDexAssetsOverlay {
+        if let overlayEntry, overlayEntry.expires > Date() { return overlayEntry.value }
+        if let overlayTask { return try await overlayTask.value.0 }
+        let existing = overlayEntry
+        let endpoint = baseURL.appending(path: "v1/en/overlay")
+        let task = Task<(TallyDexAssetsOverlay, String?), Error> {
+            var request = URLRequest(url: endpoint)
+            request.timeoutInterval = 10
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            if let etag = existing?.etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+            let response = try await httpClient.send(request)
+            if response.statusCode == 304, let existing { return (existing.value, existing.etag) }
+            guard (200..<300).contains(response.statusCode) else {
+                throw TCGdexError.httpError(statusCode: response.statusCode)
+            }
+            let value = try JSONDecoder().decode(TallyDexAssetsOverlay.self, from: response.data)
+            guard value.schemaVersion == 1,
+                  value.series.allSatisfy({ Self.isSafe($0.logo) }),
+                  value.sets.allSatisfy({ Self.isSafe($0.logo) && Self.isSafe($0.symbol) }) else {
+                throw TCGdexError.invalidResponse
+            }
+            return (value, response.etag)
+        }
+        overlayTask = task
+        defer { overlayTask = nil }
+        let result = try await task.value
+        try Task.checkCancellation()
+        overlayEntry = OverlayEntry(
+            value: result.0, etag: result.1, expires: Date().addingTimeInterval(5 * 60)
+        )
+        return result.0
+    }
+
+    func invalidate(cardID: String) {
+        sourceEntries[cardID] = nil
+    }
+
+    private static func isSafe(_ url: URL?) -> Bool {
+        guard let url else { return true }
+        return url.scheme == "https" && url.host?.isEmpty == false
+            && url.user == nil && url.password == nil
+    }
+}
+
 /// Reads preferences per request, so saving an endpoint does not require a restart.
 struct ConfiguredCatalogProvider: CatalogProvider {
+    private static let supplementalSeriesID = "tallydex-assets"
     private let httpClient: any HTTPClient
     private let customURLOverride: URL?
     private let enabledOverride: Bool?
+    private let assetsEnabledOverride: Bool?
     private let imageDirectory: TCGdexImageDirectory
+    private let assetsDirectory: TallyDexAssetsDirectory
     private let etagStore: TCGdexETagStore?
 
     init(
         httpClient: any HTTPClient = URLSessionHTTPClient(), customURL: URL? = nil,
         useCustom: Bool? = nil, imageDirectory: TCGdexImageDirectory = .shared,
+        useAssets: Bool? = false, assetsDirectory: TallyDexAssetsDirectory = .shared,
         etagStore: TCGdexETagStore? = .shared
     ) {
         self.httpClient = httpClient
         customURLOverride = customURL
         enabledOverride = useCustom
+        assetsEnabledOverride = useAssets
         self.imageDirectory = imageDirectory
+        self.assetsDirectory = assetsDirectory
         self.etagStore = etagStore
     }
 
+    private var assetsEnabled: Bool {
+        assetsEnabledOverride ?? TallyDexAssetsAPISettings.enabled
+    }
+
     private func fetch<T: Sendable>(
+        useETag: Bool = true,
         _ operation: @Sendable (TCGdexClient) async throws -> T
     ) async throws -> T {
+        let selectedETagStore = useETag ? etagStore : nil
         let custom = customURLOverride ?? CatalogAPISettings.customURL
         if enabledOverride ?? CatalogAPISettings.customEnabled, custom != CatalogAPISettings.officialURL,
            await imageDirectory.canRequest(custom) {
@@ -57,7 +262,7 @@ struct ConfiguredCatalogProvider: CatalogProvider {
                 return try await operation(TCGdexClient(
                     httpClient: httpClient, baseURL: custom,
                     retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero),
-                    etagStore: etagStore, timeout: 6
+                    etagStore: selectedETagStore, timeout: 6
                 ))
             } catch is CancellationError {
                 throw CancellationError()
@@ -67,19 +272,152 @@ struct ConfiguredCatalogProvider: CatalogProvider {
                 await imageDirectory.recordFailure(error, baseURL: custom)
             }
         }
-        return try await operation(TCGdexClient(httpClient: httpClient, etagStore: etagStore))
+        return try await operation(TCGdexClient(httpClient: httpClient, etagStore: selectedETagStore))
     }
 
-    func fetchCardIndex() async throws -> [CatalogCard] { try await fetch { try await $0.fetchCardIndex() } }
-    func fetchSeriesIndex() async throws -> [CatalogSeries] { try await fetch { try await $0.fetchSeriesIndex() } }
+    private func overlay() async throws -> TallyDexAssetsOverlay? {
+        guard assetsEnabled else { return nil }
+        do {
+            return try await assetsDirectory.overlay(httpClient: httpClient)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
+    }
+
+    func fetchCardIndex() async throws -> [CatalogCard] {
+        // Overlay changes must be observable even when the upstream card index's
+        // persisted ETag has not changed.
+        let upstream = try await fetch(useETag: !assetsEnabled) { try await $0.fetchCardIndex() }
+        guard let overlay = try await overlay() else { return upstream }
+        var cards = Dictionary(uniqueKeysWithValues: upstream.map { ($0.id, $0) })
+        for card in overlay.cards where cards[card.id] == nil {
+            cards[card.id] = card.catalogCard
+        }
+        return cards.values.sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+    }
+
+    func fetchSeriesIndex() async throws -> [CatalogSeries] {
+        let upstream = try await fetch { try await $0.fetchSeriesIndex() }
+        guard let overlay = try await overlay() else { return upstream }
+        var result = upstream
+        var known = Set(upstream.map(\.id))
+        for series in overlay.series where !known.contains(series.id) {
+            result.append(.init(id: series.id, name: series.name, logoURL: series.logo))
+            known.insert(series.id)
+        }
+        if overlay.sets.contains(where: { $0.seriesID == nil }),
+           !known.contains(Self.supplementalSeriesID) {
+            result.append(.init(
+                id: Self.supplementalSeriesID,
+                name: "TallyDex Early Access",
+                logoURL: nil
+            ))
+        }
+        return result
+    }
+
     func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot {
-        try await fetch { try await $0.fetchSeries(id: id) }
+        let overlay = try await overlay()
+        if id == Self.supplementalSeriesID {
+            guard let overlay else { throw TCGdexError.httpError(statusCode: 404) }
+            return CatalogSeriesSnapshot(
+                series: .init(id: id, name: "TallyDex Early Access", logoURL: nil),
+                sets: overlay.sets.filter { $0.seriesID == nil }.map { overlaySet($0, overlay: overlay) }
+            )
+        }
+        do {
+            let upstream = try await fetch { try await $0.fetchSeries(id: id) }
+            guard let overlay else { return upstream }
+            var sets = upstream.sets
+            let known = Set(sets.map(\.id))
+            sets.append(contentsOf: overlay.sets.filter { $0.seriesID == id && !known.contains($0.id) }
+                .map { overlaySet($0, overlay: overlay) })
+            return .init(series: upstream.series, sets: sets)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let series = overlay?.series.first(where: { $0.id == id }), let overlay else { throw error }
+            return .init(
+                series: .init(id: series.id, name: series.name, logoURL: series.logo),
+                sets: overlay.sets.filter { $0.seriesID == id }.map { overlaySet($0, overlay: overlay) }
+            )
+        }
     }
+
     func fetchSet(id: String) async throws -> CatalogSetSnapshot {
-        try await fetch { try await $0.fetchSet(id: id) }
+        let overlay = try await overlay()
+        do {
+            let upstream = try await fetch { try await $0.fetchSet(id: id) }
+            guard let overlay else { return upstream }
+            var cards = Dictionary(uniqueKeysWithValues: upstream.cards.map { ($0.id, $0) })
+            for card in overlay.cards where card.setID == id && cards[card.id] == nil {
+                cards[card.id] = card.catalogCard
+            }
+            return .init(
+                set: upstream.set,
+                cards: cards.values.sorted { $0.localID.localizedStandardCompare($1.localID) == .orderedAscending }
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let overlay, let set = overlay.sets.first(where: { $0.id == id }) else { throw error }
+            return .init(
+                set: overlaySet(set, overlay: overlay),
+                cards: overlay.cards.filter { $0.setID == id }.map(\.catalogCard)
+                    .sorted { $0.localID.localizedStandardCompare($1.localID) == .orderedAscending }
+            )
+        }
     }
+
     func fetchCard(id: String) async throws -> CatalogCardSnapshot {
-        try await fetch { try await $0.fetchCard(id: id) }
+        if assetsEnabled {
+            do {
+                let source = try await assetsDirectory.source(cardID: id, httpClient: httpClient)
+                if let metadataURL = source.metadata?.url,
+                   metadataURL.lastPathComponent == id,
+                   metadataURL.deletingLastPathComponent().lastPathComponent == "cards" {
+                    let baseURL = metadataURL.deletingLastPathComponent()
+                        .deletingLastPathComponent().appending(path: "")
+                    return try await TCGdexClient(
+                        httpClient: httpClient, baseURL: baseURL,
+                        retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero), timeout: 8
+                    ).fetchCard(id: id)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Resolver availability never prevents the normal TCGdex chain.
+            }
+        }
+        do {
+            return try await fetch { try await $0.fetchCard(id: id) }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let card = try await overlay()?.cards.first(where: { $0.id == id }) else { throw error }
+            return .init(card: card.catalogCard, variants: [.normal])
+        }
+    }
+
+    private func overlaySet(
+        _ set: TallyDexAssetsOverlay.Set,
+        overlay: TallyDexAssetsOverlay
+    ) -> CatalogSet {
+        let count = overlay.cards.lazy.filter { $0.setID == set.id }.count
+        return CatalogSet(
+            id: set.id,
+            seriesID: set.seriesID ?? Self.supplementalSeriesID,
+            name: set.name,
+            abbreviation: set.abbreviation,
+            logoURL: set.logo,
+            symbolURL: set.symbol,
+            officialCardCount: count,
+            totalCardCount: count,
+            releaseDate: set.releaseDate,
+            rarityCounts: nil
+        )
     }
 }
 

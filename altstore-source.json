@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.30",
+          "buildVersion": "66",
+          "date": "2026-09-16",
+          "localizedDescription": "Adds the optional TallyDex Assets API for early and missing catalogue records and artwork. Metadata and images resolve independently, returned image URLs are requested directly, and overlay responses use ETag caching. Disable it at any time in Settings → Advanced to use the existing TCGdex and bundled fallback chain.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.30/TallyDex-v0.9.30.ipa",
+          "size": 32252520,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.29",
           "buildVersion": "65",
           "date": "2026-09-15",

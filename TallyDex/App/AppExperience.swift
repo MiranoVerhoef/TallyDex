@@ -52,18 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.29",
-        headline: "Binder formats that fit",
+        version: "0.9.30",
+        headline: "Earlier cards, resolved cleanly",
         notes: [
             AppReleaseNote(
-                systemImage: "rectangle.split.3x3",
-                title: "Real binder sizes",
-                detail: "Plan with 4-, 9-, 12-, 12-pocket XL, or 16-pocket XXL layouts."
+                systemImage: "photo.stack",
+                title: "TallyDex Assets",
+                detail: "Find early and missing catalogue records and artwork through the new Assets API."
             ),
             AppReleaseNote(
-                systemImage: "externaldrive.badge.checkmark",
-                title: "Plans stay protected",
-                detail: "Binder plans are now included in collection backups and exports."
+                systemImage: "hand.raised",
+                title: "Optional by design",
+                detail: "Turn the service off at any time in Settings → Advanced."
             ),
         ]
     )

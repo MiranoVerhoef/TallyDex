@@ -68,6 +68,7 @@ struct CatalogArtworkReference: Hashable, Sendable {
     let category: CatalogArtworkCategory
     let offlineSetID: String?
     let apiCardID: String?
+    let assetsCardID: String?
     let cachedAssetURL: URL?
 
     init(
@@ -75,12 +76,14 @@ struct CatalogArtworkReference: Hashable, Sendable {
         category: CatalogArtworkCategory,
         offlineSetID: String? = nil,
         apiCardID: String? = nil,
+        assetsCardID: String? = nil,
         cachedAssetURL: URL? = nil
     ) {
         self.url = url
         self.category = category
         self.offlineSetID = offlineSetID
         self.apiCardID = apiCardID
+        self.assetsCardID = assetsCardID
         self.cachedAssetURL = cachedAssetURL
     }
 }
@@ -119,6 +122,14 @@ struct CatalogArtworkCacheSnapshot: Equatable, Sendable {
 enum TCGdexArtworkFallbacks {
     static func references(for card: CatalogCard, category: CatalogArtworkCategory) -> [CatalogArtworkReference] {
         var references: [CatalogArtworkReference] = []
+        if TallyDexAssetsAPISettings.enabled {
+            references.append(.init(
+                url: TallyDexAssetsAPISettings.baseURL.appending(path: "v1/en/cards/\(card.id)/source"),
+                category: category,
+                offlineSetID: card.setID,
+                assetsCardID: card.id
+            ))
+        }
         let roots = (CatalogAPISettings.customEnabled ? [CatalogAPISettings.customURL] : [])
             + [CatalogAPISettings.officialURL]
         for root in roots {
@@ -271,6 +282,7 @@ actor CatalogArtworkCache {
     }
     private let httpClient: any HTTPClient
     private let imageDirectory: TCGdexImageDirectory
+    private let assetsDirectory: TallyDexAssetsDirectory
     private var missingAssetsUntil: [URL: Date] = [:]
     private let diagnosticsURL: URL
     private var loadDiagnostics: [String: ArtworkLoadDiagnostic]
@@ -282,13 +294,15 @@ actor CatalogArtworkCache {
         maximumByteCount: Int64? = nil,
         preferencesSuiteName: String? = nil,
         httpClient: any HTTPClient = URLSessionHTTPClient(),
-        imageDirectory: TCGdexImageDirectory = .shared
+        imageDirectory: TCGdexImageDirectory = .shared,
+        assetsDirectory: TallyDexAssetsDirectory = .shared
     ) {
         self.fileManager = fileManager
         self.maximumByteCountOverride = maximumByteCount
         self.limitDefaults = preferencesSuiteName.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         self.httpClient = httpClient
         self.imageDirectory = imageDirectory
+        self.assetsDirectory = assetsDirectory
         let diagnosticsRoot = rootDirectory
             ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("TallyDexArtworkDiagnostics", isDirectory: true)
@@ -425,6 +439,21 @@ actor CatalogArtworkCache {
             return cached
         }
 
+        if let cardID = reference.assetsCardID {
+            let source = try await assetsDirectory.source(cardID: cardID, httpClient: httpClient)
+            guard let image = source.image else { throw CatalogArtworkCacheError.invalidResponse }
+            let imageURL = reference.category == .cardThumbnails ? image.lowURL : image.highURL
+            let data = try await data(for: .init(
+                url: imageURL, category: reference.category, offlineSetID: reference.offlineSetID
+            ))
+            // Keep a resolver-scoped copy so cached and kept-offline artwork
+            // remains available without another resolver request.
+            try fileManager.createDirectory(at: directory(for: reference.category), withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+            try trimIfNeeded()
+            return data
+        }
+
         if let cardID = reference.apiCardID {
             // Reuse pre-update local artwork, but never request this hint over the network.
             if let url = reference.cachedAssetURL {
@@ -485,11 +514,11 @@ actor CatalogArtworkCache {
             if !result.contains(reference) { result.append(reference) }
         }
         var lastError: Error = CatalogArtworkCacheError.invalidResponse
-        let cardReference = references.first { $0.apiCardID != nil }
+        let cardReference = references.first { $0.assetsCardID != nil || $0.apiCardID != nil }
         for reference in references {
             do {
                 let result = try await data(for: reference)
-                if let cardID = cardReference?.apiCardID,
+                if let cardID = cardReference?.assetsCardID ?? cardReference?.apiCardID,
                    loadDiagnostics.removeValue(forKey: cardID) != nil { persistDiagnostics() }
                 return result
             } catch is CancellationError {
@@ -499,7 +528,7 @@ actor CatalogArtworkCache {
             }
         }
         try Task.checkCancellation()
-        if let cardReference, let cardID = cardReference.apiCardID {
+        if let cardReference, let cardID = cardReference.assetsCardID ?? cardReference.apiCardID {
             loadDiagnostics[cardID] = ArtworkLoadDiagnostic(
                 cardID: cardID, setID: cardReference.offlineSetID ?? "",
                 category: cardReference.category.rawValue, checkedAt: Date()
@@ -525,6 +554,9 @@ actor CatalogArtworkCache {
     func recheckArtwork(for card: CatalogCard) async throws -> Data {
         let references = card.fullArtworkReferences + card.thumbnailArtworkReferences
         for reference in references {
+            if let cardID = reference.assetsCardID {
+                await assetsDirectory.invalidate(cardID: cardID)
+            }
             if reference.apiCardID != nil {
                 if let imageURL = await imageDirectory.cachedURL(for: reference.url) {
                     missingAssetsUntil.removeValue(forKey: Self.resolvedAssetURL(imageURL, category: reference.category))
