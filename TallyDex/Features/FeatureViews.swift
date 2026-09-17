@@ -471,6 +471,8 @@ enum BundledSetLogo {
         "sma": "sma",
         "xya": "xya",
         "upcoming-30c": "upcoming-30c",
+        "30th": "upcoming-30c",
+        "30th-c": "upcoming-30c",
         "mep": "mep",
         "mee": "mee",
         "svp": "svp",
@@ -516,6 +518,7 @@ enum BundledSetLogo {
         "hidden fates shiny vault": "sma",
         "yellow a alternate": "xya",
         "30th celebration": "upcoming-30c",
+        "30th classic collection": "upcoming-30c",
         "mega evolution energy": "mee",
         "mega evolution energies": "mee",
         "svp black star promos": "svp",
@@ -7669,6 +7672,7 @@ enum CardScannerCaptureMode: String, CaseIterable, Identifiable {
 
 struct CardScannerView: View {
     @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var isVisible = false
     @StateObject private var camera = CardCameraController()
@@ -7678,6 +7682,10 @@ struct CardScannerView: View {
     @State private var scannedImage: UIImage?
     @State private var recognizedLines: [String] = []
     @State private var results: [CatalogCardSearchResult] = []
+    @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
+    @State private var updatingCardIDs: Set<String> = []
+    @State private var selectedVariantCard: CatalogCard?
+    @State private var collectionMessage: String?
     @State private var isShowingResults = false
     @State private var isScanning = false
     @State private var scanStatus = "Finding card…"
@@ -8021,24 +8029,72 @@ struct CardScannerView: View {
                 } else {
                     Section(results.count == 1 ? "Card found" : "Choose a card") {
                         ForEach(results) { result in
-                            NavigationLink {
-                                CatalogCardDetailView(card: result.card)
-                            } label: {
-                                HStack(spacing: 14) {
-                                    CachedCardImage(card: result.card)
-                                        .aspectRatio(245 / 337, contentMode: .fit)
-                                        .frame(width: 58)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(result.card.name)
-                                            .font(.body.weight(.semibold))
-                                        Text("\(result.setName) · #\(result.card.localID)")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
+                            HStack(spacing: 10) {
+                                NavigationLink {
+                                    CatalogCardDetailView(card: result.card)
+                                } label: {
+                                    HStack(spacing: 14) {
+                                        CachedCardImage(card: result.card)
+                                            .aspectRatio(245 / 337, contentMode: .fit)
+                                            .frame(width: 58)
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(result.card.name)
+                                                .font(.body.weight(.semibold))
+                                            Text("\(result.setName) · #\(result.card.localID)")
+                                                .font(.subheadline)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer(minLength: 8)
                                     }
                                 }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    handleCheckmarkTap(for: result.card)
+                                } label: {
+                                    if updatingCardIDs.contains(result.card.id) {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                            .frame(width: 44, height: 44)
+                                    } else {
+                                        CardCompletionIndicator(
+                                            progress: cardProgress(
+                                                for: result.card,
+                                                variants: variantsByCardID[result.card.id] ?? [],
+                                                catalog: catalogStore,
+                                                collection: collectionStore
+                                            )
+                                        )
+                                        .frame(width: 44, height: 44)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .background(.regularMaterial, in: Circle())
+                                .contentShape(Circle())
+                                .disabled(updatingCardIDs.contains(result.card.id))
+                                .contextMenu {
+                                    Button("Choose printings", systemImage: "square.stack.3d.up") {
+                                        selectedVariantCard = result.card
+                                    }
+                                }
+                                .accessibilityIdentifier("camera.result.ownership.\(result.card.id)")
+                                .accessibilityLabel(
+                                    collectionStore.owns(cardID: result.card.id)
+                                        ? "Remove \(result.card.name) from collection"
+                                        : "Mark \(result.card.name) as owned"
+                                )
+                                .accessibilityHint("Double-tap to toggle ownership. Touch and hold to choose printings")
                             }
                         }
+                    }
+                }
+
+                if let collectionMessage {
+                    Section {
+                        Label(collectionMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -8062,6 +8118,61 @@ struct CardScannerView: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .sheet(item: $selectedVariantCard) { card in
+            CatalogVariantPickerView(card: card)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .task(id: results.map(\.card.id).joined(separator: "|")) {
+            variantsByCardID = await catalogStore.prepareVariants(
+                for: results.map(\.card),
+                refreshCachedDetails: false
+            )
+        }
+    }
+
+    private func handleCheckmarkTap(for card: CatalogCard) {
+        guard !updatingCardIDs.contains(card.id) else { return }
+        updatingCardIDs.insert(card.id)
+        collectionMessage = nil
+        Task {
+            defer { updatingCardIDs.remove(card.id) }
+            do {
+                let snapshot = try await catalogStore.details(for: card)
+                variantsByCardID[card.id] = snapshot.variants
+                let preference = collectionStore.preference(for: card.setID)
+                let visibleVariants = preference.visibleVariants(in: snapshot.variants)
+                if preference.goal != .normal, visibleVariants.count > 1 {
+                    selectedVariantCard = card
+                    return
+                }
+                if collectionStore.owns(cardID: card.id) {
+                    try await collectionStore.removeAllOwnership(cardID: card.id)
+                    return
+                }
+                let standardVariantOrder: [CatalogVariantKind] = [
+                    .normal,
+                    .holo,
+                    .reverseHolo,
+                    .firstEdition,
+                    .watermarkedPromo,
+                    .prerelease,
+                    .prereleaseStaff,
+                ]
+                guard let standardVariant = standardVariantOrder.first(where: visibleVariants.contains) else {
+                    collectionMessage = "Printing information isn’t available for \(card.name) yet."
+                    return
+                }
+                try await collectionStore.setPreferredQuantity(
+                    1,
+                    cardID: card.id,
+                    variant: standardVariant,
+                    printings: snapshot.printings
+                )
+            } catch {
+                collectionMessage = "TallyDex couldn’t update \(card.name). Check your connection and try again."
+            }
+        }
     }
 
     private func takePhoto() {
@@ -8182,6 +8293,10 @@ struct CardScannerView: View {
         scanStatus = "Finding card…"
         recognizedLines = []
         results = []
+        variantsByCardID = [:]
+        updatingCardIDs = []
+        selectedVariantCard = nil
+        collectionMessage = nil
         if scanError == nil {
             camera.rearmAutomaticCapture()
             camera.start()

@@ -2873,6 +2873,19 @@ final class CatalogFoundationTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testReleased30thSetsReuseVerifiedCelebrationLogo() throws {
+        let announced = try XCTUnwrap(BundledSetLogo.image(for: set(
+            id: "upcoming-30c", seriesID: "me", name: "30th Celebration"
+        )))
+        for (id, name) in [("30th", "30th Celebration"), ("30th-c", "30th Classic Collection")] {
+            let released = try XCTUnwrap(BundledSetLogo.image(for: set(
+                id: id, seriesID: "me", name: name
+            )))
+            XCTAssertTrue(released === announced, "Expected \(id) to reuse the verified 30th logo")
+        }
+    }
+
     func testArtworkCacheLimitRemovesCardImagesBeforeCoreArtwork() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
