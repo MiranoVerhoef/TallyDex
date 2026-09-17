@@ -727,6 +727,12 @@ Completed in v0.9.32:
 - Keeps the separate repository security hardening and all collection data migrations intact.
 - Verified with 190 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
 
+Completed in v0.9.33:
+
+- Adds the collection ownership circle directly to camera matches, including long-press printing selection.
+- Uses the verified 30th Celebration logo for both released 30th sets instead of the placeholder.
+- Verified with 191 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

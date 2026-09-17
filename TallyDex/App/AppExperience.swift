@@ -52,13 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.32",
-        headline: "Standard data flow restored",
+        version: "0.9.33",
+        headline: "Faster collecting, correct artwork",
         notes: [
             AppReleaseNote(
-                systemImage: "arrow.uturn.backward.circle",
-                title: "Assets integration removed",
-                detail: "Card data and artwork again use the v0.9.29 TCGdex and bundled fallback flow."
+                systemImage: "camera.viewfinder",
+                title: "Collect from camera results",
+                detail: "Mark a matched card as owned immediately, or hold the circle to choose its printing."
+            ),
+            AppReleaseNote(
+                systemImage: "photo",
+                title: "Correct 30th artwork",
+                detail: "30th Celebration and Classic Collection now use their proper set logo."
             ),
         ]
     )

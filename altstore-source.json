@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.33",
+          "buildVersion": "69",
+          "date": "2026-09-17",
+          "localizedDescription": "Adds direct ownership controls to camera matches and restores the correct 30th Celebration artwork for both released 30th sets.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.33/TallyDex-v0.9.33.ipa",
+          "size": 32587216,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.32",
           "buildVersion": "68",
           "date": "2026-09-17",
