@@ -108,6 +108,8 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 ### Before public release
 
 - [ ] Add a 14-day full-feature trial followed by one permanent lifetime unlock.
+  This is deliberately deferred until immediately before public release; current
+  development stays focused on bug fixes, reliability, and the learned scanner.
   The trial must never auto-renew or charge automatically. Use Apple's
   non-subscription trial structure and a paid non-consumable In-App Purchase for
   lifetime access. Before the trial starts, clearly show its duration, the
@@ -383,17 +385,19 @@ Completed in v0.9.10:
 
 ### Actually remaining — audited 2026-09-17
 
-1. Implement and test the 14-day trial plus lifetime unlock described above.
-   App Store Connect product setup, real sandbox purchases, TestFlight, and the
-   final release require Apple Developer Program enrollment.
+1. Keep bug fixes and reliability first. Every development build should add a
+   regression test where practical and pass the iOS 27 unit, UI, release-build,
+   and requested visual/hidden simulator checks before it is published.
 2. Finish the learned camera detector. Scan Lab, its reviewed-data goals, export,
    integrity checks, and Create ML training tool are complete. The remaining work
    is to collect and review the real dataset, train and measure the model, integrate
    the accepted Core ML model into TallyDex, and validate automatic capture on a
    physical iPhone across glare, sleeves, top loaders, angles, and hard negatives.
-3. Complete public-release preparation: choose whether existing beta users receive
-   lifetime access, test purchase restore/refund/revocation/offline behavior, add
-   App Store privacy and product metadata, and complete a TestFlight release pass.
+3. Immediately before public release, implement the 14-day trial and lifetime
+   unlock, choose whether existing beta users receive lifetime access, test
+   purchase restore/refund/revocation/offline behavior, add App Store privacy and
+   product metadata, and complete a TestFlight release pass. App Store Connect
+   product setup and real sandbox purchases require Apple Developer enrollment.
 
 Optional later enhancements, not current blockers:
 
