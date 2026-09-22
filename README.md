@@ -96,7 +96,7 @@ For uncached card images, the ordered sources are: development API's exact-card 
 field, official API's exact-card image field, verified parent-set paths, bundled
 thumbnails, Pokémon's official exact-set/collector-number host, then placeholder.
 No image CDN path is inferred from an API hostname. Existing cached artwork and
-kept-offline downloads are reused without a network lookup. The 839 primary
+kept-offline downloads are reused without a network lookup. The 842 primary
 bundled WebP thumbnails have exact-ID mappings in
 `TallyDex/Resources/BundledCardThumbnails/manifest.json`. Its 48 My First Battle
 variant files retain their original mappings and do not create new printings or
@@ -401,10 +401,9 @@ Completed in v0.9.10:
 
 Optional later enhancements, not current blockers:
 
-- After the current reliability release, add PriceCharting import and export.
-  Use the supplied real export as a compatibility fixture, show a match preview
-  before importing, preserve unmatched rows for review, and make round trips
-  lossless without changing ownership until the collector confirms them.
+- Expand PriceCharting matching to additional product-name conventions as real
+  exports become available. Unmatched rows remain visible in the import preview
+  and are never guessed or added automatically.
 - Add provider-supplied Cardmarket low and TCGplayer low/mid/high/direct-low market
   statistics if exact-printing data is available.
 - Add provider-reported Normal, Holo, Reverse, and First Edition set totals.
@@ -553,7 +552,7 @@ Completed in v0.9.19:
   Advanced connection check and automatic official-provider fallback.
 - Exact-ID artwork routing through both APIs, verified parent paths, bundled
   thumbnails, Pokémon's official asset host, and finally a placeholder.
-- 839 primary thumbnails and 48 separately mapped variant files from the supplied
+- 842 primary thumbnails and 48 separately mapped variant files from the supplied
   handoff; all 887 SHA-256 checksums validated before bundling.
 - Source-scoped catalogue ETags and automatic artwork caches; explicitly kept
   offline API images use exact-card keys so changing hosts preserves availability.
@@ -744,6 +743,13 @@ Completed in v0.9.34:
 - Groups collector number and card facts in the collapsible Card details section, then keeps Your collection and Cardmarket access near the top of the card page.
 - Adds regression coverage for the supplied before/after 30th Celebration failure pattern and verifies backup, import, restore, and rollback flows on iOS 27.
 
+Completed in v0.9.35:
+
+- Removes card-detail scroll snapping for normal, continuous scrolling.
+- Imports PriceCharting collection CSV with exact set, card, and printing matching, a review preview, and rollback backup; unmatched or graded rows are skipped.
+- Exports saved PriceCharting product IDs back to CSV with current quantities, or a text list for cards without IDs. Product mappings are preserved in full backups.
+- Bundles compact B, G, and R Mew thumbnails for 30th Celebration.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),
@@ -766,7 +772,7 @@ Coverage references (metadata only; no artwork copied):
 - Pokémon's [2024 product release](https://www.pokemon.com/us/pokemon-tcg/product-gallery/trick-or-trade-booster-bundle-2024)
   establishes August 30, rather than the later date shown by the browsing reference.
 - [TallyDex SVE API](https://tcgdex.tallydex.nl/v2/en/sets/sve) and
-  [MEE API](https://tcgdex.tallydex.nl/v2/en/sets/mee): 24 and 8 exact Energy IDs.
+  [MEE API](https://tcgdex.tallydex.nl/v2/en/sets/mee): 24 and 16 exact Energy IDs on the development API as of September 22, 2026. The official API still has 8 MEE cards; the additional development records currently lack TCGdex-hosted images.
 
 ## Reporting catalog data
 

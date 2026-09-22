@@ -52,18 +52,23 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.34",
-        headline: "Safer card data updates",
+        version: "0.9.35",
+        headline: "Smoother card browsing and transfers",
         notes: [
             AppReleaseNote(
-                systemImage: "checkmark.shield",
-                title: "Collection protection",
-                detail: "Owned cards now survive corrected printing IDs and variant updates from TCGdex."
+                systemImage: "hand.draw",
+                title: "Card details",
+                detail: "Card pages now scroll naturally without snapping."
             ),
             AppReleaseNote(
-                systemImage: "rectangle.and.text.magnifyingglass",
-                title: "Cleaner card details",
-                detail: "Card facts are grouped together, with collection controls and Cardmarket access near the top."
+                systemImage: "arrow.left.arrow.right",
+                title: "Collection transfer",
+                detail: "Import PriceCharting CSV and export matched cards or a text list."
+            ),
+            AppReleaseNote(
+                systemImage: "photo",
+                title: "30th artwork",
+                detail: "Adds the missing B, G, and R Mew thumbnails."
             ),
         ]
     )

@@ -157,8 +157,79 @@ final class CollectionStore {
         )
     }
 
+    func preparePriceChartingImport(
+        filename: String,
+        sourceRowCount: Int,
+        matches: [PriceChartingResolvedMatch],
+        issues: [PriceChartingImportIssue]
+    ) async throws -> PreparedPriceChartingImport {
+        let timestamp = now()
+        let broadByKey = Dictionary(
+            uniqueKeysWithValues: broadOwnedEntries.map {
+                ("\($0.cardID)|\($0.variant.rawValue)", $0)
+            }
+        )
+        let exactByKey = Dictionary(grouping: exactOwnedEntries) {
+            "\($0.cardID)|\($0.variant.rawValue)"
+        }
+        var ownership: [PortableCollectionDocument.OwnershipRecord] = []
+
+        for match in matches {
+            let key = "\(match.card.id)|\(match.variant.rawValue)"
+            let broad = broadByKey[key]
+            let exactQuantity = exactByKey[key, default: []].reduce(0) { $0 + $1.quantity }
+            let currentQuantity = (broad?.quantity ?? 0) + exactQuantity
+            let targetQuantity = max(currentQuantity, match.quantity)
+            let targetBroadQuantity = max(broad?.quantity ?? 0, targetQuantity - exactQuantity)
+            guard targetBroadQuantity > 0 else { continue }
+            ownership.append(.init(
+                cardID: match.card.id,
+                variant: match.variant,
+                quantity: targetBroadQuantity,
+                updatedAt: broad?.quantity == targetBroadQuantity ? broad?.updatedAt ?? timestamp : timestamp
+            ))
+        }
+
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: timestamp,
+            appVersion: "PriceCharting import",
+            ownership: ownership,
+            setPreferences: [],
+            folders: [],
+            cardMetadata: [],
+            priceChartingMappings: matches.map {
+                PriceChartingProductMapping(
+                    cardID: $0.card.id,
+                    variant: $0.variant,
+                    fields: $0.sourceFields,
+                    updatedAt: timestamp
+                )
+            }
+        )
+        let preview = try await resolveRepository().previewImport(document, mode: .merge)
+        return PreparedPriceChartingImport(
+            filename: filename,
+            sourceRowCount: sourceRowCount,
+            matches: matches,
+            issues: issues,
+            document: document,
+            preview: preview
+        )
+    }
+
     func importCollection(_ prepared: PreparedCollectionImport, mode: CollectionImportMode) async throws {
         try await resolveRepository().importCollection(prepared.document, mode: mode, importedAt: now())
+        try await reloadCollectionState()
+    }
+
+    func importPriceCharting(_ prepared: PreparedPriceChartingImport) async throws {
+        try await resolveRepository().importCollection(
+            prepared.document,
+            mode: .merge,
+            importedAt: now()
+        )
         try await reloadCollectionState()
     }
 

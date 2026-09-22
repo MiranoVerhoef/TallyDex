@@ -2397,7 +2397,7 @@ struct CatalogCardDetailView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 20) {
                     CardDetailArtworkView(card: displayedCard)
                         .aspectRatio(245 / 337, contentMode: .fit)
@@ -2444,11 +2444,9 @@ struct CatalogCardDetailView: View {
                     }
                 }
             }
-            .scrollTargetLayout()
             .padding()
             .safeAreaPadding(.bottom, 86)
         }
-        .scrollTargetBehavior(.viewAligned)
         .refreshable {
             isConfirmingRefresh = true
         }
@@ -6356,6 +6354,11 @@ private struct CollectionBackupSelection: Identifiable {
     let filename: String
 }
 
+private enum CollectionFileImportKind {
+    case tallyDexBackup
+    case priceChartingCSV
+}
+
 private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
     let onResult: (Result<CollectionBackupSelection, Error>) -> Void
     let onCancel: () -> Void
@@ -6416,15 +6419,19 @@ private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
 }
 
 private struct CollectionDataTransferView: View {
+    @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @State private var exportFile = CollectionTransferFileDocument()
     @State private var exportType = UTType.tallyDexCollection
     @State private var exportFilename = "TallyDex-Collection.pokecollection"
+    @State private var exportCompletionText = "Export saved successfully."
     @State private var isExporting = false
     @State private var isImporting = false
     @State private var isPreparing = false
     @State private var stagedImportSelection: CollectionBackupSelection?
+    @State private var importKind = CollectionFileImportKind.tallyDexBackup
     @State private var pendingImport: PreparedCollectionImport?
+    @State private var pendingPriceChartingImport: PreparedPriceChartingImport?
     @State private var message: String?
     @State private var importError: String?
 
@@ -6444,23 +6451,46 @@ private struct CollectionDataTransferView: View {
                     Label("Export Readable CSV", systemImage: "tablecells")
                 }
                 .disabled(isPreparing)
+
+                Button {
+                    preparePriceChartingCSVExport()
+                } label: {
+                    Label("Export PriceCharting CSV", systemImage: "arrow.up.doc")
+                }
+                .disabled(isPreparing)
+
+                Button {
+                    preparePriceChartingTextExport()
+                } label: {
+                    Label("Export PriceCharting Text List", systemImage: "text.alignleft")
+                }
+                .disabled(isPreparing)
             } header: {
                 Text("Export")
             } footer: {
-                Text("The .pokecollection backup preserves ownership quantities and printings, set goals and visibility, collections, wishlist, and notes. CSV is intended for reading or spreadsheets; restore uses the full backup file.")
+                Text("The full backup preserves all TallyDex data. PriceCharting CSV includes cards whose product IDs were learned from an earlier import. Use the text list for cards without IDs; review matches and quantities on PriceCharting after importing it.")
             }
 
             Section {
                 Button {
+                    importKind = .tallyDexBackup
                     isImporting = true
                 } label: {
                     Label("Import Backup", systemImage: "square.and.arrow.down")
                 }
                 .disabled(isPreparing)
+
+                Button {
+                    importKind = .priceChartingCSV
+                    isImporting = true
+                } label: {
+                    Label("Import PriceCharting CSV", systemImage: "tablecells.badge.ellipsis")
+                }
+                .disabled(isPreparing)
             } header: {
                 Text("Import")
             } footer: {
-                Text("TallyDex previews additions, changes, conflicts, skipped records, and removals first. Merge is safe and does not duplicate quantities. Replace requires confirmation. Both create a local rollback backup before changing anything.")
+                Text("Every import is previewed first. PriceCharting rows are matched by set, collector number, card name, and printing; uncertain rows are skipped instead of guessed. A rollback backup is created before changes.")
             }
 
             if isPreparing {
@@ -6489,9 +6519,7 @@ private struct CollectionDataTransferView: View {
         ) { result in
             switch result {
             case .success:
-                message = exportType == .commaSeparatedText
-                    ? "Readable CSV exported successfully."
-                    : "Full backup exported successfully."
+                message = exportCompletionText
             case .failure:
                 message = "The export wasn’t saved. Your collection was not changed."
             }
@@ -6521,8 +6549,14 @@ private struct CollectionDataTransferView: View {
                 message = resultMessage
             }
         }
+        .sheet(item: $pendingPriceChartingImport) { prepared in
+            PriceChartingImportPreviewView(prepared: prepared) { resultMessage in
+                pendingPriceChartingImport = nil
+                message = resultMessage
+            }
+        }
         .alert(
-            "Couldn’t Import Backup",
+            "Couldn’t Import File",
             isPresented: Binding(
                 get: { importError != nil },
                 set: { if !$0 { importError = nil } }
@@ -6548,6 +6582,7 @@ private struct CollectionDataTransferView: View {
                 let date = document.exportedAt.formatted(.iso8601.year().month().day())
                 exportType = csv ? .commaSeparatedText : .tallyDexCollection
                 exportFilename = csv ? "TallyDex-Collection-\(date).csv" : "TallyDex-Collection-\(date).pokecollection"
+                exportCompletionText = csv ? "Readable CSV exported successfully." : "Full backup exported successfully."
                 isExporting = true
             } catch {
                 message = "TallyDex couldn’t prepare the export. Your collection was not changed."
@@ -6563,10 +6598,20 @@ private struct CollectionDataTransferView: View {
         Task {
             defer { isPreparing = false }
             do {
-                pendingImport = try await collectionStore.prepareImport(
-                    data: selection.data,
-                    filename: selection.filename
-                )
+                switch importKind {
+                case .tallyDexBackup:
+                    pendingImport = try await collectionStore.prepareImport(
+                        data: selection.data,
+                        filename: selection.filename
+                    )
+                case .priceChartingCSV:
+                    pendingPriceChartingImport = try await PriceChartingImportResolver.prepare(
+                        data: selection.data,
+                        filename: selection.filename,
+                        catalogStore: catalogStore,
+                        collectionStore: collectionStore
+                    )
+                }
             } catch CollectionRepositoryError.importTooLarge(let maximumByteCount) {
                 let limit = ByteCountFormatter.string(
                     fromByteCount: Int64(maximumByteCount),
@@ -6575,8 +6620,192 @@ private struct CollectionDataTransferView: View {
                 importError = "That backup is larger than the \(limit) safety limit. No data was changed."
             } catch CollectionRepositoryError.unsupportedImportVersion(let version) {
                 importError = "This backup uses schema version \(version), which this version of TallyDex can’t import."
+            } catch PriceChartingTransferError.missingColumns(let columns) {
+                importError = "That PriceCharting CSV is missing: \(columns.joined(separator: ", ")). No data was changed."
+            } catch PriceChartingTransferError.tooManyRows(let maximum) {
+                importError = "PriceCharting imports are limited to \(maximum.formatted()) rows at a time. No data was changed."
+            } catch is PriceChartingTransferError {
+                importError = "That file is not a valid PriceCharting collection CSV. No data was changed."
             } catch {
-                importError = "That file is not a valid TallyDex .pokecollection backup. No data was changed."
+                importError = importKind == .tallyDexBackup
+                    ? "That file is not a valid TallyDex .pokecollection backup. No data was changed."
+                    : "The PriceCharting CSV couldn’t be matched to the current catalogue. No data was changed."
+            }
+        }
+    }
+
+    private func preparePriceChartingCSVExport() {
+        guard !isPreparing else { return }
+        isPreparing = true
+        message = nil
+        Task {
+            defer { isPreparing = false }
+            do {
+                let document = try await collectionStore.exportDocument()
+                let result = PriceChartingTransferCodec.csvExport(
+                    ownership: collectionStore.ownedEntries,
+                    mappings: document.priceChartingMappings
+                )
+                guard result.mapped > 0 else {
+                    message = "No PriceCharting product IDs are saved yet. Import a PriceCharting CSV first, or use the text list."
+                    return
+                }
+                exportFile = CollectionTransferFileDocument(data: result.data)
+                let date = document.exportedAt.formatted(.iso8601.year().month().day())
+                exportType = .commaSeparatedText
+                exportFilename = "TallyDex-PriceCharting-\(date).csv"
+                exportCompletionText = result.unmapped == 0
+                    ? "PriceCharting CSV exported successfully."
+                    : "PriceCharting CSV exported. \(result.unmapped) card printing(s) without PriceCharting IDs were excluded; use the text list for those."
+                isExporting = true
+            } catch {
+                message = "TallyDex couldn’t prepare the PriceCharting CSV. Your collection was not changed."
+            }
+        }
+    }
+
+    private func preparePriceChartingTextExport() {
+        guard !isPreparing else { return }
+        isPreparing = true
+        message = nil
+        Task {
+            defer { isPreparing = false }
+            do {
+                let ownership = collectionStore.ownedEntries.filter { $0.quantity > 0 }
+                guard ownership.reduce(0, { $0 + $1.quantity }) <= PriceChartingTransferCodec.maximumRowCount else {
+                    message = "PriceCharting accepts up to 5,000 text lines at a time. Export smaller groups from your collection."
+                    return
+                }
+                let cards = try await catalogStore.searchResults(
+                    cardIDs: Array(Set(ownership.map(\.cardID)))
+                )
+                guard Set(cards.map(\.card.id)) == Set(ownership.map(\.cardID)) else {
+                    message = "Some owned cards are not in the local search index yet. Refresh the catalogue and retry."
+                    return
+                }
+                exportFile = CollectionTransferFileDocument(
+                    data: PriceChartingTransferCodec.textImport(ownership: ownership, cards: cards)
+                )
+                let date = Date.now.formatted(.iso8601.year().month().day())
+                exportType = .plainText
+                exportFilename = "TallyDex-PriceCharting-\(date).txt"
+                exportCompletionText = "PriceCharting text list exported. Review matches and quantities after importing on PriceCharting."
+                isExporting = true
+            } catch {
+                message = "TallyDex couldn’t prepare the PriceCharting export. Your collection was not changed."
+            }
+        }
+    }
+}
+
+private struct PriceChartingImportPreviewView: View {
+    @Environment(CollectionStore.self) private var collectionStore
+    let prepared: PreparedPriceChartingImport
+    let onFinish: (String) -> Void
+    @State private var isApplying = false
+    @State private var errorMessage: String?
+
+    private var matchedRowCount: Int {
+        max(0, prepared.sourceRowCount - prepared.issues.count)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("File", value: prepared.filename)
+                    LabeledContent("Rows", value: prepared.sourceRowCount.formatted())
+                    LabeledContent("Matched safely", value: matchedRowCount.formatted())
+                    LabeledContent("Needs review", value: prepared.issues.count.formatted())
+                }
+
+                Section("Import changes") {
+                    LabeledContent("New cards or ID links") {
+                        Text(prepared.preview.additions.formatted()).foregroundStyle(.green)
+                    }
+                    LabeledContent("Updated quantities or links") {
+                        Text(prepared.preview.changes.formatted()).foregroundStyle(.blue)
+                    }
+                    LabeledContent("Already present") {
+                        Text(prepared.preview.skipped.formatted()).foregroundStyle(.secondary)
+                    }
+                }
+
+                if !prepared.matches.isEmpty {
+                    Section("Matched cards") {
+                        ForEach(Array(prepared.matches.prefix(12).enumerated()), id: \.offset) { _, match in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(match.card.name) · \(match.variant.displayName)")
+                                Text("\(match.setName) · #\(match.card.localID) · Qty \(match.quantity)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if prepared.matches.count > 12 {
+                            Text("And \((prepared.matches.count - 12).formatted()) more matched cards")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if !prepared.issues.isEmpty {
+                    Section {
+                        ForEach(Array(prepared.issues.prefix(12))) { issue in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Row \(issue.rowNumber): \(issue.productName)")
+                                Text("\(issue.consoleName) · \(issue.reason)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if prepared.issues.count > 12 {
+                            Text("And \((prepared.issues.count - 12).formatted()) more rows needing review")
+                                .foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text("Skipped safely")
+                    } footer: {
+                        Text("Skipped rows are not added. Correct the set, number, name, or printing in the CSV and import it again.")
+                    }
+                }
+
+                if let errorMessage {
+                    Section { Text(errorMessage).foregroundStyle(.red) }
+                }
+
+                Section {
+                    Button("Import Matched Cards") { applyImport() }
+                        .disabled(isApplying || !prepared.preview.hasChanges)
+                } footer: {
+                    Text("Import only adds cards, raises quantities, or saves PriceCharting IDs. It never removes cards or lowers quantities, and creates a rollback backup first.")
+                }
+            }
+            .navigationTitle("PriceCharting Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { onFinish("Import cancelled. No data was changed.") }
+                        .disabled(isApplying)
+                }
+            }
+        }
+        .interactiveDismissDisabled(isApplying)
+    }
+
+    private func applyImport() {
+        guard !isApplying else { return }
+        isApplying = true
+        errorMessage = nil
+        Task {
+            do {
+                try await collectionStore.importPriceCharting(prepared)
+                let skipped = prepared.issues.count
+                onFinish(skipped == 0
+                    ? "PriceCharting collection imported successfully."
+                    : "PriceCharting collection imported. \(skipped.formatted()) uncertain row(s) were skipped.")
+            } catch {
+                isApplying = false
+                errorMessage = "The import failed. Your collection was not changed."
             }
         }
     }

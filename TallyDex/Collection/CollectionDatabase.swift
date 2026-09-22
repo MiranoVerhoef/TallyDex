@@ -184,6 +184,16 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v14-pricecharting-product-ids") { database in
+            try database.create(table: "priceChartingProduct") { table in
+                table.column("cardID", .text).notNull()
+                table.column("variant", .text).notNull()
+                table.column("fieldsJSON", .text).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.primaryKey(["cardID", "variant"])
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -994,13 +1004,25 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 updatedAt: $0["updatedAt"]
             )
         }
+        let priceChartingMappings = try Row.fetchAll(
+            database,
+            sql: "SELECT cardID, variant, fieldsJSON, updatedAt FROM priceChartingProduct"
+        ).map {
+            CollectionBackupPayload.PriceChartingMapping(
+                cardID: $0["cardID"],
+                variant: $0["variant"],
+                fieldsJSON: $0["fieldsJSON"],
+                updatedAt: $0["updatedAt"]
+            )
+        }
         return CollectionBackupPayload(
             variants: variants,
             exactPrintings: exactPrintings,
             preferences: preferences,
             folders: folders,
             metadata: metadata,
-            binderPlans: binderPlans
+            binderPlans: binderPlans,
+            priceChartingMappings: priceChartingMappings
         )
     }
 
@@ -1103,7 +1125,18 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     createdAt: item.createdAt,
                     updatedAt: item.updatedAt
                 )
-            }.sorted { $0.id.uuidString < $1.id.uuidString }
+            }.sorted { $0.id.uuidString < $1.id.uuidString },
+            priceChartingMappings: (payload.priceChartingMappings ?? []).compactMap { item in
+                guard let variant = CatalogVariantKind(rawValue: item.variant),
+                      let fields = item.fieldsJSON.data(using: .utf8)
+                        .flatMap({ try? JSONDecoder().decode([String].self, from: $0) }) else { return nil }
+                return PriceChartingProductMapping(
+                    cardID: item.cardID,
+                    variant: variant,
+                    fields: fields,
+                    updatedAt: item.updatedAt
+                )
+            }.sorted { $0.key < $1.key }
         )
     }
 
@@ -1166,6 +1199,14 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt
                 )
+            },
+            priceChartingMappings: try document.priceChartingMappings.map {
+                .init(
+                    cardID: $0.cardID,
+                    variant: $0.variant.rawValue,
+                    fieldsJSON: String(data: try encoder.encode($0.fields), encoding: .utf8) ?? "[]",
+                    updatedAt: $0.updatedAt
+                )
             }
         )
     }
@@ -1194,7 +1235,12 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
               document.cardMetadata.allSatisfy({ !$0.cardID.isEmpty }),
               Set(document.cardMetadata.map(\.cardID)).count == document.cardMetadata.count,
               document.binderPlans.allSatisfy(\.isValid),
-              Set(document.binderPlans.map(\.id)).count == document.binderPlans.count else {
+              Set(document.binderPlans.map(\.id)).count == document.binderPlans.count,
+              document.priceChartingMappings.allSatisfy({
+                  !$0.cardID.isEmpty && $0.fields.count == PriceChartingTransferCodec.headers.count
+                      && !$0.productID.isEmpty && $0.productID.allSatisfy(\.isNumber)
+              }),
+              Set(document.priceChartingMappings.map(\.key)).count == document.priceChartingMappings.count else {
             throw CollectionRepositoryError.invalidImport
         }
     }
@@ -1335,6 +1381,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     ? "Binder size, source, or ordering will change"
                     : "\(previous.name) → \(replacement.name)"
             }
+        )
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.priceChartingMappings.map { ($0.key, $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.priceChartingMappings.map { ($0.key, $0) }),
+            date: \.updatedAt,
+            category: "PriceCharting ID",
+            keyText: { $0 },
+            title: { "\($0.cardID) · \($0.variant.displayName)" },
+            changeDetail: { "Product ID \($0.productID) → \($1.productID)" }
         )
         return .init(
             additions: additions,
@@ -1483,6 +1538,25 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 ]
             )
         }
+        let currentMappings = Dictionary(uniqueKeysWithValues: current.priceChartingMappings.map { ($0.key, $0) })
+        for item in incoming.priceChartingMappings {
+            if let saved = currentMappings[item.key], item.updatedAt <= saved.updatedAt {
+                continue
+            }
+            try database.execute(
+                sql: """
+                INSERT INTO priceChartingProduct (cardID, variant, fieldsJSON, updatedAt)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(cardID, variant) DO UPDATE SET
+                    fieldsJSON = excluded.fieldsJSON, updatedAt = excluded.updatedAt
+                """,
+                arguments: [
+                    item.cardID, item.variant.rawValue,
+                    String(data: try JSONEncoder().encode(item.fields), encoding: .utf8) ?? "[]",
+                    item.updatedAt,
+                ]
+            )
+        }
     }
 
     private static func insertBackup(
@@ -1516,6 +1590,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         try database.execute(sql: "DELETE FROM collectionCardMetadata")
         if payload.binderPlans != nil {
             try database.execute(sql: "DELETE FROM binderPlan")
+        }
+        if payload.priceChartingMappings != nil {
+            try database.execute(sql: "DELETE FROM priceChartingProduct")
         }
 
         for item in payload.variants {
@@ -1603,6 +1680,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     item.createdAt,
                     item.updatedAt,
                 ]
+            )
+        }
+        for item in payload.priceChartingMappings ?? [] {
+            try database.execute(
+                sql: """
+                INSERT INTO priceChartingProduct (cardID, variant, fieldsJSON, updatedAt)
+                VALUES (?, ?, ?, ?)
+                """,
+                arguments: [item.cardID, item.variant, item.fieldsJSON, item.updatedAt]
             )
         }
     }
@@ -1752,10 +1838,18 @@ private struct CollectionBackupPayload: Codable {
         let updatedAt: Date
     }
 
+    struct PriceChartingMapping: Codable, Equatable {
+        let cardID: String
+        let variant: String
+        let fieldsJSON: String
+        let updatedAt: Date
+    }
+
     let variants: [Variant]
     let exactPrintings: [ExactPrinting]?
     let preferences: [Preference]
     let folders: [Folder]
     let metadata: [Metadata]
     let binderPlans: [Plan]?
+    let priceChartingMappings: [PriceChartingMapping]?
 }

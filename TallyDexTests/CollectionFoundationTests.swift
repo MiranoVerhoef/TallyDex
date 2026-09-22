@@ -1428,6 +1428,92 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertTrue(csv.contains("\"Mint, signed\""))
     }
 
+    func testPriceChartingCSVDecodesExportedRowsAndQuotedFields() throws {
+        let csv = """
+        id,product-name,console-name,price-in-pennies,include-string,condition-string,condition-id,sku,notes,cost-basis-in-pennies,quantity,date-entered,date-purchased,grading-company,grading-cert-id,folder
+        13644989,Annihilape [Reverse Holo] #41,Pokemon Pitch Black,139,Ungraded,Normal wear,1,,,0,2,2026-07-18,,,,
+        13644053,Slowbro #30,Pokemon Pitch Black,17,Ungraded,Normal wear,1,,"Mint, centered",0,1,2026-07-18,,,,
+        """
+
+        let rows = try PriceChartingTransferCodec.decode(Data(csv.utf8))
+
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows[0].productID, "13644989")
+        XCTAssertEqual(rows[0].productName, "Annihilape [Reverse Holo] #41")
+        XCTAssertEqual(rows[0].quantity, 2)
+        let product = try XCTUnwrap(
+            PriceChartingTransferCodec.productComponents(rows[0].productName)
+        )
+        XCTAssertEqual(product.name, "Annihilape")
+        XCTAssertEqual(product.number, "41")
+        XCTAssertEqual(product.variant, "Reverse Holo")
+        XCTAssertEqual(PriceChartingTransferCodec.variant(named: product.variant ?? ""), .reverseHolo)
+    }
+
+    func testPriceChartingTextExportRepeatsQuantityAndLabelsPrinting() {
+        let card = CatalogCard(
+            id: "me05-041", setID: "me05", localID: "041", name: "Annihilape",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil
+        )
+        let data = PriceChartingTransferCodec.textImport(
+            ownership: [
+                .init(cardID: card.id, variant: .reverseHolo, quantity: 2, updatedAt: .distantPast),
+            ],
+            cards: [.init(card: card, setName: "Pitch Black")]
+        )
+
+        XCTAssertEqual(
+            String(decoding: data, as: UTF8.self),
+            "Annihilape [Reverse Holo] #041 Pokemon Pitch Black\n" +
+            "Annihilape [Reverse Holo] #041 Pokemon Pitch Black\n"
+        )
+    }
+
+    func testPriceChartingProductIDSurvivesBackupAndProducesImportableCSV() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let source = """
+        id,product-name,console-name,price-in-pennies,include-string,condition-string,condition-id,sku,notes,cost-basis-in-pennies,quantity,date-entered,date-purchased,grading-company,grading-cert-id,folder
+        13644989,Annihilape [Reverse Holo] #41,Pokemon Pitch Black,139,Ungraded,Normal wear,1,,"Mint, centered",0,1,2026-07-18,,,,
+        """
+        let sourceRow = try XCTUnwrap(PriceChartingTransferCodec.decode(Data(source.utf8)).first)
+        let mapping = PriceChartingProductMapping(
+            cardID: "me05-041", variant: .reverseHolo,
+            fields: sourceRow.fields, updatedAt: timestamp
+        )
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: timestamp,
+            appVersion: "Test",
+            ownership: [.init(cardID: "me05-041", variant: .reverseHolo, quantity: 2, updatedAt: timestamp)],
+            setPreferences: [], folders: [], cardMetadata: [], priceChartingMappings: [mapping]
+        )
+
+        try await repository.importCollection(document, mode: .replace, importedAt: timestamp)
+        let exported = try await repository.exportCollection(exportedAt: timestamp, appVersion: "Test")
+        XCTAssertEqual(exported.priceChartingMappings, [mapping])
+        let csv = PriceChartingTransferCodec.csvExport(
+            ownership: [
+                .init(cardID: "me05-041", variant: .reverseHolo, quantity: 2, updatedAt: timestamp)
+            ],
+            mappings: exported.priceChartingMappings
+        )
+        XCTAssertEqual(csv.mapped, 1)
+        XCTAssertEqual(csv.unmapped, 0)
+        let roundTrip = try XCTUnwrap(PriceChartingTransferCodec.decode(csv.data).first)
+        XCTAssertEqual(roundTrip.productID, "13644989")
+        XCTAssertEqual(roundTrip.quantity, 2)
+        XCTAssertEqual(roundTrip.fields[8], "Mint, centered")
+
+        let backup = try await repository.createBackup(reason: "Before editing", createdAt: timestamp)
+        try await repository.setQuantity(3, cardID: "me05-041", variant: .reverseHolo, updatedAt: timestamp.addingTimeInterval(1))
+        try await repository.restoreBackup(id: backup.id, safetyBackupReason: "Before rollback", restoredAt: timestamp.addingTimeInterval(2))
+        let restored = try await repository.exportCollection(exportedAt: timestamp, appVersion: "Test")
+        XCTAssertEqual(restored.priceChartingMappings, [mapping])
+        XCTAssertEqual(restored.ownership.first?.quantity, 2)
+    }
+
     func testPokemonRuleChoicesUseRealNamesWithoutDuplicates() {
         let results = [
             searchResult(id: "a", name: "Lucario V", setName: "One"),

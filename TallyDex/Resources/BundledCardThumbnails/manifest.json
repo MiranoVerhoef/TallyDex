@@ -1,5 +1,5 @@
 {
-  "scope": "839 English card IDs missing from the TallyDex 2026-09-13 artwork audit, plus identified My First Battle fronts.",
+  "scope": "842 English card IDs missing from the TallyDex artwork audit, plus identified My First Battle fronts.",
   "compressionSettings": {
     "format": "webp",
     "maxHeight": 480,
@@ -11285,6 +11285,45 @@
       "height": 480,
       "sha256": "3be0b1fa3e1c39ec05f3e6c6aa193fa3543351fd903c6250df9a06f2266cd360",
       "sourcePage": "https://pkmncards.com/card/fairy-energy-xy-trainer-kit-wigglytuff-tk7b-9/",
+      "variants": []
+    },
+    {
+      "id": "30th-B",
+      "name": "Mew",
+      "setID": "30th",
+      "setName": "30th Celebration",
+      "localId": "B",
+      "file": "images/30th/30th-B--mew.webp",
+      "width": 340,
+      "height": 475,
+      "sha256": "01e1b1e8cd64bd9e2aa9c1c77bf0c6a4c951079416a997058a0368aca5306d13",
+      "sourcePage": "https://www.serebii.net/card/30thcelebration/rgb3.jpg",
+      "variants": []
+    },
+    {
+      "id": "30th-G",
+      "name": "Mew",
+      "setID": "30th",
+      "setName": "30th Celebration",
+      "localId": "G",
+      "file": "images/30th/30th-G--mew.webp",
+      "width": 340,
+      "height": 475,
+      "sha256": "db37d0083e56bae7205cc504069bdcaf01684bf92c03d75b014c127dfc497475",
+      "sourcePage": "https://www.serebii.net/card/30thcelebration/rgb2.jpg",
+      "variants": []
+    },
+    {
+      "id": "30th-R",
+      "name": "Mew",
+      "setID": "30th",
+      "setName": "30th Celebration",
+      "localId": "R",
+      "file": "images/30th/30th-R--mew.webp",
+      "width": 340,
+      "height": 475,
+      "sha256": "fef4ab669504bf9bd5437ec6cc8983bfc067324cbc408096d224d5b924252655",
+      "sourcePage": "https://www.serebii.net/card/30thcelebration/rgb1.jpg",
       "variants": []
     }
   ]

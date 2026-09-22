@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.35",
+          "buildVersion": "71",
+          "date": "2026-09-22",
+          "localizedDescription": "Makes card-detail scrolling smooth, adds reviewed PriceCharting CSV import and export, and restores B, G, and R Mew thumbnails for 30th Celebration.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.35/TallyDex-v0.9.35.ipa",
+          "size": 30085965,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.34",
           "buildVersion": "70",
           "date": "2026-09-22",

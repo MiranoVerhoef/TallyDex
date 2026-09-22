@@ -1643,8 +1643,8 @@ final class CatalogFoundationTests: XCTestCase {
     }
 
     func testBundledThumbnailsMatchExactIDsAndDecode() throws {
-        XCTAssertEqual(BundledCardThumbnails.filesByCardID.count, 839)
-        for id in ["ecard2-103a", "mfb-1", "mep-032"] {
+        XCTAssertEqual(BundledCardThumbnails.filesByCardID.count, 842)
+        for id in ["ecard2-103a", "mfb-1", "mep-032", "30th-B", "30th-G", "30th-R"] {
             let url = try XCTUnwrap(BundledCardThumbnails.url(for: id))
             XCTAssertTrue(CatalogArtworkCache.isValidImageData(try Data(contentsOf: url)))
         }
