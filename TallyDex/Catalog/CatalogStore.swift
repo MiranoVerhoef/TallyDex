@@ -378,9 +378,30 @@ final class CatalogStore {
             let lastPriceRefresh: Date? = (try? await repository.metadataDate(
                 forKey: priceRefreshKey(card.id)
             )) ?? nil
+            let cachedPrintings = (try? await repository.fetchPrintings(cardID: card.id)) ?? []
+            let printingKinds = cachedPrintings.reduce(into: Set<CatalogVariantKind>()) {
+                kinds, printing in
+                if let kind = printing.kind { kinds.insert(kind) }
+                guard printing.size != "jumbo" else { return }
+                switch printing.rawType {
+                case "normal": kinds.insert(.normal)
+                case "reverse": kinds.insert(.reverseHolo)
+                case "holo": kinds.insert(.holo)
+                default: break
+                }
+            }
+            let correctedPrintingKinds = CatalogVariantOverrides.apply(
+                to: printingKinds,
+                cardID: card.id
+            )
+            let needsProvisionalVariantRepair = cachedPrintings.count == 1
+                && cachedPrintings[0].providerID != "generated"
+                && !correctedPrintingKinds.isEmpty
+                && cached[card.id] != correctedPrintingKinds
             let needsInitialDetails = cached[card.id]?.isEmpty != false && lastPriceRefresh == nil
             if forcePriceRefresh
                 || needsInitialDetails
+                || needsProvisionalVariantRepair
                 || refreshCachedDetails && (
                     cachedPrices[card.id]?.isEmpty != false && lastPriceRefresh == nil
                         || needsPricingRefresh(lastPriceRefresh)
@@ -413,6 +434,10 @@ final class CatalogStore {
                     try? await repository.setMetadataDate(
                         refreshDate,
                         forKey: richMetadataCheckKey(snapshot.card.id)
+                    )
+                    try? await repository.setMetadataDate(
+                        refreshDate,
+                        forKey: detailedPrintingCheckKey(snapshot.card.id)
                     )
                 }
                 if let card = remaining.next() {

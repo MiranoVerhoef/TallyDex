@@ -394,6 +394,10 @@ enum CollectionProgressCalculator {
                 for: preference,
                 knownVariants: knownVariants
             )
+            let currentPrintingIDs = Set((availablePrintings[card.id] ?? []).map(\.providerID))
+            let unresolvedExactCount = exactOwnedForCard.filter {
+                !currentPrintingIDs.contains($0.printingID)
+            }.count
             var completedSlots = 0
             var requiredSlots = 0
             for variant in requiredVariants {
@@ -416,6 +420,10 @@ enum CollectionProgressCalculator {
                 let fallbackCompleted = broadOwnedForCard.contains { $0.variant == variant } ? 1 : 0
                 completedSlots += min(exactOptions.count, exactCompleted + fallbackCompleted)
             }
+            // A stale provider ID still represents a real owned card. Normal
+            // reconciliation resolves it; this fallback protects progress when
+            // a future provider correction is genuinely ambiguous.
+            completedSlots += min(unresolvedExactCount, max(0, requiredSlots - completedSlots))
             result[card.id] = CollectionProgress(completedSlots: completedSlots, requiredSlots: requiredSlots)
         }
         return result

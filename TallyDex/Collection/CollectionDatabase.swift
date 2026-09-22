@@ -255,22 +255,26 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
 
     func prepareExactOwnershipMigration(createdAt: Date) async throws {
         try await database.queue.write { database in
-            let key = "exact-printing-ownership-v1-prepared"
+            let key = "exact-printing-identity-v2-prepared"
             guard try String.fetchOne(
                 database,
                 sql: "SELECT value FROM collectionMetadata WHERE key = ?",
                 arguments: [key]
             ) == nil else { return }
 
-            let broadCount = try Int.fetchOne(
+            let ownershipCount = try Int.fetchOne(
                 database,
-                sql: "SELECT COUNT(*) FROM collectionVariant WHERE quantity > 0"
+                sql: """
+                SELECT
+                    (SELECT COUNT(*) FROM collectionVariant WHERE quantity > 0) +
+                    (SELECT COUNT(*) FROM collectionPrinting WHERE quantity > 0)
+                """
             ) ?? 0
-            if broadCount > 0 {
+            if ownershipCount > 0 {
                 let backup = CollectionBackup(
                     id: UUID(),
                     createdAt: createdAt,
-                    reason: "Before exact printing ownership migration"
+                    reason: "Before printing identity reconciliation"
                 )
                 try Self.insertBackup(
                     backup,
@@ -291,11 +295,86 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         cardID: String,
         printings: [CatalogPrinting]
     ) async throws -> Bool {
-        let exactByVariant = Dictionary(grouping: printings.filter { $0.kind != nil }, by: { $0.kind! })
+        let knownPrintings = printings.filter { $0.kind != nil }
+        let exactByVariant = Dictionary(grouping: knownPrintings, by: { $0.kind! })
         guard !exactByVariant.isEmpty else { return false }
 
         return try await database.queue.write { database in
             var changed = false
+
+            // Provider printing IDs are not permanent while a set is being
+            // assembled. Move ownership from superseded IDs to the corrected
+            // printing when that mapping is unambiguous. If several corrected
+            // printings are possible, retain one broad/unspecified copy rather
+            // than guessing or making the owned card appear missing.
+            let currentIDs = Set(printings.map(\.providerID))
+            let currentKinds = Set(knownPrintings.compactMap(\.kind))
+            let savedRows = try Row.fetchAll(
+                database,
+                sql: """
+                SELECT printingID, variant, quantity, updatedAt
+                FROM collectionPrinting
+                WHERE cardID = ? AND quantity > 0
+                """,
+                arguments: [cardID]
+            )
+            for row in savedRows {
+                let printingID: String = row["printingID"]
+                guard !currentIDs.contains(printingID),
+                      let savedVariant = CatalogVariantKind(rawValue: row["variant"]) else { continue }
+                let quantity: Int = row["quantity"]
+                let updatedAt: Date = row["updatedAt"]
+                let sameVariant = exactByVariant[savedVariant] ?? []
+                let target = sameVariant.count == 1
+                    ? sameVariant.first
+                    : (printings.count == 1 ? knownPrintings.first : nil)
+
+                if let target, let targetVariant = target.kind {
+                    try database.execute(
+                        sql: """
+                        INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(cardID, printingID) DO UPDATE SET
+                            variant = excluded.variant,
+                            quantity = MAX(quantity, excluded.quantity),
+                            updatedAt = MAX(updatedAt, excluded.updatedAt)
+                        """,
+                        arguments: [cardID, target.providerID, targetVariant.rawValue, quantity, updatedAt]
+                    )
+                    try database.execute(
+                        sql: "DELETE FROM collectionPrinting WHERE cardID = ? AND printingID = ?",
+                        arguments: [cardID, printingID]
+                    )
+                    changed = true
+                    continue
+                }
+
+                let fallbackVariant: CatalogVariantKind?
+                if currentKinds.contains(savedVariant) {
+                    fallbackVariant = savedVariant
+                } else if currentKinds.count == 1 {
+                    fallbackVariant = currentKinds.first
+                } else {
+                    fallbackVariant = nil
+                }
+                guard let fallbackVariant else { continue }
+                try database.execute(
+                    sql: """
+                    INSERT INTO collectionVariant (cardID, variant, quantity, updatedAt)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(cardID, variant) DO UPDATE SET
+                        quantity = MAX(quantity, excluded.quantity),
+                        updatedAt = MAX(updatedAt, excluded.updatedAt)
+                    """,
+                    arguments: [cardID, fallbackVariant.rawValue, quantity, updatedAt]
+                )
+                try database.execute(
+                    sql: "DELETE FROM collectionPrinting WHERE cardID = ? AND printingID = ?",
+                    arguments: [cardID, printingID]
+                )
+                changed = true
+            }
+
             for (variant, exactPrintings) in exactByVariant where exactPrintings.count == 1 {
                 let printing = exactPrintings[0]
                 let broadRow = try Row.fetchOne(

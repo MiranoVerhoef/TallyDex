@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.34",
+          "buildVersion": "70",
+          "date": "2026-09-22",
+          "localizedDescription": "Protects collection progress when TCGdex corrects printing IDs or variants, refreshes obsolete cached variants and prices safely, and reorganizes card details around collection controls and Cardmarket access.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.34/TallyDex-v0.9.34.ipa",
+          "size": 32218448,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.33",
           "buildVersion": "69",
           "date": "2026-09-17",

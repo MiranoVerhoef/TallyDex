@@ -2380,79 +2380,75 @@ struct CatalogCardDetailView: View {
         let visibleOrder = Dictionary(
             uniqueKeysWithValues: availableVariants.enumerated().map { ($0.element, $0.offset) }
         )
-        return snapshot?.prices
+        if let pricedURL = (snapshot?.prices
             .filter { $0.source == .cardmarket && $0.marketplaceURL != nil }
             .sorted {
                 visibleOrder[$0.variant, default: Int.max]
                     < visibleOrder[$1.variant, default: Int.max]
             }
             .compactMap(\.marketplaceURL)
-            .first
+            .first) {
+            return pricedURL
+        }
+        guard let productID = snapshot?.printings.compactMap(\.cardmarketProductID).first,
+              productID > 0 else { return nil }
+        return URL(string: "https://www.cardmarket.com/en/Pokemon/Products?idProduct=\(productID)")
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                CardDetailArtworkView(card: displayedCard)
-                    .aspectRatio(245 / 337, contentMode: .fit)
-                    .frame(maxWidth: 360)
-                    .frame(maxWidth: .infinity)
+            LazyVStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 20) {
+                    CardDetailArtworkView(card: displayedCard)
+                        .aspectRatio(245 / 337, contentMode: .fit)
+                        .frame(maxWidth: 360)
+                        .frame(maxWidth: .infinity)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    LabeledContent("Collector number", value: displayedCard.localID)
-                    if let category = displayedCard.category {
-                        LabeledContent("Category", value: category)
-                    }
-                    if let rarity = displayedCard.rarity {
-                        LabeledContent("Rarity", value: rarity)
-                    }
-                    if let illustrator = displayedCard.illustrator {
-                        LabeledContent("Illustrator", value: illustrator)
+                    cardDetailsSection
+                    collectionSection
+
+                    if let cardmarketURL {
+                        Link(destination: cardmarketURL) {
+                            Label("Open on Cardmarket", systemImage: "arrow.up.right.square")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                     }
                 }
 
-                if let metadata = displayedCard.metadata {
-                    richMetadataSection(metadata)
-                }
-
-                if let variants = snapshot?.variants, !variants.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Printings:")
-                            .font(.headline)
-                        ForEach(variants.sorted { $0.displayName < $1.displayName }, id: \.self) { variant in
-                            Text(variant.displayName)
-                                .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 20) {
+                    if let variants = snapshot?.variants, !variants.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Printings")
+                                .font(.headline)
+                            ForEach(variants.sorted { $0.displayName < $1.displayName }, id: \.self) { variant in
+                                Text(variant.displayName)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                }
 
-                if let snapshot {
-                    rollingAveragesSection(snapshot: snapshot)
-                    priceHistoryLink(snapshot: snapshot)
-                }
-
-                personalSection
-                collectionSection
-
-                if let cardmarketURL {
-                    Link(destination: cardmarketURL) {
-                        Label("Open on Cardmarket", systemImage: "arrow.up.right.square")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
+                    if let snapshot {
+                        rollingAveragesSection(snapshot: snapshot)
+                        priceHistoryLink(snapshot: snapshot)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                }
 
-                if let message {
-                    Label(message, systemImage: "icloud.slash")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    personalSection
+
+                    if let message {
+                        Label(message, systemImage: "icloud.slash")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+            .scrollTargetLayout()
             .padding()
             .safeAreaPadding(.bottom, 86)
         }
+        .scrollTargetBehavior(.viewAligned)
         .refreshable {
             isConfirmingRefresh = true
         }
@@ -2517,9 +2513,42 @@ struct CatalogCardDetailView: View {
         }
     }
 
-    private func richMetadataSection(_ metadata: CatalogCardMetadata) -> some View {
+    private var cardDetailsSection: some View {
         DisclosureGroup(isExpanded: $isRichMetadataExpanded) {
             VStack(alignment: .leading, spacing: 14) {
+                LabeledContent("Collector number", value: displayedCard.localID)
+                if let category = displayedCard.category {
+                    LabeledContent("Category", value: category)
+                }
+                if let rarity = displayedCard.rarity {
+                    LabeledContent("Rarity", value: rarity)
+                }
+                if let illustrator = displayedCard.illustrator {
+                    LabeledContent("Illustrator", value: illustrator)
+                }
+
+                if let metadata = displayedCard.metadata {
+                    Divider()
+                    richMetadataContent(metadata)
+                }
+            }
+            .padding(.top, 14)
+        } label: {
+            HStack {
+                Label("Card details", systemImage: "list.bullet.rectangle.portrait")
+                    .font(.headline)
+                Spacer()
+                Text("#\(displayedCard.localID)")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    @ViewBuilder
+    private func richMetadataContent(_ metadata: CatalogCardMetadata) -> some View {
                 if !metadata.dexIDs.isEmpty || metadata.hp != nil || !metadata.types.isEmpty || metadata.stage != nil {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], alignment: .leading, spacing: 8) {
                         ForEach(metadata.dexIDs, id: \.self) { dexID in
@@ -2618,14 +2647,6 @@ struct CatalogCardDetailView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-            }
-            .padding(.top, 14)
-        } label: {
-            Label("Card details", systemImage: "list.bullet.rectangle.portrait")
-                .font(.headline)
-        }
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
     }
 
     private func cardFact(
@@ -7082,12 +7103,12 @@ private struct AdvancedAPISettingsView: View {
             Section {
                 Toggle(isOn: $customEnabled) {
                     HStack(spacing: 8) {
-                        Text("TallyDex API")
+                        Text("TCGdex Development API")
                         Button { isShowingAPIInfo = true } label: {
                             Image(systemName: "info.circle")
                         }
                         .buttonStyle(.borderless)
-                        .accessibilityLabel("About the TallyDex API")
+                        .accessibilityLabel("About the TCGdex Development API")
                     }
                 }
                 TextField("HTTPS API URL", text: $draftURL)
@@ -7114,7 +7135,7 @@ private struct AdvancedAPISettingsView: View {
                 Text("Use an HTTPS hostname or /v2/en API root. The official API is always the fallback. Saving does not change your collection or remove offline downloads.")
             }
             Section {
-                LabeledContent("1", value: "TallyDex API")
+                LabeledContent("1", value: "TCGdex Development API")
                 LabeledContent("2", value: "Official TCGdex API")
                 LabeledContent("3", value: "Verified parent set")
                 LabeledContent("4", value: "Bundled thumbnails")
@@ -7145,10 +7166,10 @@ private struct AdvancedAPISettingsView: View {
         .onAppear { draftURL = savedURL }
         .onChange(of: draftURL) { _, _ in checkResult = nil; validationMessage = nil }
         .onChange(of: customEnabled) { _, _ in Task { await catalogStore.refresh() } }
-        .alert("TallyDex API", isPresented: $isShowingAPIInfo) {
+        .alert("TCGdex Development API", isPresented: $isShowingAPIInfo) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("The TallyDex API runs the development version of the TCGdex API for faster updates to cards and catalogue data. The official TCGdex API remains available as an automatic fallback.")
+            Text("This endpoint runs the development version of TCGdex for faster card and catalogue updates. The official TCGdex API remains the automatic fallback.")
         }
     }
 

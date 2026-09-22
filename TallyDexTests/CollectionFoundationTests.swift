@@ -470,7 +470,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(migratedExact.first?.quantity, 2)
         let backups = try await repository.fetchBackups()
         XCTAssertEqual(backups.count, 1)
-        XCTAssertEqual(backups.first?.reason, "Before exact printing ownership migration")
+        XCTAssertEqual(backups.first?.reason, "Before printing identity reconciliation")
 
         try await repository.restoreBackup(
             id: try XCTUnwrap(backups.first?.id),
@@ -500,6 +500,89 @@ final class CollectionFoundationTests: XCTestCase {
         let exact = try await repository.fetchPrintingEntries(cardID: "base1-4")
         XCTAssertEqual(broad.first?.quantity, 1)
         XCTAssertTrue(exact.isEmpty)
+    }
+
+    func testPrintingIdentityReconciliationMovesGeneratedOwnershipToCorrectedHolo() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let selectedAt = Date(timeIntervalSince1970: 100)
+        try await repository.setPrintingQuantity(
+            1,
+            cardID: "30th-034",
+            printingID: "generated",
+            variant: .normal,
+            updatedAt: selectedAt
+        )
+
+        let changed = try await repository.reconcileExactOwnership(
+            cardID: "30th-034",
+            printings: [printing(cardID: "30th-034", id: "jr7oetx1mqug9", kind: .holo)]
+        )
+
+        XCTAssertTrue(changed)
+        let broad = try await repository.fetchEntries(cardID: "30th-034")
+        XCTAssertTrue(broad.isEmpty)
+        let exact = try await repository.fetchPrintingEntries(cardID: "30th-034")
+        XCTAssertEqual(exact, [CollectionPrintingEntry(
+            cardID: "30th-034",
+            printingID: "jr7oetx1mqug9",
+            variant: .holo,
+            quantity: 1,
+            updatedAt: selectedAt
+        )])
+    }
+
+    func testPrintingIdentityReconciliationKeepsAmbiguousReplacementAsOneUnspecifiedCopy() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        try await repository.setPrintingQuantity(
+            1,
+            cardID: "future-001",
+            printingID: "generated",
+            variant: .normal,
+            updatedAt: .now
+        )
+
+        let changed = try await repository.reconcileExactOwnership(
+            cardID: "future-001",
+            printings: [
+                printing(cardID: "future-001", id: "standard-a", kind: .holo),
+                printing(cardID: "future-001", id: "standard-b", kind: .holo),
+            ]
+        )
+
+        XCTAssertTrue(changed)
+        let exact = try await repository.fetchPrintingEntries(cardID: "future-001")
+        XCTAssertTrue(exact.isEmpty)
+        let broad = try await repository.fetchEntries(cardID: "future-001")
+        XCTAssertEqual(broad.map(\.variant), [.holo])
+        XCTAssertEqual(broad.map(\.quantity), [1])
+    }
+
+    func testProgressStillCountsUnresolvedProviderIdentityAsOwned() {
+        let card = card(id: "future-001", number: "001")
+        let progress = CollectionProgressCalculator.progressByCardID(
+            cards: [card],
+            set: CatalogSet(
+                id: card.setID, seriesID: "future", name: "Future Set", abbreviation: nil,
+                logoURL: nil, symbolURL: nil, officialCardCount: 1, totalCardCount: 1,
+                releaseDate: nil, rarityCounts: nil
+            ),
+            preference: preference(setID: card.setID, goal: .master),
+            availableVariants: [card.id: [.normal, .holo]],
+            ownedEntries: [],
+            availablePrintings: [card.id: [
+                printing(cardID: card.id, id: "new-normal", kind: .normal),
+                printing(cardID: card.id, id: "new-holo", kind: .holo),
+            ]],
+            exactOwnedEntries: [CollectionPrintingEntry(
+                cardID: card.id,
+                printingID: "retired-provider-id",
+                variant: .normal,
+                quantity: 1,
+                updatedAt: .now
+            )]
+        )[card.id]
+
+        XCTAssertEqual(progress, CollectionProgress(completedSlots: 1, requiredSlots: 2))
     }
 
     func testMasterProgressCountsExactPrintingsWithoutTurningFallbackIntoFalseCompletion() {

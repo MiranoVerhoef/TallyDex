@@ -52,18 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.33",
-        headline: "Faster collecting, correct artwork",
+        version: "0.9.34",
+        headline: "Safer card data updates",
         notes: [
             AppReleaseNote(
-                systemImage: "camera.viewfinder",
-                title: "Collect from camera results",
-                detail: "Mark a matched card as owned immediately, or hold the circle to choose its printing."
+                systemImage: "checkmark.shield",
+                title: "Collection protection",
+                detail: "Owned cards now survive corrected printing IDs and variant updates from TCGdex."
             ),
             AppReleaseNote(
-                systemImage: "photo",
-                title: "Correct 30th artwork",
-                detail: "30th Celebration and Classic Collection now use their proper set logo."
+                systemImage: "rectangle.and.text.magnifyingglass",
+                title: "Cleaner card details",
+                detail: "Card facts are grouped together, with collection controls and Cardmarket access near the top."
             ),
         ]
     )

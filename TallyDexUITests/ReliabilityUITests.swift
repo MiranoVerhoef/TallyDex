@@ -78,7 +78,7 @@ final class ReliabilityUITests: XCTestCase {
 
     private func openFilterCollection() {
         launch("filters")
-        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
         tap(app.tabBars.buttons["Collection"])
         tap(button("Filter fixture"))
         expectVisible(4)
@@ -116,7 +116,7 @@ final class ReliabilityUITests: XCTestCase {
         tap(app.buttons["collection.filters.clear"])
         expectVisible(4)
         back()
-        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
     }
 
     func testCollectionEraClearsIncompatibleExactSetAndSheetResetCanBeCancelled() {
@@ -138,7 +138,7 @@ final class ReliabilityUITests: XCTestCase {
         tap(app.buttons["collection.filters.apply"])
         expectVisible(4)
         back()
-        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
     }
 
     func testBinderPlannerCreatesAndOpensLocalPlan() {
@@ -167,7 +167,7 @@ final class ReliabilityUITests: XCTestCase {
         tap(savedPlan)
         XCTAssertTrue(app.staticTexts["Side 1 of 1"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "slots owned")).firstMatch.exists)
-        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
     }
 
     func testCompletingSetupDoesNotRepeatOrShowWhatsNew() {
@@ -175,12 +175,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.33"])
+        expectState(["intro=true", "seen=0.9.34"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.33"])
+        expectState(["intro=true", "seen=0.9.34"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -188,10 +188,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.33"])
+        expectState(["intro=true", "seen=0.9.34"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.33"])
+        expectState(["intro=true", "seen=0.9.34"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -201,17 +201,17 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.33"])
+        expectState(["intro=true", "seen=0.9.34"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.33"])
+        expectState(["intro=true", "seen=0.9.34"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
 
     func testRestoreCancelConfirmRollbackAndPreferencePersistence() {
         launch("restore")
-        expectState(["normal=7;stamp=2", "owned=1", "backups=1"])
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
         settings()
         tap(button("Appearance & Browsing"))
         turnOn("Expand card details by default")
@@ -230,18 +230,18 @@ final class ReliabilityUITests: XCTestCase {
         tap(button("Reliability baseline"))
         XCTAssertTrue(app.navigationBars["Restore Preview"].waitForExistence(timeout: 10))
         tap(app.navigationBars.buttons["Cancel"])
-        expectState(["normal=7;stamp=2", "backups=1"])
+        expectState(["normal=7;stamp=2", "backups=2"])
         tap(button("Reliability baseline"))
         tap(app.buttons["restore.apply"])
         confirm("Restore Collection")
-        expectState(["normal=3;stamp=4", "owned=1", "backups=2"])
+        expectState(["normal=3;stamp=4", "owned=1", "backups=3"])
         tap(button("Before restoring: Reliability baseline"))
         tap(app.buttons["restore.apply"])
         confirm("Restore Collection")
-        expectState(["normal=7;stamp=2", "owned=1", "backups=3"])
+        expectState(["normal=7;stamp=2", "owned=1", "backups=4"])
         app.terminate()
         app.launch()
-        expectState(["normal=7;stamp=2", "backups=3"])
+        expectState(["normal=7;stamp=2", "backups=4"])
         settings()
         tap(button("Appearance & Browsing"))
         XCTAssertEqual(app.switches["Expand card details by default"].value as? String, "1")
@@ -261,10 +261,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Import Preview"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Conflicts kept on this iPhone"].exists)
         tap(app.buttons["import.apply"])
-        expectState(["normal=7;stamp=2", "incoming=2", "owned=2", "backups=2"])
+        expectState(["normal=7;stamp=2", "incoming=2", "owned=2", "backups=3"])
         app.terminate()
         app.launch()
-        expectState(["normal=7;stamp=2", "incoming=2", "backups=2"])
+        expectState(["normal=7;stamp=2", "incoming=2", "backups=3"])
     }
 
     func testReplaceRequiresConfirmationAndCanBeRolledBack() {
@@ -273,12 +273,12 @@ final class ReliabilityUITests: XCTestCase {
         tap(app.buttons["Replace"])
         tap(app.buttons["import.apply"])
         confirm("Replace Collection")
-        expectState(["normal=3;stamp=4", "incoming=2", "owned=2", "backups=2"])
+        expectState(["normal=3;stamp=4", "incoming=2", "owned=2", "backups=3"])
         settings()
         tap(button("Collection Backups"))
         tap(button("Before replace import"))
         tap(app.buttons["restore.apply"])
         confirm("Restore Collection")
-        expectState(["normal=7;stamp=2", "incoming=0", "owned=1", "backups=3"])
+        expectState(["normal=7;stamp=2", "incoming=0", "owned=1", "backups=4"])
     }
 }

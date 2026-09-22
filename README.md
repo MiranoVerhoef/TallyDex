@@ -86,13 +86,13 @@ individual downloads in Settings → Offline Sets.
 Settings → Advanced configures the first TCGdex API source. It defaults to
 `https://tcgdex.tallydex.nl/v2/en/`, accepts an HTTPS origin or the English API
 root, and provides a connection check against the series list and an exact card.
-Disabling **TallyDex API** starts with official TCGdex. Its adjacent info button
-explains that the service runs the development version of TCGdex for faster card
-updates. API metadata requests
+Disabling **TCGdex Development API** starts with official TCGdex. Its adjacent
+info button explains that the configured endpoint runs the development version
+of TCGdex for faster card updates. API metadata requests
 fall back to `https://api.tcgdex.net/v2/en/` when the custom source fails. Failed
 hosts back off briefly; source-specific ETags prevent cross-provider 304 mistakes.
 
-For uncached card images, the ordered sources are: custom API's exact-card image
+For uncached card images, the ordered sources are: development API's exact-card image
 field, official API's exact-card image field, verified parent-set paths, bundled
 thumbnails, Pokémon's official exact-set/collector-number host, then placeholder.
 No image CDN path is inferred from an API hostname. Existing cached artwork and
@@ -144,7 +144,7 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
   read-only Energy overview was removed in v0.9.23; actual Energy sets stay intact.
   Older unnumbered designs absent from TCGdex are provider-dependent and are not
   an active manual-catalogue task.
-- [x] Custom TCGdex API channel at `tcgdex.tallydex.nl`, configurable and checkable
+- [x] TCGdex development API channel at `tcgdex.tallydex.nl`, configurable and checkable
   in Advanced settings, with official-provider fallback and bundled thumbnails.
 
 Keep these catalogue fixes clean in the UI. Verify coverage and exact mappings
@@ -401,6 +401,10 @@ Completed in v0.9.10:
 
 Optional later enhancements, not current blockers:
 
+- After the current reliability release, add PriceCharting import and export.
+  Use the supplied real export as a compatibility fixture, show a match preview
+  before importing, preserve unmatched rows for review, and make round trips
+  lossless without changing ownership until the collector confirms them.
 - Add provider-supplied Cardmarket low and TCGplayer low/mid/high/direct-low market
   statistics if exact-printing data is available.
 - Add provider-reported Normal, Holo, Reverse, and First Edition set totals.
@@ -562,7 +566,7 @@ Completed in v0.9.20:
 - Artwork Cache has a persisted 100 MB–2 GB limit picker, with 400 MB unchanged
   as the default. Changes take effect immediately without restarting; offline
   downloads and bundled resources are excluded from automatic cleanup.
-- Advanced settings use the TallyDex API label and a small info button explaining
+- Advanced settings use the TCGdex Development API label and a small info button explaining
   its development-version TCGdex service and faster card updates.
 - Updated What's New notes; collection data and card-detail preferences unchanged.
 
@@ -732,6 +736,13 @@ Completed in v0.9.33:
 - Adds the collection ownership circle directly to camera matches, including long-press printing selection.
 - Uses the verified 30th Celebration logo for both released 30th sets instead of the placeholder.
 - Verified with 191 unit tests and nine end-to-end UI tests on the iPhone 18 Pro iOS 27.0 simulator.
+
+Completed in v0.9.34:
+
+- Reconciles saved ownership when TCGdex replaces provisional printing identities or corrects a card's variant, with a one-time rollback backup before migration.
+- Replaces obsolete cached variants and current prices authoritatively while preventing older fallback responses from overwriting newer corrected card data.
+- Groups collector number and card facts in the collapsible Card details section, then keeps Your collection and Cardmarket access near the top of the card page.
+- Adds regression coverage for the supplied before/after 30th Celebration failure pattern and verifies backup, import, restore, and rollback flows on iOS 27.
 
 Supplemental cover sources:
 

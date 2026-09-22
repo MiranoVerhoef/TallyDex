@@ -844,6 +844,22 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
     func replaceCard(_ snapshot: CatalogCardSnapshot) async throws {
         try await database.queue.write { database in
             let card = snapshot.card
+
+            // A configured development endpoint can be newer than the official
+            // fallback. Never let a successful response from an older fallback
+            // roll corrected printing identities and variants backwards.
+            if let existingRow = try Row.fetchOne(
+                database,
+                sql: "SELECT * FROM catalogCard WHERE id = ?",
+                arguments: [card.id]
+            ) {
+                let existingCard = Self.catalogCard(row: existingRow)
+                if let existingRevision = existingCard.metadata?.updatedAt,
+                   card.metadata?.updatedAt.map({ $0 < existingRevision }) ?? true {
+                    return
+                }
+            }
+
             try database.execute(
                 sql: """
                 INSERT INTO catalogCard
@@ -873,9 +889,17 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 ]
             )
             let knownVariants = snapshot.variants.union(snapshot.prices.map(\.variant))
+
+            // Card-detail responses are authoritative. Keeping every variant
+            // ever observed made provisional data (for example a generated
+            // Normal printing later corrected to Holo) permanent.
+            try database.execute(
+                sql: "DELETE FROM catalogVariant WHERE cardID = ?",
+                arguments: [card.id]
+            )
             for variant in knownVariants.sorted(by: { $0.rawValue < $1.rawValue }) {
                 try database.execute(
-                    sql: "INSERT OR IGNORE INTO catalogVariant (cardID, kind) VALUES (?, ?)",
+                    sql: "INSERT INTO catalogVariant (cardID, kind) VALUES (?, ?)",
                     arguments: [card.id, variant.rawValue]
                 )
             }
@@ -918,6 +942,14 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             dayFormatter.calendar = Calendar(identifier: .gregorian)
             dayFormatter.locale = Locale(identifier: "en_US_POSIX")
             dayFormatter.dateFormat = "yyyy-MM-dd"
+
+            // Keep historical observations, but make the current-price table
+            // mirror the latest authoritative response so removed provisional
+            // variants can no longer leak back into the UI.
+            try database.execute(
+                sql: "DELETE FROM catalogPrice WHERE cardID = ?",
+                arguments: [card.id]
+            )
             for quote in snapshot.prices {
                 try database.execute(
                     sql: """

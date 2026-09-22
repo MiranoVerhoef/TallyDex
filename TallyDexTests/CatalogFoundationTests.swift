@@ -913,7 +913,7 @@ final class CatalogFoundationTests: XCTestCase {
         }
     }
 
-    func testRepositoryRefreshPreservesPreviouslyCachedVariants() async throws {
+    func testRepositoryRefreshReplacesProvisionalVariantsWithAuthoritativeVariants() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         try await repository.upsertSeries([
             CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil),
@@ -941,7 +941,65 @@ final class CatalogFoundationTests: XCTestCase {
         let storedCards = try await repository.fetchCards(setID: "sv03.5")
         let storedVariants = try await repository.fetchVariants(cardID: card.id)
         XCTAssertEqual(storedCards, [card])
-        XCTAssertEqual(storedVariants, [.normal, .reverseHolo, .holo])
+        XCTAssertEqual(storedVariants, [.holo])
+    }
+
+    func testRepositoryDoesNotRegressCorrectedCardFromOlderFallbackResponse() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.upsertSeries([CatalogSeries(id: "me", name: "Mega Evolution", logoURL: nil)])
+        try await repository.replaceSets(
+            [set(id: "30th", seriesID: "me", name: "30th Celebration")],
+            forSeriesID: "me"
+        )
+
+        func card(updatedAt: Date, rarity: String) -> CatalogCard {
+            CatalogCard(
+                id: "30th-034", setID: "30th", localID: "034", name: "Pikachu",
+                imageURL: nil, category: "Pokemon", illustrator: nil, rarity: rarity,
+                metadata: CatalogCardMetadata(
+                    dexIDs: [25], hp: nil, types: [], evolvesFrom: nil, stage: nil,
+                    suffix: nil, attacks: [], abilities: [], weaknesses: [], resistances: [],
+                    retreatCost: nil, regulationMark: nil, legality: nil, rulesText: nil,
+                    trainerType: nil, energyType: nil, flavorText: nil, updatedAt: updatedAt
+                )
+            )
+        }
+
+        let correctedAt = Date(timeIntervalSince1970: 200)
+        let corrected = CatalogPrinting(
+            cardID: "30th-034", providerID: "corrected-holo", rawType: "holo", kind: .holo,
+            subtype: nil, size: "standard", stamps: [], foil: nil, languages: ["en"],
+            cardmarketProductID: 907641, tcgplayerProductID: nil, cardtraderProductID: nil
+        )
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card(updatedAt: correctedAt, rarity: "Rare Holo"),
+            variants: [.holo],
+            prices: [CatalogPriceQuote(
+                cardID: "30th-034", variant: .holo, source: .cardmarket,
+                currencyCode: "EUR", amount: 1.77, updatedAt: correctedAt,
+                productID: 907641
+            )],
+            printings: [corrected]
+        ))
+
+        try await repository.replaceCard(CatalogCardSnapshot(
+            card: card(updatedAt: Date(timeIntervalSince1970: 100), rarity: "Unknown"),
+            variants: [.normal],
+            printings: [CatalogPrinting(
+                cardID: "30th-034", providerID: "generated", rawType: "normal", kind: .normal,
+                subtype: nil, size: "standard", stamps: [], foil: nil, languages: ["en"],
+                cardmarketProductID: nil, tcgplayerProductID: nil, cardtraderProductID: nil
+            )]
+        ))
+
+        let variants = try await repository.fetchVariants(cardID: "30th-034")
+        let printings = try await repository.fetchPrintings(cardID: "30th-034")
+        let savedCard = try await repository.fetchCard(id: "30th-034")
+        let prices = try await repository.fetchPrices(cardIDs: ["30th-034"])
+        XCTAssertEqual(variants, [.holo])
+        XCTAssertEqual(printings, [corrected])
+        XCTAssertEqual(savedCard?.rarity, "Rare Holo")
+        XCTAssertEqual(prices["30th-034"]?.first?.productID, 907641)
     }
 
     func testRepositoryPersistsAndRefreshesExactPrintingsWithoutErasingOnLegacyResponse() async throws {
