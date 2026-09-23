@@ -789,6 +789,11 @@ Completed in v0.9.38:
 - Supports paired-browser full backup and PriceCharting CSV import/export, with import preview and rollback backup.
 - Changes the local StoreKit lifetime access test price to €9.99; beta access remains unlocked.
 
+Completed in v0.9.39:
+
+- Moves the collection dashboard to the top of Sets and presents collection value and top-priced cards in a focused hero card.
+- Keeps distinct cards, copies, and My Sets progress directly beneath it, and avoids showing a false €0 value when exact prices are unavailable.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

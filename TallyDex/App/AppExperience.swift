@@ -52,23 +52,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.38",
-        headline: "Dashboard and Collection Manager",
+        version: "0.9.39",
+        headline: "A clearer collection dashboard",
         notes: [
             AppReleaseNote(
                 systemImage: "chart.bar.fill",
-                title: "Collection dashboard",
-                detail: "See owned cards, copies, My Sets progress, value, and top-priced cards above Sets."
-            ),
-            AppReleaseNote(
-                systemImage: "desktopcomputer",
-                title: "Collection Manager",
-                detail: "Search within sets, simplify the card grid, and preview imports or export from a paired browser."
-            ),
-            AppReleaseNote(
-                systemImage: "lock.open",
-                title: "Lifetime access price",
-                detail: "Local StoreKit testing now uses €9.99; beta access remains unlocked."
+                title: "Dashboard above Sets",
+                detail: "Collection value and top-priced cards now lead the Sets page, with collection counts just below."
             ),
         ]
     )

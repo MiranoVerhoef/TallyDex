@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.39",
+          "buildVersion": "75",
+          "date": "2026-09-24",
+          "localizedDescription": "Moves the collection dashboard above Sets and presents collection value, top-priced cards, and ownership statistics in a clearer layout.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.39/TallyDex-v0.9.39.ipa",
+          "size": 29789983,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.38",
           "buildVersion": "74",
           "date": "2026-09-23",

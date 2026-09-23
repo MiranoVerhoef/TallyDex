@@ -308,25 +308,7 @@ struct SetsView: View {
                         .padding(.top, 8)
                     }
 
-                    HStack {
-                        Text("Sets")
-                            .font(.largeTitle.bold())
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, dynamicTypeSize.isAccessibilitySize ? 4 : 10)
-                    .padding(.bottom, 14)
-
-                    Picker("Sets view", selection: $selectedScope) {
-                        ForEach(SetsScope.allCases) { scope in
-                            Text(scope.pickerTitle)
-                                .tag(scope)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-
-                    setsContent
+                    catalogList
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -346,44 +328,53 @@ struct SetsView: View {
         }
     }
 
-    @ViewBuilder
-    private var setsContent: some View {
-        if catalogStore.isInitialLoading && catalogStore.groups.isEmpty {
-            ProgressView("Loading saved catalog…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if selectedScope == .all && catalogStore.groups.isEmpty {
-            ContentUnavailableView {
-                Label("Catalog Unavailable", systemImage: "wifi.exclamationmark")
-            } description: {
-                Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
-            } actions: {
-                Button("Try Again") {
-                    Task { await catalogStore.refresh() }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(catalogStore.isRefreshing)
-            }
-        } else if scopedGroups.isEmpty {
-            ContentUnavailableView(
-                selectedScope.title,
-                systemImage: selectedScope.systemImage,
-                description: Text(selectedScope.emptyDescription)
-            )
-        } else {
-            catalogList
-        }
-    }
-
-    @ViewBuilder
     private var catalogList: some View {
-        switch SetsBrowsingStyle.resolve(browsingStyle) {
-        case .grouped:
-            List {
-                CollectionDashboardView()
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-                catalogRefreshMessage
+        List {
+            CollectionDashboardView()
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
 
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Sets")
+                    .font(.largeTitle.bold())
+                Picker("Sets view", selection: $selectedScope) {
+                    ForEach(SetsScope.allCases) { scope in
+                        Text(scope.pickerTitle).tag(scope)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(.top, dynamicTypeSize.isAccessibilitySize ? 4 : 10)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+
+            catalogRefreshMessage
+
+            if catalogStore.isInitialLoading && catalogStore.groups.isEmpty {
+                ProgressView("Loading saved catalog…")
+                    .frame(maxWidth: .infinity, minHeight: 180)
+                    .listRowBackground(Color.clear)
+            } else if selectedScope == .all && catalogStore.groups.isEmpty {
+                ContentUnavailableView {
+                    Label("Catalog Unavailable", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(catalogStore.refreshMessage ?? SetsScope.all.emptyDescription)
+                } actions: {
+                    Button("Try Again") { Task { await catalogStore.refresh() } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(catalogStore.isRefreshing)
+                }
+                .listRowBackground(Color.clear)
+            } else if scopedGroups.isEmpty {
+                ContentUnavailableView(
+                    selectedScope.title,
+                    systemImage: selectedScope.systemImage,
+                    description: Text(selectedScope.emptyDescription)
+                )
+                .listRowBackground(Color.clear)
+            } else if SetsBrowsingStyle.resolve(browsingStyle) == .grouped {
                 ForEach(scopedGroups) { group in
                     Section {
                         ForEach(group.sets) { set in
@@ -394,20 +385,7 @@ struct SetsView: View {
                         CatalogSeriesHeader(group: group)
                     }
                 }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
-            .refreshable {
-                await catalogStore.refresh()
-            }
-        case .seriesFirst:
-            List {
-                CollectionDashboardView()
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-                catalogRefreshMessage
-
+            } else {
                 ForEach(scopedGroups) { group in
                     NavigationLink {
                         CatalogSeriesSetsView(group: group)
@@ -417,13 +395,11 @@ struct SetsView: View {
                     .listRowBackground(Color.clear)
                 }
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
-            .refreshable {
-                await catalogStore.refresh()
-            }
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+        .refreshable { await catalogStore.refresh() }
     }
 
     @ViewBuilder
@@ -443,7 +419,7 @@ private struct CollectionDashboardView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var topCards: [CatalogCardSearchResult] = []
-    @State private var isShowingTopCards = false
+    @State private var featuredCard: CatalogCardSearchResult?
     @State private var setProgress: CollectionProgress?
     @State private var failedSetCount = 0
     @State private var pricesLoaded = false
@@ -491,21 +467,101 @@ private struct CollectionDashboardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Collection dashboard")
-                    .font(.headline)
-                Spacer()
-                Text("All collections")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Text("Collection dashboard")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Estimated collection value")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.blue.opacity(0.9))
+                        Text(priceLabel)
+                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                            .foregroundStyle(.white)
+                        Text(priceSubtitle)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.65))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let result = featuredCard {
+                        CachedCardImage(card: result.card)
+                            .frame(width: 82, height: 112)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .rotationEffect(.degrees(7))
+                            .shadow(color: .black.opacity(0.35), radius: 10, y: 8)
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: "rectangle.portrait.on.rectangle.portrait")
+                            .font(.largeTitle)
+                            .foregroundStyle(.white.opacity(0.4))
+                            .frame(width: 82, height: 112)
+                            .accessibilityHidden(true)
+                    }
+                }
+
+                if !rankedValues.isEmpty {
+                    Rectangle()
+                        .fill(.white.opacity(0.16))
+                        .frame(height: 1)
+
+                    ForEach(Array(rankedValues.prefix(2).enumerated()), id: \.element.id) { _, item in
+                        if let result = topCards.first(where: { $0.id == item.id }) {
+                            NavigationLink {
+                                CatalogCardDetailView(card: result.card)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    CachedCardImage(card: result.card)
+                                        .frame(width: 27, height: 37)
+                                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                                        .accessibilityHidden(true)
+                                    Text(result.card.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    Text(formattedCatalogPrice(item.amount, currencyCode: source.currencyCode))
+                                        .font(.subheadline.monospacedDigit())
+                                        .foregroundStyle(.white.opacity(0.75))
+                                }
+                                .foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    NavigationLink {
+                        TopPricedCardsView(items: rankedValues, cards: topCards, source: source)
+                    } label: {
+                        HStack {
+                            Text("View top 10 cards")
+                            Image(systemName: "arrow.up.right")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("dashboard.topCards")
+                }
             }
-            HStack(spacing: 10) {
-                metric("Distinct cards", value: ownedIDs.count.formatted(), symbol: "square.stack")
+            .padding(18)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.18, green: 0.20, blue: 0.24), Color(red: 0.12, green: 0.14, blue: 0.17)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 22)
+            )
+
+            HStack(spacing: 8) {
+                metric("Distinct", value: ownedIDs.count.formatted(), symbol: "square.stack")
                 metric("Copies", value: copyCount.formatted(), symbol: "square.on.square")
-            }
-            HStack(spacing: 10) {
-                metric("My Sets goals", value: completionLabel, symbol: "checkmark.circle")
-                metric("Est. value", value: priceLabel, symbol: "chart.line.uptrend.xyaxis")
+                metric("My Sets", value: completionLabel, symbol: "checkmark.circle")
             }
             if pricesLoaded && valueSummary.missingVariants > 0 {
                 Text("\(valueSummary.missingVariants) owned printings have no exact \(source.displayName) price.")
@@ -517,33 +573,7 @@ private struct CollectionDashboardView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if !rankedValues.isEmpty {
-                DisclosureGroup("Top-priced cards", isExpanded: $isShowingTopCards) {
-                    ForEach(Array(rankedValues.prefix(10).enumerated()), id: \.element.id) { index, item in
-                        if let result = topCards.first(where: { $0.id == item.id }) {
-                            NavigationLink {
-                                CatalogCardDetailView(card: result.card)
-                            } label: {
-                                HStack {
-                                    Text("\(index + 1). \(result.card.name)")
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Text(formattedCatalogPrice(item.amount, currencyCode: source.currencyCode))
-                                        .monospacedDigit()
-                                }
-                                .font(.subheadline)
-                            }
-                        }
-                    }
-                    Text("Owned-copy totals, using exact \(source.displayName) printing prices.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .font(.subheadline.weight(.semibold))
-            }
         }
-        .padding(15)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
         .task(id: refreshKey) { await refresh() }
     }
 
@@ -560,24 +590,35 @@ private struct CollectionDashboardView: View {
         if ownedIDs.isEmpty { return formattedCatalogPrice(0, currencyCode: source.currencyCode) }
         if priceLoadFailed { return "Unavailable" }
         if !pricesLoaded { return "Loading…" }
+        if valueSummary.pricedVariants == 0 { return "—" }
         return formattedCatalogPrice(valueSummary.amount, currencyCode: source.currencyCode)
+    }
+
+    private var priceSubtitle: String {
+        if pricesLoaded && !ownedIDs.isEmpty && valueSummary.pricedVariants == 0 {
+            return "No exact \(source.displayName) prices yet"
+        }
+        return "\(source.displayName) · owned copies"
     }
 
     private func metric(_ title: String, value: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Label(title, systemImage: symbol)
-                .font(.caption)
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.blue)
+            Text(title)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(value)
-                .font(.headline.monospacedDigit())
+                .font(.subheadline.weight(.bold).monospacedDigit())
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func refresh() async {
@@ -593,6 +634,13 @@ private struct CollectionDashboardView: View {
         }
         let topIDs = Array(rankedValues.prefix(10).map(\.id))
         topCards = (try? await catalogStore.searchResults(cardIDs: topIDs)) ?? []
+        if let first = rankedValues.first {
+            featuredCard = topCards.first(where: { $0.id == first.id })
+        } else if let firstID = ids.first {
+            featuredCard = (try? await catalogStore.searchResults(cardIDs: [firstID]))?.first
+        } else {
+            featuredCard = nil
+        }
 
         guard !trackedSets.isEmpty else {
             setProgress = nil
@@ -629,6 +677,52 @@ private struct CollectionDashboardView: View {
         if setProgress == nil {
             setProgress = CollectionProgress(completedSlots: 0, requiredSlots: 0)
         }
+    }
+}
+
+private struct TopPricedCardsView: View {
+    let items: [(id: String, amount: Double)]
+    let cards: [CatalogCardSearchResult]
+    let source: CatalogPriceSource
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(Array(items.prefix(10).enumerated()), id: \.element.id) { index, item in
+                    if let result = cards.first(where: { $0.id == item.id }) {
+                        NavigationLink {
+                            CatalogCardDetailView(card: result.card)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text("\(index + 1)")
+                                    .font(.caption.weight(.bold).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 20)
+                                CachedCardImage(card: result.card)
+                                    .frame(width: 38, height: 53)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    .accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(result.card.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("\(result.setName) · #\(result.card.localID)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 4)
+                                Text(formattedCatalogPrice(item.amount, currencyCode: source.currencyCode))
+                                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                            }
+                        }
+                    }
+                }
+            } footer: {
+                Text("Owned-copy totals use exact \(source.displayName) printing prices where available.")
+            }
+        }
+        .navigationTitle("Top-priced cards")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
