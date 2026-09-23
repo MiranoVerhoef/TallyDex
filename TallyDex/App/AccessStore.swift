@@ -419,7 +419,7 @@ struct MembershipView: View {
                         Text("Try every feature for 14 days. There is no subscription and no automatic charge.")
                         Text("After the trial, your collection stays readable and exportable. Editing requires one lifetime purchase.")
                         if let product = access.lifetimeProduct {
-                            Text("Launch price for lifetime access: \(product.displayPrice).")
+                            Text("Lifetime access: \(product.displayPrice).")
                         }
                     } else {
                         Text("Early access is unlocked. Purchases are not active in this build.")

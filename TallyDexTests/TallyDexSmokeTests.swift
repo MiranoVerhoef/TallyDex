@@ -202,7 +202,7 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.37")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.38")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
@@ -278,7 +278,7 @@ final class TallyDexSmokeTests: XCTestCase {
         let lifetime = try XCTUnwrap(products.first { $0.id == AccessConfiguration.lifetimeProductID })
         XCTAssertEqual(lifetime.type, .nonConsumable)
         XCTAssertTrue(lifetime.displayPrice.contains("€"))
-        XCTAssertTrue(lifetime.displayPrice.contains("4.99"))
+        XCTAssertTrue(lifetime.displayPrice.contains("9.99"))
         for (tier, expectedPrice) in [
             (CoffeeTipTier.espresso, "1.99"),
             (.coffee, "2.99"),

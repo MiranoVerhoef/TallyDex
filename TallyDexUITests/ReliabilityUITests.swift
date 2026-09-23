@@ -88,6 +88,14 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["\(count) of 4 cards"].waitForExistence(timeout: 10), file: file, line: line)
     }
 
+    func testSetsDashboardShowsCollectionWideCounts() {
+        launch("filters")
+        expectState(["owned=1", "error=none"])
+        XCTAssertTrue(app.staticTexts["Collection dashboard"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Distinct cards"].exists)
+        XCTAssertTrue(app.staticTexts["Copies"].exists)
+    }
+
     private func chooseFilter(_ label: String, option: String) {
         tap(app.buttons[label])
         tap(app.buttons[option])
@@ -175,12 +183,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.37"])
+        expectState(["intro=true", "seen=0.9.38"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.37"])
+        expectState(["intro=true", "seen=0.9.38"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -188,10 +196,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.37"])
+        expectState(["intro=true", "seen=0.9.38"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.37"])
+        expectState(["intro=true", "seen=0.9.38"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -201,10 +209,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.37"])
+        expectState(["intro=true", "seen=0.9.38"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.37"])
+        expectState(["intro=true", "seen=0.9.38"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

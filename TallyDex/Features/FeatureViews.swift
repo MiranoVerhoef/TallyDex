@@ -379,6 +379,9 @@ struct SetsView: View {
         switch SetsBrowsingStyle.resolve(browsingStyle) {
         case .grouped:
             List {
+                CollectionDashboardView()
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 catalogRefreshMessage
 
                 ForEach(scopedGroups) { group in
@@ -400,6 +403,9 @@ struct SetsView: View {
             }
         case .seriesFirst:
             List {
+                CollectionDashboardView()
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
                 catalogRefreshMessage
 
                 ForEach(scopedGroups) { group in
@@ -426,6 +432,202 @@ struct SetsView: View {
             Label(message, systemImage: "icloud.slash")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct CollectionDashboardView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
+    @State private var topCards: [CatalogCardSearchResult] = []
+    @State private var isShowingTopCards = false
+    @State private var setProgress: CollectionProgress?
+    @State private var failedSetCount = 0
+    @State private var pricesLoaded = false
+    @State private var priceLoadFailed = false
+
+    private var ownedIDs: [String] { collectionStore.ownedCardIDs.sorted() }
+    private var trackedSets: [CatalogSet] {
+        catalogStore.groups.flatMap(\.sets).filter {
+            collectionStore.trackingStatus(for: $0.id) == .collecting
+        }
+    }
+    private var refreshKey: String {
+        let setKey = trackedSets.map { "\($0.id):\(collectionStore.preference(for: $0.id).updatedAt.timeIntervalSince1970)" }
+            .joined(separator: "|")
+        let broadKey = collectionStore.broadOwnedEntries
+            .map { "\($0.id):\($0.quantity):\($0.updatedAt.timeIntervalSince1970)" }
+            .sorted().joined(separator: "|")
+        let exactKey = collectionStore.exactOwnedEntries
+            .map { "\($0.cardID):\($0.printingID):\($0.quantity):\($0.updatedAt.timeIntervalSince1970)" }
+            .sorted().joined(separator: "|")
+        return "\(broadKey)#\(exactKey)#\(setKey)#\(preferredPriceSource)#\(catalogStore.lastUpdated?.timeIntervalSince1970 ?? 0)"
+    }
+    private var source: CatalogPriceSource {
+        CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+    }
+    private var valueSummary: CatalogValueSummary {
+        CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries,
+            prices: pricesByCardID,
+            source: source
+        )
+    }
+    private var copyCount: Int {
+        collectionStore.ownedEntries.reduce(0) { $0 + max(0, $1.quantity) }
+    }
+    private var rankedValues: [(id: String, amount: Double)] {
+        let values = CatalogValueCalculator.cardTotals(
+            entries: collectionStore.ownedEntries,
+            prices: pricesByCardID,
+            source: source
+        )
+        return values.map { (id: $0.key, amount: $0.value) }
+            .sorted { $0.amount == $1.amount ? $0.id < $1.id : $0.amount > $1.amount }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Collection dashboard")
+                    .font(.headline)
+                Spacer()
+                Text("All collections")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                metric("Distinct cards", value: ownedIDs.count.formatted(), symbol: "square.stack")
+                metric("Copies", value: copyCount.formatted(), symbol: "square.on.square")
+            }
+            HStack(spacing: 10) {
+                metric("My Sets goals", value: completionLabel, symbol: "checkmark.circle")
+                metric("Est. value", value: priceLabel, symbol: "chart.line.uptrend.xyaxis")
+            }
+            if pricesLoaded && valueSummary.missingVariants > 0 {
+                Text("\(valueSummary.missingVariants) owned printings have no exact \(source.displayName) price.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if failedSetCount > 0 {
+                Text("My Sets progress is unavailable for \(failedSetCount) set\(failedSetCount == 1 ? "" : "s").")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if !rankedValues.isEmpty {
+                DisclosureGroup("Top-priced cards", isExpanded: $isShowingTopCards) {
+                    ForEach(Array(rankedValues.prefix(10).enumerated()), id: \.element.id) { index, item in
+                        if let result = topCards.first(where: { $0.id == item.id }) {
+                            NavigationLink {
+                                CatalogCardDetailView(card: result.card)
+                            } label: {
+                                HStack {
+                                    Text("\(index + 1). \(result.card.name)")
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(formattedCatalogPrice(item.amount, currencyCode: source.currencyCode))
+                                        .monospacedDigit()
+                                }
+                                .font(.subheadline)
+                            }
+                        }
+                    }
+                    Text("Owned-copy totals, using exact \(source.displayName) printing prices.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline.weight(.semibold))
+            }
+        }
+        .padding(15)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .task(id: refreshKey) { await refresh() }
+    }
+
+    private var completionLabel: String {
+        guard !trackedSets.isEmpty else { return "No My Sets" }
+        guard failedSetCount == 0 else { return "Partial" }
+        guard let setProgress else { return "Loading…" }
+        guard setProgress.requiredSlots > 0 else { return "Unavailable" }
+        let percent = Double(setProgress.completedSlots) / Double(setProgress.requiredSlots)
+        return percent.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    private var priceLabel: String {
+        if ownedIDs.isEmpty { return formattedCatalogPrice(0, currencyCode: source.currencyCode) }
+        if priceLoadFailed { return "Unavailable" }
+        if !pricesLoaded { return "Loading…" }
+        return formattedCatalogPrice(valueSummary.amount, currencyCode: source.currencyCode)
+    }
+
+    private func metric(_ title: String, value: String, symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: symbol)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(value)
+                .font(.headline.monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(.systemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func refresh() async {
+        let ids = ownedIDs
+        pricesLoaded = ids.isEmpty
+        priceLoadFailed = false
+        do {
+            pricesByCardID = try await catalogStore.prices(cardIDs: ids)
+            pricesLoaded = true
+        } catch {
+            pricesByCardID = [:]
+            priceLoadFailed = true
+        }
+        let topIDs = Array(rankedValues.prefix(10).map(\.id))
+        topCards = (try? await catalogStore.searchResults(cardIDs: topIDs)) ?? []
+
+        guard !trackedSets.isEmpty else {
+            setProgress = nil
+            failedSetCount = 0
+            return
+        }
+        setProgress = nil
+        failedSetCount = 0
+        var completed = 0
+        var required = 0
+        for set in trackedSets {
+            if Task.isCancelled { return }
+            guard let cards = try? await catalogStore.cards(for: set) else {
+                failedSetCount += 1
+                continue
+            }
+            let variants = await catalogStore.prepareVariants(for: cards, refreshCachedDetails: false)
+            let printings = await catalogStore.cachedPrintings(for: cards)
+            let progress = CollectionProgressCalculator.combined(
+                CollectionProgressCalculator.progressByCardID(
+                    cards: cards,
+                    set: set,
+                    preference: collectionStore.preference(for: set.id),
+                    availableVariants: variants,
+                    ownedEntries: collectionStore.broadOwnedEntries,
+                    availablePrintings: printings,
+                    exactOwnedEntries: collectionStore.exactOwnedEntries
+                )
+            )
+            completed += progress.completedSlots
+            required += progress.requiredSlots
+            setProgress = CollectionProgress(completedSlots: completed, requiredSlots: required)
+        }
+        if setProgress == nil {
+            setProgress = CollectionProgress(completedSlots: 0, requiredSlots: 0)
         }
     }
 }
@@ -5904,7 +6106,7 @@ struct SettingsView: View {
                         SettingsMenuLabel(title: "Export & Import", detail: "Move or restore your collection", systemImage: "arrow.up.arrow.down.square", tint: .indigo)
                     }
                     NavigationLink { LocalCollectionSharingView() } label: {
-                        SettingsMenuLabel(title: "Browser Editor", detail: localCollectionSharing.isRunning ? "Active on your local network" : "Edit from a computer on the same Wi-Fi", systemImage: "desktopcomputer", tint: .indigo)
+                        SettingsMenuLabel(title: "Collection Manager", detail: localCollectionSharing.isRunning ? "Active on your local network" : "Edit from a computer on the same Wi-Fi", systemImage: "desktopcomputer", tint: .indigo)
                     }
                 }
                 Section("Storage") {
@@ -6257,7 +6459,7 @@ private struct LocalCollectionSharingView: View {
                             .textSelection(.enabled)
                     }
                     LabeledContent("Saved browser edits", value: "\(sharing.editCount)")
-                    Button("Stop Browser Editing", role: .destructive) {
+                    Button("Stop Collection Manager", role: .destructive) {
                         sharing.stop()
                     }
                 } else {
@@ -6275,7 +6477,7 @@ private struct LocalCollectionSharingView: View {
                                 Text("Starting…")
                             }
                         } else {
-                            Label("Start Browser Editing", systemImage: "play.fill")
+                            Label("Start Collection Manager", systemImage: "play.fill")
                         }
                     }
                     .disabled(sharing.isStarting || catalogStore.isInitialLoading || collectionStore.isInitialLoading)
@@ -6315,10 +6517,11 @@ private struct LocalCollectionSharingView: View {
             }
 
             Section("Available in the Browser") {
-                Label("Browse complete sets or search the catalog", systemImage: "magnifyingglass")
+                Label("Browse sets, search the catalog, or search within a loaded set", systemImage: "magnifyingglass")
                 Label("Mark every known printing and adjust quantities", systemImage: "checkmark.circle")
                 Label("Filter cards by All, Owned, or Missing", systemImage: "line.3.horizontal.decrease.circle")
                 Label("Edit wishlist and personal notes", systemImage: "heart.text.square")
+                Label("Import and export collection files with a preview", systemImage: "arrow.up.arrow.down.doc")
             }
 
             Section("Privacy & Safety") {
@@ -6328,7 +6531,7 @@ private struct LocalCollectionSharingView: View {
                 )
             }
         }
-        .navigationTitle("Browser Editor")
+        .navigationTitle("Collection Manager")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: sharing.isRunning) { _, running in
             if !running { copied = false }

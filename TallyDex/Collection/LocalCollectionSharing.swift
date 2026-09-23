@@ -109,6 +109,18 @@ struct LocalHTTPResponse: Sendable {
         )
     }
 
+    static func download(_ data: Data, filename: String, contentType: String) -> Self {
+        LocalHTTPResponse(
+            statusCode: 200,
+            reason: "OK",
+            headers: [
+                "Content-Type": contentType,
+                "Content-Disposition": "attachment; filename=\"\(filename)\""
+            ],
+            body: data
+        )
+    }
+
     static func redirect(to location: String, cookie: String? = nil) -> Self {
         var headers = ["Location": location]
         if let cookie { headers["Set-Cookie"] = cookie }
@@ -159,7 +171,8 @@ final class LocalHTTPServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.miranoverhoef.TallyDex.local-http")
     private var listener: NWListener?
     private var handler: (@Sendable (LocalHTTPRequest) async -> LocalHTTPResponse)?
-    private let maximumRequestBytes = 1_048_576
+    // A 25 MB import becomes roughly 34 MB after JSON/base64 encoding.
+    private let maximumRequestBytes = 36 * 1_024 * 1_024
 
     func start(
         handler: @escaping @Sendable (LocalHTTPRequest) async -> LocalHTTPResponse,
@@ -273,6 +286,8 @@ struct LocalSharingBootstrapDTO: Encodable, Sendable {
     let allowsMultipleCopies: Bool
     let browserGridColumns: String
     let browserGridSpacing: String
+    let showDetails: Bool
+    let showMarket: Bool
 }
 
 struct LocalSharingCardsDTO: Encodable, Sendable {
@@ -323,6 +338,40 @@ private struct LocalSharingMetadataUpdate: Decodable {
 private struct LocalSharingLayoutUpdate: Decodable {
     let columns: String
     let spacing: String
+    let showDetails: Bool
+    let showMarket: Bool
+}
+
+private struct LocalSharingImportUpload: Decodable {
+    let filename: String
+    let kind: String
+    let base64: String
+}
+
+private struct LocalSharingImportCommit: Decodable {
+    let token: String
+    let mode: String
+}
+
+private struct LocalSharingImportPreviewDTO: Encodable {
+    let token: String
+    let filename: String
+    let kind: String
+    let additions: Int
+    let changes: Int
+    let skipped: Int
+    let removals: Int
+    let issues: Int
+    let rows: Int
+    let replace: LocalSharingPreviewCountsDTO?
+    let issueSamples: [String]
+}
+
+private struct LocalSharingPreviewCountsDTO: Encodable {
+    let additions: Int
+    let changes: Int
+    let skipped: Int
+    let removals: Int
 }
 
 @MainActor
@@ -339,6 +388,9 @@ final class LocalCollectionSharingController {
     @ObservationIgnored private var sessionToken = ""
     @ObservationIgnored private var csrfToken = ""
     @ObservationIgnored private var failedPairAttempts = 0
+    @ObservationIgnored private var stagedBackupImport: PreparedCollectionImport?
+    @ObservationIgnored private var stagedPriceChartingImport: PreparedPriceChartingImport?
+    @ObservationIgnored private var stagedImportToken = ""
 
     func start(catalogStore: CatalogStore, collectionStore: CollectionStore) async {
         guard !isRunning, !isStarting else { return }
@@ -392,6 +444,9 @@ final class LocalCollectionSharingController {
         pairingCode = ""
         sessionToken = ""
         csrfToken = ""
+        stagedBackupImport = nil
+        stagedPriceChartingImport = nil
+        stagedImportToken = ""
         UIApplication.shared.isIdleTimerDisabled = false
     }
 
@@ -468,8 +523,48 @@ final class LocalCollectionSharingController {
                     forKey: CollectionSettings.allowsMultipleCopiesKey
                 ),
                 browserGridColumns: UserDefaults.standard.string(forKey: Self.browserGridColumnsKey) ?? "4",
-                browserGridSpacing: UserDefaults.standard.string(forKey: Self.browserGridSpacingKey) ?? "comfortable"
+                browserGridSpacing: UserDefaults.standard.string(forKey: Self.browserGridSpacingKey) ?? "comfortable",
+                showDetails: UserDefaults.standard.object(forKey: Self.browserShowDetailsKey) as? Bool ?? true,
+                showMarket: UserDefaults.standard.object(forKey: Self.browserShowMarketKey) as? Bool ?? true
             ))
+        }
+
+        if request.method == "GET", request.path == "/api/export" {
+            do {
+                let document = try await collectionStore.exportDocument()
+                let day = document.exportedAt.formatted(.iso8601.year().month().day())
+                switch request.query["kind"] {
+                case "backup":
+                    return .download(
+                        try CollectionTransferCodec.encode(document),
+                        filename: "TallyDex-Collection-\(day).pokecollection",
+                        contentType: "application/octet-stream"
+                    )
+                case "csv":
+                    return .download(
+                        CollectionTransferCodec.csv(document),
+                        filename: "TallyDex-Collection-\(day).csv",
+                        contentType: "text/csv; charset=utf-8"
+                    )
+                case "pricecharting":
+                    let result = PriceChartingTransferCodec.csvExport(
+                        ownership: collectionStore.ownedEntries,
+                        mappings: document.priceChartingMappings
+                    )
+                    guard result.mapped > 0 else {
+                        return .error("No PriceCharting IDs are saved yet. Import a PriceCharting CSV first.", statusCode: 400)
+                    }
+                    return .download(
+                        result.data,
+                        filename: "TallyDex-PriceCharting-\(day).csv",
+                        contentType: "text/csv; charset=utf-8"
+                    )
+                default:
+                    return .error("Unknown export format.", statusCode: 400)
+                }
+            } catch {
+                return .error("The export couldn’t be prepared.", statusCode: 500)
+            }
         }
 
         if request.method == "GET", request.path == "/api/cards" {
@@ -526,6 +621,107 @@ final class LocalCollectionSharingController {
         guard request.headers["x-tallydex-csrf"] == csrfToken else {
             return .error("The editing session is no longer valid. Reload the page.", statusCode: 403)
         }
+        if request.method == "POST", request.path == "/api/import/prepare" {
+            guard let upload = try? JSONDecoder().decode(LocalSharingImportUpload.self, from: request.body),
+                  ["backup", "pricecharting"].contains(upload.kind),
+                  upload.filename.count <= 200,
+                  !upload.filename.contains("\n"),
+                  let data = Data(base64Encoded: upload.base64),
+                  data.count <= CollectionTransferCodec.maximumImportByteCount else {
+                return .error("Choose a valid backup or PriceCharting CSV within the 25 MB limit.", statusCode: 400)
+            }
+            stagedBackupImport = nil
+            stagedPriceChartingImport = nil
+            stagedImportToken = ""
+            do {
+                let token = UUID().uuidString
+                if upload.kind == "backup" {
+                    let prepared = try await collectionStore.prepareImport(data: data, filename: upload.filename)
+                    stagedBackupImport = prepared
+                    stagedImportToken = token
+                    let preview = prepared.mergePreview
+                    return .json(LocalSharingImportPreviewDTO(
+                        token: token, filename: upload.filename, kind: upload.kind,
+                        additions: preview.additions, changes: preview.changes,
+                        skipped: preview.skipped, removals: preview.removals,
+                        issues: preview.conflicts, rows: 0,
+                        replace: LocalSharingPreviewCountsDTO(
+                            additions: prepared.replacePreview.additions,
+                            changes: prepared.replacePreview.changes,
+                            skipped: prepared.replacePreview.skipped,
+                            removals: prepared.replacePreview.removals
+                        ),
+                        issueSamples: []
+                    ))
+                }
+                let prepared = try await PriceChartingImportResolver.prepare(
+                    data: data, filename: upload.filename,
+                    catalogStore: catalogStore, collectionStore: collectionStore
+                )
+                stagedPriceChartingImport = prepared
+                stagedImportToken = token
+                let preview = prepared.preview
+                return .json(LocalSharingImportPreviewDTO(
+                    token: token, filename: upload.filename, kind: upload.kind,
+                    additions: preview.additions, changes: preview.changes,
+                    skipped: preview.skipped, removals: preview.removals,
+                    issues: prepared.issues.count, rows: prepared.sourceRowCount,
+                    replace: nil,
+                    issueSamples: prepared.issues.prefix(8).map {
+                        "Row \($0.rowNumber): \($0.productName) — \($0.reason)"
+                    }
+                ))
+            } catch {
+                return .error("The file couldn’t be safely previewed. No collection data was changed.", statusCode: 400)
+            }
+        }
+        if request.method == "POST", request.path == "/api/import/commit" {
+            guard let command = try? JSONDecoder().decode(LocalSharingImportCommit.self, from: request.body),
+                  !stagedImportToken.isEmpty,
+                  command.token == stagedImportToken else {
+                return .error("Import preview expired. Choose the file again.", statusCode: 400)
+            }
+            do {
+                if let prepared = stagedBackupImport,
+                   let mode = CollectionImportMode(rawValue: command.mode) {
+                    let fresh = try await collectionStore.prepareImport(
+                        data: CollectionTransferCodec.encode(prepared.document),
+                        filename: prepared.filename
+                    )
+                    let earlierPreview = mode == .merge ? prepared.mergePreview : prepared.replacePreview
+                    let currentPreview = mode == .merge ? fresh.mergePreview : fresh.replacePreview
+                    guard earlierPreview == currentPreview else {
+                        stagedBackupImport = nil
+                        stagedImportToken = ""
+                        return .error("Collection changed since preview. Preview the file again before importing.", statusCode: 400)
+                    }
+                    try await collectionStore.importCollection(prepared, mode: mode)
+                } else if let prepared = stagedPriceChartingImport,
+                          command.mode == "merge" {
+                    let fresh = try await collectionStore.preparePriceChartingImport(
+                        filename: prepared.filename,
+                        sourceRowCount: prepared.sourceRowCount,
+                        matches: prepared.matches,
+                        issues: prepared.issues
+                    )
+                    guard fresh.preview == prepared.preview else {
+                        stagedPriceChartingImport = nil
+                        stagedImportToken = ""
+                        return .error("Collection changed since preview. Preview the file again before importing.", statusCode: 400)
+                    }
+                    try await collectionStore.importPriceCharting(prepared)
+                } else {
+                    return .error("Invalid import mode.", statusCode: 400)
+                }
+                stagedBackupImport = nil
+                stagedPriceChartingImport = nil
+                stagedImportToken = ""
+                editCount += 1
+                return .json(["saved": true])
+            } catch {
+                return .error("Import failed. Your collection was not changed; check its rollback backup.", statusCode: 500)
+            }
+        }
         if request.method == "POST", request.path == "/api/browser-layout" {
             guard let update = try? JSONDecoder().decode(LocalSharingLayoutUpdate.self, from: request.body),
                   ["auto", "2", "3", "4", "5", "6"].contains(update.columns),
@@ -533,6 +729,8 @@ final class LocalCollectionSharingController {
             else { return .error("Invalid browser layout.", statusCode: 400) }
             UserDefaults.standard.set(update.columns, forKey: Self.browserGridColumnsKey)
             UserDefaults.standard.set(update.spacing, forKey: Self.browserGridSpacingKey)
+            UserDefaults.standard.set(update.showDetails, forKey: Self.browserShowDetailsKey)
+            UserDefaults.standard.set(update.showMarket, forKey: Self.browserShowMarketKey)
             return .json(["saved": true])
         }
         let quantityPrefix = "/api/cards/"
@@ -724,31 +922,59 @@ final class LocalCollectionSharingController {
             ?? "\"\""
         return """
         <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-        <title>TallyDex Browser Editor</title><style>\(sharedCSS)\(editorCSS)</style></head><body>
-        <header><div><div class="brand">TallyDex</div><small>Browser collection editor</small></div><div class="secure">Connected locally</div></header>
+        <title>TallyDex Collection Manager</title><style>\(sharedCSS)\(editorCSS)</style></head><body>
+        <header><div><div class="brand">TallyDex</div><small>Collection Manager</small></div><div class="header-actions"><button id="open-transfer" type="button" class="secondary">Import & export</button><div class="secure">Connected locally</div></div></header>
         <main class="editor"><section class="toolbar"><div class="field grow"><label for="search">Search cards</label><input id="search" type="search" placeholder="Lucario, SM95, Chaos Rising…"></div>
         <div class="field grow"><label for="choose-set">Or choose a set</label><button id="choose-set" class="select-button" type="button"><span id="selected-set">Choose a set</span><span aria-hidden="true">⌄</span></button></div><button id="load">Load cards</button></section>
-        <section class="statusbar"><div id="status">Choose a set or search for cards.</div><div class="view-tools"><label>Cards per row <select id="grid-columns"><option value="auto">Auto</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option></select></label><label>Spacing <select id="grid-spacing"><option value="compact">Compact</option><option value="comfortable" selected>Comfortable</option><option value="spacious">Spacious</option></select></label></div><div class="filters"><button data-filter="all" class="active">All</button><button data-filter="owned">Owned</button><button data-filter="missing">Missing</button></div></section>
+        <section class="statusbar"><div id="status">Choose a set or search for cards.</div><div class="view-tools"><label>Cards per row <select id="grid-columns"><option value="auto">Auto</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option><option value="6">6</option></select></label><label>Spacing <select id="grid-spacing"><option value="compact">Compact</option><option value="comfortable" selected>Comfortable</option><option value="spacious">Spacious</option></select></label><label class="compact-toggle"><input id="show-details" type="checkbox" checked> Details</label><label class="compact-toggle"><input id="show-market" type="checkbox" checked> Market</label></div><div class="filters"><button data-filter="all" class="active">All</button><button data-filter="owned">Owned</button><button data-filter="missing">Missing</button></div></section>
+        <div id="set-filter-row" class="set-filter-row" hidden><label for="within-set-search">Search this set</label><input id="within-set-search" type="search" placeholder="Card name or number…"></div>
         <div id="cards" class="cards"></div></main>
         <dialog id="set-dialog" class="sheet"><form method="dialog" class="dialog-shell"><div class="dialog-heading"><div><h2>Choose a set</h2><p>Search by set or series, then choose where to browse.</p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div><input id="set-search" type="search" placeholder="Search sets or series…" autocomplete="off"><div class="set-scopes" aria-label="Set type"><button type="button" data-set-scope="all" class="active">All</button><button type="button" data-set-scope="main">Main sets</button><button type="button" data-set-scope="special">Promos & subsets</button><button type="button" data-set-scope="other">Other</button></div><div id="set-list" class="set-list"></div></form></dialog>
         <dialog id="metadata-dialog" class="sheet metadata-sheet"><form method="dialog" class="dialog-shell"><div class="dialog-heading"><div><h2 id="metadata-title">Wishlist & notes</h2><p id="metadata-subtitle"></p></div><button class="icon-button" value="cancel" aria-label="Close">×</button></div><label class="wish"><input id="metadata-wishlist" type="checkbox"> Add to wishlist</label><label for="metadata-notes">Personal notes</label><textarea id="metadata-notes" maxlength="10000" placeholder="Binder location, condition, trade notes…"></textarea><div class="dialog-actions"><button class="secondary" value="cancel">Cancel</button><button id="save-metadata" type="button">Save</button></div></form></dialog>
         <dialog id="market-dialog" class="sheet market-sheet"><div class="dialog-shell"><div class="dialog-heading"><div><h2 id="market-title">Cardmarket</h2><p id="market-subtitle"></p></div><button class="icon-button" type="button" data-close-market aria-label="Close">×</button></div><div id="market-content"><div class="loader"></div></div></div></dialog>
+        <dialog id="transfer-dialog" class="sheet transfer-sheet"><div class="dialog-shell"><div class="dialog-heading"><div><h2>Import & export</h2><p>Manage a full backup or PriceCharting CSV on this iPhone.</p></div><button class="icon-button" type="button" data-close-transfer aria-label="Close">×</button></div><div class="transfer-grid"><section><h3>Export</h3><button type="button" class="secondary" data-export="backup">Full TallyDex backup</button><button type="button" class="secondary" data-export="csv">Readable CSV</button><button type="button" class="secondary" data-export="pricecharting">PriceCharting CSV</button><p>PriceCharting CSV includes only printings with saved product IDs.</p></section><section><h3>Import</h3><label for="import-kind">File type</label><select id="import-kind"><option value="backup">TallyDex backup</option><option value="pricecharting">PriceCharting CSV</option></select><input id="import-file" type="file" accept=".pokecollection,.csv"><button id="preview-import" type="button">Preview import</button><div id="import-preview" aria-live="polite"></div></section></div></div></dialog>
         <div id="toast" role="status"></div>
         <script>
-        const csrf=\(csrfJSON);const state={cards:[],sets:[],filter:'all',multiple:false,selectedSetID:'',setScope:'all',metadataCardID:'',marketCardID:'',marketData:null,marketVariant:'',marketRange:'30'};
+        const csrf=\(csrfJSON);const state={cards:[],sets:[],filter:'all',multiple:false,selectedSetID:'',loadedSetID:'',setScope:'all',metadataCardID:'',marketCardID:'',marketData:null,marketVariant:'',marketRange:'30',showDetails:true,showMarket:true};
         const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         async function api(path,options={}){const headers={'Accept':'application/json',...(options.body?{'Content-Type':'application/json','X-TallyDex-CSRF':csrf}:{}),...(options.headers||{})};const response=await fetch(path,{...options,headers});if(response.status===401){location.reload();throw new Error('Session ended');}const data=await response.json();if(!response.ok)throw new Error(data.error||'Request failed');return data;}
         function toast(message,bad=false){const el=document.querySelector('#toast');el.textContent=message;el.className=bad?'show bad':'show';setTimeout(()=>el.className='',2200);}
-        async function start(){try{const data=await api('/api/bootstrap');state.multiple=data.allowsMultipleCopies;state.sets=data.sets;document.querySelector('#grid-columns').value=data.browserGridColumns;document.querySelector('#grid-spacing').value=data.browserGridSpacing;applyLayout();renderSetList();}catch(e){document.querySelector('#status').textContent=e.message;}}
-        async function load(){const q=document.querySelector('#search').value.trim(),setID=state.selectedSetID;if(!q&&!setID){toast('Choose a set or enter a search.',true);return;}const params=q?'q='+encodeURIComponent(q):'setID='+encodeURIComponent(setID);document.querySelector('#status').textContent='Loading cards and printing variants from your iPhone…';document.querySelector('#cards').innerHTML='<div class="loader"></div>';try{const data=await api('/api/cards?'+params);state.cards=data.cards;render();document.querySelector('#status').textContent=data.resultCount+' cards'+(data.mayBeTruncated?' · narrow your search to see every match':'');}catch(e){document.querySelector('#cards').innerHTML='';document.querySelector('#status').textContent=e.message;}}
+        async function downloadExport(kind){try{const response=await fetch('/api/export?kind='+encodeURIComponent(kind));if(!response.ok){const error=await response.json();throw new Error(error.error||'Export failed');}const blob=await response.blob(),header=response.headers.get('Content-Disposition')||'',name=header.match(/filename="([^"]+)"/)?.[1]||'TallyDex-export',url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(error){toast(error.message,true);}}
+        async function previewImport(){
+          const file=document.querySelector('#import-file').files[0],kind=document.querySelector('#import-kind').value,root=document.querySelector('#import-preview');
+          if(!file){toast('Choose a file first.',true);return;}
+          if(file.size>25*1024*1024){toast('Files must be 25 MB or smaller.',true);return;}
+          root.textContent='Preparing safe preview…';
+          try{
+            const bytes=new Uint8Array(await file.arrayBuffer()),chunks=[];
+            for(let i=0;i<bytes.length;i+=32768)chunks.push(String.fromCharCode(...bytes.subarray(i,i+32768)));
+            const data=await api('/api/import/prepare',{method:'POST',body:JSON.stringify({filename:file.name,kind,base64:btoa(chunks.join(''))})});
+            root.innerHTML=`<p><strong>${esc(data.filename)}</strong></p><p id="import-counts"></p><label>Import mode<select id="import-mode"><option value="merge">Merge with existing collection</option>${kind==='backup'?'<option value="replace">Replace entire collection</option>':''}</select></label><p id="import-warning"></p>${data.issueSamples?.length?`<details><summary>${data.issues} skipped or uncertain rows</summary><ul>${data.issueSamples.map(item=>`<li>${esc(item)}</li>`).join('')}</ul></details>`:''}<button id="commit-import" type="button">Confirm import</button>`;
+            const updatePreview=()=>{
+              const replace=document.querySelector('#import-mode').value==='replace',counts=replace?data.replace:data;
+              document.querySelector('#import-counts').textContent=(data.rows?data.rows+' rows · ':'')+counts.additions+' new · '+counts.changes+' changed · '+counts.skipped+' already present · '+counts.removals+' removed · '+data.issues+' needing review';
+              document.querySelector('#import-warning').textContent=replace?'Replace removes collection data missing from this backup. A rollback backup is created first.':'Merge keeps existing cards. A rollback backup is created before import.';
+            };
+            document.querySelector('#import-mode').onchange=updatePreview;updatePreview();
+            document.querySelector('#commit-import').onclick=async()=>{
+              const mode=document.querySelector('#import-mode').value;
+              if(mode==='replace'&&!confirm('Replace your entire collection with this backup? A rollback backup will be created.'))return;
+              const button=document.querySelector('#commit-import');button.disabled=true;
+              try{await api('/api/import/commit',{method:'POST',body:JSON.stringify({token:data.token,mode})});root.textContent='Import complete. Reloading cards…';await load();toast('Collection imported');}
+              catch(error){root.textContent=error.message;}
+            };
+          }catch(error){root.textContent=error.message;}
+        }
+        async function start(){try{const data=await api('/api/bootstrap');state.multiple=data.allowsMultipleCopies;state.sets=data.sets;document.querySelector('#grid-columns').value=data.browserGridColumns;document.querySelector('#grid-spacing').value=data.browserGridSpacing;state.showDetails=data.showDetails;state.showMarket=data.showMarket;document.querySelector('#show-details').checked=state.showDetails;document.querySelector('#show-market').checked=state.showMarket;applyLayout();renderSetList();}catch(e){document.querySelector('#status').textContent=e.message;}}
+        async function load(){const q=document.querySelector('#search').value.trim(),setID=state.selectedSetID;if(!q&&!setID){toast('Choose a set or enter a search.',true);return;}const params=q?'q='+encodeURIComponent(q):'setID='+encodeURIComponent(setID);document.querySelector('#status').textContent='Loading cards and printing variants from your iPhone…';document.querySelector('#cards').innerHTML='<div class="loader"></div>';try{const data=await api('/api/cards?'+params);state.cards=data.cards;state.loadedSetID=q?'':setID;document.querySelector('#set-filter-row').hidden=!state.loadedSetID;document.querySelector('#within-set-search').value='';render();document.querySelector('#status').textContent=data.resultCount+' cards'+(data.mayBeTruncated?' · narrow your search to see every match':'');}catch(e){document.querySelector('#cards').innerHTML='';document.querySelector('#status').textContent=e.message;}}
         function renderSetList(){const query=document.querySelector('#set-search').value.trim().toLowerCase();const filtered=state.sets.filter(set=>(state.setScope==='all'||set.category===state.setScope)&&(!query||(set.name+' '+set.seriesName).toLowerCase().includes(query)));const groups=new Map();filtered.forEach(set=>{if(!groups.has(set.seriesName))groups.set(set.seriesName,[]);groups.get(set.seriesName).push(set);});document.querySelector('#set-list').innerHTML=[...groups].map(([series,sets])=>`<section class="set-group"><h3>${esc(series)}</h3>${sets.map(set=>`<button type="button" class="set-option" data-set-id="${esc(set.id)}"><span><strong>${esc(set.name)}</strong><small>${esc(series)}</small></span><span class="set-date">${esc(set.releaseDate||'Date unknown')}</span></button>`).join('')}</section>`).join('')||'<div class="empty compact">No sets match this search.</div>';}
-        function visible(){return state.cards.filter(card=>state.filter==='all'||(state.filter==='owned'&&card.owned)||(state.filter==='missing'&&!card.owned));}
-        function render(){const root=document.querySelector('#cards');root.innerHTML=visible().map(card=>`<article class="card" data-id="${esc(card.id)}"><div class="cardtop">${card.imageURL?`<img loading="lazy" src="${esc(card.imageURL)}" alt="${esc(card.name)}">`:'<div class="placeholder">TD</div>'}<div class="card-copy"><h2 title="${esc(card.name)}">${esc(card.name)}</h2><p title="${esc(card.setName)} · #${esc(card.number)}">${esc(card.setName)} · #${esc(card.number)}</p></div></div><div class="variants">${card.variants.map(v=>variantHTML(card,v)).join('')}</div><div class="card-actions"><button type="button" class="metadata-button" data-edit-meta title="Edit wishlist and notes"><span class="action-icon">${card.wishlisted?'♥':'♡'}</span><span class="action-copy"><strong>Details</strong><small>${card.notes?'Notes added':card.wishlisted?'Wishlisted':'Wishlist & notes'}</small></span></button><button type="button" class="market-button" data-open-market title="Open Cardmarket prices and history"><span class="action-icon">€</span><span class="action-copy"><strong>Market</strong><small>Prices & history</small></span></button></div></article>`).join('')||'<div class="empty">No cards match this filter.</div>';}
+        function visible(){const query=state.loadedSetID?document.querySelector('#within-set-search').value.trim().toLocaleLowerCase():'';return state.cards.filter(card=>(state.filter==='all'||(state.filter==='owned'&&card.owned)||(state.filter==='missing'&&!card.owned))&&(!query||(card.name+' '+card.number).toLocaleLowerCase().includes(query)));}
+        function render(){const root=document.querySelector('#cards');root.innerHTML=visible().map(card=>`<article class="card" data-id="${esc(card.id)}"><div class="cardtop">${card.imageURL?`<img loading="lazy" src="${esc(card.imageURL)}" alt="${esc(card.name)}">`:'<div class="placeholder">TD</div>'}<div class="card-copy"><h2 title="${esc(card.name)}">${esc(card.name)}</h2><p title="${esc(card.setName)} · #${esc(card.number)}">${esc(card.setName)} · #${esc(card.number)}</p></div></div><div class="variants">${card.variants.map(v=>variantHTML(card,v)).join('')}</div>${state.showDetails||state.showMarket?`<div class="card-actions">${state.showDetails?`<button type="button" class="metadata-button" data-edit-meta title="Edit wishlist and notes"><span class="action-icon">${card.wishlisted?'♥':'♡'}</span><span class="action-copy"><strong>Details</strong><small>${card.notes?'Notes added':card.wishlisted?'Wishlisted':'Wishlist & notes'}</small></span></button>`:''}${state.showMarket?`<button type="button" class="market-button" data-open-market title="Open Cardmarket prices and history"><span class="action-icon">€</span><span class="action-copy"><strong>Market</strong><small>Prices & history</small></span></button>`:''}</div>`:''}</article>`).join('')||'<div class="empty">No cards match this filter.</div>';}
         function variantHTML(card,v){if(state.multiple)return `<div class="variant"><span>${esc(v.name)}</span><div class="stepper"><button data-step="-1" data-variant="${esc(v.id)}" aria-label="Remove one">−</button><strong data-quantity="${esc(v.id)}">${v.quantity}</strong><button data-step="1" data-variant="${esc(v.id)}" aria-label="Add one">+</button></div></div>`;return `<label class="variant check"><span>${esc(v.name)}</span><input type="checkbox" data-check data-variant="${esc(v.id)}" ${v.quantity>0?'checked':''}></label>`;}
         async function setQuantity(card,variant,quantity){quantity=Math.max(0,Math.min(999,quantity));await api('/api/cards/'+encodeURIComponent(card.id)+'/quantity',{method:'POST',body:JSON.stringify({variant,quantity})});const item=card.variants.find(v=>v.id===variant);item.quantity=quantity;card.owned=card.variants.some(v=>v.quantity>0);toast('Saved '+card.name);if(state.filter!=='all')render();}
         function openMetadata(card){state.metadataCardID=card.id;document.querySelector('#metadata-title').textContent=card.name;document.querySelector('#metadata-subtitle').textContent=card.setName+' · #'+card.number;document.querySelector('#metadata-wishlist').checked=card.wishlisted;document.querySelector('#metadata-notes').value=card.notes;document.querySelector('#metadata-dialog').showModal();}
         function applyLayout(){const columns=document.querySelector('#grid-columns').value,spacing=document.querySelector('#grid-spacing').value,root=document.querySelector('#cards');root.style.setProperty('--grid-columns',columns==='auto'?'repeat(auto-fill,minmax(280px,1fr))':`repeat(${columns},minmax(0,1fr))`);root.dataset.spacing=spacing;}
-        async function saveLayout(){applyLayout();try{await api('/api/browser-layout',{method:'POST',body:JSON.stringify({columns:document.querySelector('#grid-columns').value,spacing:document.querySelector('#grid-spacing').value})});}catch(err){toast(err.message,true);}}
+        async function saveLayout(){applyLayout();try{await api('/api/browser-layout',{method:'POST',body:JSON.stringify({columns:document.querySelector('#grid-columns').value,spacing:document.querySelector('#grid-spacing').value,showDetails:state.showDetails,showMarket:state.showMarket})});}catch(err){toast(err.message,true);}}
         const money=(value,currency='EUR')=>value==null?'—':new Intl.NumberFormat(undefined,{style:'currency',currency:currency||'EUR'}).format(value);
         const dateLabel=value=>value?new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(new Date(value.length===10?value+'T00:00:00Z':value)):'—';
         function marketVariantOptions(data){const found=new Map();[...data.quotes,...data.history].forEach(item=>found.set(item.variant,item.variantName));return [...found].map(([id,name])=>({id,name}));}
@@ -757,6 +983,13 @@ final class LocalCollectionSharingController {
         function renderMarket(){const data=state.marketData,root=document.querySelector('#market-content');if(!data)return;const variants=marketVariantOptions(data);if(!state.marketVariant||!variants.some(item=>item.id===state.marketVariant))state.marketVariant=variants[0]?.id||'';const quote=data.quotes.find(item=>item.variant===state.marketVariant),allPoints=data.history.filter(item=>item.variant===state.marketVariant).sort((a,b)=>a.day.localeCompare(b.day)),points=rangePoints(allPoints),currency=quote?.currencyCode||points.at(-1)?.currencyCode||'EUR',latest=points.at(-1),first=points[0],change=points.length>1?latest.amount-first.amount:null,percent=change!=null&&first.amount?change/first.amount*100:null,low=points.length?Math.min(...points.map(item=>item.amount)):null,high=points.length?Math.max(...points.map(item=>item.amount)):null;root.innerHTML=`<div class="market-controls"><label>Printing<select id="market-variant">${variants.map(item=>`<option value="${esc(item.id)}" ${item.id===state.marketVariant?'selected':''}>${esc(item.name)}</option>`).join('')}</select></label><div class="range-picker">${[['7','7D'],['30','30D'],['90','90D'],['all','All']].map(([id,label])=>`<button type="button" data-market-range="${id}" class="${state.marketRange===id?'active':''}">${label}</button>`).join('')}</div></div>${quote?`<section class="quote-panel"><div><span>Current Cardmarket price</span><strong>${esc(money(quote.amount,currency))}</strong><small>Updated ${esc(dateLabel(quote.updatedAt))}</small></div><div class="averages"><div><span>1-day average</span><strong>${esc(money(quote.average1Day,currency))}</strong></div><div><span>7-day average</span><strong>${esc(money(quote.average7Days,currency))}</strong></div><div><span>30-day average</span><strong>${esc(money(quote.average30Days,currency))}</strong></div></div>${quote.marketplaceURL?`<a class="market-link" href="${esc(quote.marketplaceURL)}" target="_blank" rel="noopener noreferrer">Open exact printing on Cardmarket ↗</a>`:''}</section>`:'<div class="market-empty compact"><strong>No current Cardmarket price</strong><span>TCGdex does not currently provide an exact price for this printing.</span></div>'}<div class="history-heading"><div><h3>Price history</h3><p>${allPoints.length} locally saved ${allPoints.length===1?'day':'days'} · exact printing only</p></div></div>${marketChart(points,currency)}${points.length?`<div class="summary-grid"><div><span>Current</span><strong>${esc(money(latest.amount,currency))}</strong></div><div><span>Change</span><strong class="${change>0?'up':change<0?'down':''}">${change==null?'—':(change>0?'+':'')+money(change,currency)}</strong><small>${percent==null?'':(percent>0?'+':'')+percent.toFixed(1)+'%'}</small></div><div><span>Low</span><strong>${esc(money(low,currency))}</strong></div><div><span>High</span><strong>${esc(money(high,currency))}</strong></div></div>`:''}<p class="market-note">Rolling averages come from TCGdex. Price history is stored locally on this iPhone when the exact printing refreshes; TallyDex never substitutes another variant or converts currencies.</p>`;document.querySelector('#market-variant').onchange=e=>{state.marketVariant=e.target.value;renderMarket();};root.querySelector('.range-picker').onclick=e=>{const button=e.target.closest('[data-market-range]');if(!button)return;state.marketRange=button.dataset.marketRange;renderMarket();};}
         async function openMarket(card){state.marketCardID=card.id;state.marketData=null;state.marketVariant='';state.marketRange='30';document.querySelector('#market-title').textContent=card.name;document.querySelector('#market-subtitle').textContent=card.setName+' · #'+card.number+' · Cardmarket via TCGdex';document.querySelector('#market-content').innerHTML='<div class="loader"></div>';document.querySelector('#market-dialog').showModal();try{state.marketData=await api('/api/cards/'+encodeURIComponent(card.id)+'/market');if(state.marketCardID===card.id)renderMarket();}catch(err){document.querySelector('#market-content').innerHTML=`<div class="market-empty"><strong>Prices unavailable</strong><span>${esc(err.message)}</span></div>`;}}
         document.querySelector('#load').onclick=load;document.querySelector('#search').addEventListener('keydown',e=>{if(e.key==='Enter'){state.selectedSetID='';document.querySelector('#selected-set').textContent='Choose a set';load();}});
+        document.querySelector('#within-set-search').oninput=render;
+        document.querySelector('#show-details').onchange=e=>{state.showDetails=e.target.checked;render();saveLayout();};
+        document.querySelector('#show-market').onchange=e=>{state.showMarket=e.target.checked;render();saveLayout();};
+        document.querySelector('#open-transfer').onclick=()=>document.querySelector('#transfer-dialog').showModal();
+        document.querySelector('[data-close-transfer]').onclick=()=>document.querySelector('#transfer-dialog').close();
+        document.querySelector('#transfer-dialog').onclick=e=>{const button=e.target.closest('[data-export]');if(button)downloadExport(button.dataset.export);};
+        document.querySelector('#preview-import').onclick=previewImport;
         document.querySelector('#choose-set').onclick=()=>{document.querySelector('#set-dialog').showModal();requestAnimationFrame(()=>document.querySelector('#set-search').focus());};
         document.querySelector('#set-search').oninput=renderSetList;document.querySelector('.set-scopes').onclick=e=>{const button=e.target.closest('[data-set-scope]');if(!button)return;state.setScope=button.dataset.setScope;document.querySelectorAll('[data-set-scope]').forEach(b=>b.classList.toggle('active',b===button));renderSetList();};
         document.querySelector('#set-list').onclick=e=>{const option=e.target.closest('[data-set-id]');if(!option)return;const set=state.sets.find(item=>item.id===option.dataset.setId);state.selectedSetID=set.id;document.querySelector('#selected-set').textContent=set.seriesName+' · '+set.name;document.querySelector('#search').value='';document.querySelector('#set-dialog').close();load();};
@@ -788,6 +1021,24 @@ final class LocalCollectionSharingController {
     .variants{margin-top:.75rem}
     .variant{min-height:44px;gap:.45rem}
     .card-actions{gap:.45rem;margin-top:auto;padding-top:.75rem}
+    .card-actions:has(> :only-child){grid-template-columns:1fr}
+    .compact-toggle input{width:16px;height:16px;margin:0;accent-color:#087fe8}
+    .set-filter-row{display:flex;align-items:center;gap:.8rem;margin:0 0 1rem;padding:.75rem 1rem;background:white;border-radius:14px}
+    .set-filter-row[hidden]{display:none}
+    .set-filter-row label{font-size:.9rem;font-weight:700;white-space:nowrap}
+    .set-filter-row input{max-width:330px;padding:.55rem .7rem}
+    .header-actions{display:flex;align-items:center;gap:.7rem}
+    .header-actions button{padding:.55rem .8rem}
+    .transfer-sheet{width:min(92vw,800px)}
+    .transfer-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+    .transfer-grid section{min-width:0;padding:1rem;background:#f5f8fc;border-radius:16px}
+    .transfer-grid h3{margin:0 0 .8rem}
+    .transfer-grid button{display:block;width:100%;margin:.45rem 0;text-align:left}
+    .transfer-grid p{font-size:.85rem;line-height:1.4;color:#536277}
+    .transfer-grid input,.transfer-grid select{margin:.4rem 0}
+    #import-preview{margin-top:.8rem}
+    #import-warning{color:#725200}
+    @media(max-width:700px){.transfer-grid{grid-template-columns:1fr}.header-actions .secure{display:none}}
     .metadata-button,.market-button{min-height:54px;display:grid;grid-template-columns:1.65rem minmax(0,1fr);align-items:center;justify-content:initial;gap:.45rem;padding:.55rem .6rem;border:1px solid #d8e9fb;border-radius:12px}
     .market-button{border-color:#f2df9e}
     .action-icon{width:1.65rem;height:1.65rem;border-radius:8px;display:grid;place-items:center;background:#dceeff;font-size:1rem}
@@ -800,6 +1051,8 @@ final class LocalCollectionSharingController {
     """
 
     private static let browserGridColumnsKey = "browserEditorGridColumns"
+    private static let browserShowDetailsKey = "collectionManagerShowDetails"
+    private static let browserShowMarketKey = "collectionManagerShowMarket"
     private static let browserGridSpacingKey = "browserEditorGridSpacing"
 
     private static func browserCategory(for set: CatalogSet, seriesName: String) -> String {

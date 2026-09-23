@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.38",
+          "buildVersion": "74",
+          "date": "2026-09-23",
+          "localizedDescription": "Adds a collection dashboard and Collection Manager with in-set search, compact controls, and safe browser import/export. Local lifetime test price is €9.99.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.38/TallyDex-v0.9.38.ipa",
+          "size": 29776657,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.37",
           "buildVersion": "73",
           "date": "2026-09-23",

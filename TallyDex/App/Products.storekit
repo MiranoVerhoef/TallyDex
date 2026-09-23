@@ -7,12 +7,12 @@
   "nonRenewingSubscriptions" : [],
   "products" : [
     {
-      "displayPrice" : "4.99",
+      "displayPrice" : "9.99",
       "familyShareable" : false,
       "internalID" : "TALLYDEX_LIFETIME_TEST",
       "localizations" : [
         {
-          "description" : "Launch price for permanent TallyDex access. Local test price only.",
+          "description" : "Permanent TallyDex access. Local test price only.",
           "displayName" : "TallyDex Lifetime Access",
           "locale" : "en_US"
         }

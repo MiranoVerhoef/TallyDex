@@ -404,6 +404,23 @@ Completed in v0.9.10:
    product metadata, and complete a TestFlight release pass. App Store Connect
    product setup and real sandbox purchases require Apple Developer enrollment.
 
+### Requested next features — 2026-09-23
+
+- Added a compact dashboard above Sets with collection-wide distinct-card and
+  physical-copy counts, My Sets goal completion, collection value, and an
+  expandable top-10 priced-card ranking.
+- Add TallyDex-exclusive collector badges earned from verifiable collection
+  milestones; define the badge catalogue and thresholds before implementation.
+- Collection Manager now has search within the loaded set, independent controls
+  to hide/show Details and Market actions, and paired-browser import/export
+  with preview and rollback protection.
+- Let users choose a binder background color when creating or editing a binder;
+  preserve that choice in backups and imports.
+- Make the camera guide a loose scan focus area so a card need not line up exactly
+  with its border; verify how candidate selection works before changing capture.
+- Set the intended one-time lifetime unlock price to €9.99. The local StoreKit
+  configuration can test this now; the real price still needs App Store Connect.
+
 Optional later enhancements, not current blockers:
 
 - Expand PriceCharting matching to additional product-name conventions as real
@@ -448,7 +465,7 @@ limit. Variant searches matching more than 500 cards ask for a more precise
 Pokémon, set, or collector number before downloading details.
 
 v0.7.0 adds a local browser editor for faster collection entry on a computer.
-Open **Settings → Browser Editor**, start sharing, then enter the displayed local
+Open **Settings → Collection Manager**, start sharing, then enter the displayed local
 address and six-digit pairing code on a computer connected to the same network.
 The responsive editor can load a complete set or search the catalog, filter All,
 Owned, or Missing cards, change exact printing ownership and quantities, and
@@ -521,7 +538,7 @@ alongside the existing stamped-printing choices; saved ownership is preserved.
 
 **Settings → Catalogue Speed → Pre-index Complete Catalogue** refreshes the full
 lightweight search index. Detailed card records and images continue to load as
-needed. **Browser Editor → Allow access while app is minimized** is off by default.
+needed. **Collection Manager → Allow access while app is minimized** is off by default.
 When enabled, the server remains available while iOS permits background execution;
 return to TallyDex if iOS suspends it.
 
@@ -617,7 +634,7 @@ Completed in v0.9.23:
   contains theme, set scope/layout, and the card-details default. Collection
   Preferences contains goal/copy tracking and Custom defaults. Prices & Currency
   contains the marketplace choice and collapsed future listing preferences.
-- Storage, backups, export/import, and local Browser Editor remain directly
+- Storage, backups, export/import, and local Collection Manager remain directly
   accessible. Catalogue Index is under Advanced; privacy/sync status and a
   confirmed Replay Introduction action are under About. Existing storage keys
   and saved choices are unchanged. What's New explains the reorganization.
@@ -764,6 +781,13 @@ Completed in v0.9.37:
 
 - Adds an optional coffee tip page with four consumable choices (€1.99, €2.99, €4.99, €9.99).
 - Prepares a €4.99 lifetime launch price for local StoreKit testing; beta access remains unlocked.
+
+Completed in v0.9.38:
+
+- Adds a collection-wide dashboard above Sets with distinct cards, copies, My Sets goal progress, estimated value, and the top 10 priced cards.
+- Renames Browser Editor to Collection Manager, adds in-set card search and independent Details/Market visibility controls.
+- Supports paired-browser full backup and PriceCharting CSV import/export, with import preview and rollback backup.
+- Changes the local StoreKit lifetime access test price to €9.99; beta access remains unlocked.
 
 Supplemental cover sources:
 

@@ -1731,6 +1731,32 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertTrue(encoded.hasSuffix("\r\n\r\n<h1>TallyDex</h1>"))
     }
 
+    func testCollectionManagerDownloadHasSafeAttachmentHeaders() throws {
+        let response = LocalHTTPResponse.download(
+            Data("backup".utf8),
+            filename: "TallyDex-Collection-2026-09-23.pokecollection",
+            contentType: "application/octet-stream"
+        )
+        let encoded = try XCTUnwrap(String(data: response.encoded, encoding: .utf8))
+        XCTAssertTrue(encoded.contains("Content-Disposition: attachment; filename=\"TallyDex-Collection-2026-09-23.pokecollection\"\r\n"))
+        XCTAssertTrue(encoded.contains("Cache-Control: no-store\r\n"))
+        XCTAssertTrue(encoded.contains("Content-Length: 6\r\n"))
+        XCTAssertTrue(encoded.hasSuffix("\r\n\r\nbackup"))
+    }
+
+    func testCollectionManagerBootstrapIncludesSavedVisibilityChoices() throws {
+        let bootstrap = LocalSharingBootstrapDTO(
+            sets: [], allowsMultipleCopies: false,
+            browserGridColumns: "4", browserGridSpacing: "compact",
+            showDetails: false, showMarket: true
+        )
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(bootstrap)) as? [String: Any]
+        )
+        XCTAssertEqual(object["showDetails"] as? Bool, false)
+        XCTAssertEqual(object["showMarket"] as? Bool, true)
+    }
+
     private func card(id: String, number: String) -> CatalogCard {
         CatalogCard(
             id: id,

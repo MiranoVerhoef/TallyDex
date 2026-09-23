@@ -17,6 +17,13 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(summary.amount, 6)
         XCTAssertEqual(summary.pricedVariants, 1)
         XCTAssertEqual(summary.missingVariants, 1)
+        XCTAssertEqual(
+            CatalogValueCalculator.cardTotals(
+                entries: [normal, stamp, normal, stamp],
+                prices: [normal.cardID: [quote]], source: .cardmarket
+            ),
+            [normal.cardID: 6]
+        )
         let removed = CollectionVariantEntry(cardID: normal.cardID, variant: .normal, quantity: 0,
             updatedAt: Date(timeIntervalSince1970: 200))
         for entries in [[normal, removed], [removed, normal]] {
@@ -2725,6 +2732,9 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(summary.amount, 2.50)
         XCTAssertEqual(summary.pricedVariants, 1)
         XCTAssertEqual(summary.missingVariants, 1)
+        XCTAssertEqual(CatalogValueCalculator.cardTotals(
+            entries: entries, prices: prices, source: .cardmarket
+        ), ["one": 2.50])
     }
 
     func testCustomFolderNameSearchReturnsEveryNameMatchOnly() async throws {
