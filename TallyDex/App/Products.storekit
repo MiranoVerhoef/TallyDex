@@ -7,12 +7,12 @@
   "nonRenewingSubscriptions" : [],
   "products" : [
     {
-      "displayPrice" : "9.99",
+      "displayPrice" : "4.99",
       "familyShareable" : false,
       "internalID" : "TALLYDEX_LIFETIME_TEST",
       "localizations" : [
         {
-          "description" : "One purchase for permanent TallyDex access. Local test price only.",
+          "description" : "Launch price for permanent TallyDex access. Local test price only.",
           "displayName" : "TallyDex Lifetime Access",
           "locale" : "en_US"
         }
@@ -20,6 +20,66 @@
       "productID" : "com.miranoverhoef.TallyDex.lifetime",
       "referenceName" : "TallyDex Lifetime Access",
       "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "1.99",
+      "familyShareable" : false,
+      "internalID" : "TALLYDEX_COFFEE_ESPRESSO",
+      "localizations" : [
+        {
+          "description" : "An optional coffee tip. Does not unlock app features.",
+          "displayName" : "Espresso",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.miranoverhoef.TallyDex.coffee.espresso",
+      "referenceName" : "Coffee Tip - Espresso",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "TALLYDEX_COFFEE_REGULAR",
+      "localizations" : [
+        {
+          "description" : "An optional coffee tip. Does not unlock app features.",
+          "displayName" : "Coffee",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.miranoverhoef.TallyDex.coffee.regular",
+      "referenceName" : "Coffee Tip - Regular",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "TALLYDEX_COFFEE_LARGE",
+      "localizations" : [
+        {
+          "description" : "An optional coffee tip. Does not unlock app features.",
+          "displayName" : "Large Coffee",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.miranoverhoef.TallyDex.coffee.large",
+      "referenceName" : "Coffee Tip - Large",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "TALLYDEX_COFFEE_ROUND",
+      "localizations" : [
+        {
+          "description" : "An optional coffee tip. Does not unlock app features.",
+          "displayName" : "Coffee Round",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.miranoverhoef.TallyDex.coffee.round",
+      "referenceName" : "Coffee Tip - Round",
+      "type" : "Consumable"
     }
   ],
   "settings" : {
@@ -30,7 +90,7 @@
     "_failTransactionsEnabled" : false,
     "_locale" : "en_US",
     "_renewalBillingIssuesEnabled" : false,
-    "_storefront" : "USA",
+    "_storefront" : "NLD",
     "_storeKitErrors" : [],
     "_timeRate" : 0
   },

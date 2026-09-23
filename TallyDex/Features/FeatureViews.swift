@@ -5937,6 +5937,9 @@ struct SettingsView: View {
                             Label("Access & Purchase", systemImage: "checkmark.seal")
                         }
                     }
+                    NavigationLink { TipJarView() } label: {
+                        Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill")
+                    }
                     NavigationLink { WhatsNewView(release: AppReleaseNotes.current) } label: {
                         Label("What’s New", systemImage: "sparkles")
                     }

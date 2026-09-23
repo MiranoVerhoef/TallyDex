@@ -760,6 +760,11 @@ Completed in v0.9.36:
 - Prepares a 14-day trial and one-time lifetime unlock with local StoreKit testing; beta access remains unlocked.
 - Keeps collection viewing and backup export available after trial expiry, while editing waits for a verified purchase.
 
+Completed in v0.9.37:
+
+- Adds an optional coffee tip page with four consumable choices (€1.99, €2.99, €4.99, €9.99).
+- Prepares a €4.99 lifetime launch price for local StoreKit testing; beta access remains unlocked.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

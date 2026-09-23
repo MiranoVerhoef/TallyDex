@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.37",
+          "buildVersion": "73",
+          "date": "2026-09-23",
+          "localizedDescription": "Adds optional coffee tips and prepares a €4.99 lifetime launch price. Beta access remains unlocked.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.37/TallyDex-v0.9.37.ipa",
+          "size": 29680494,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.36",
           "buildVersion": "72",
           "date": "2026-09-23",

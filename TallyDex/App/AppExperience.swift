@@ -52,13 +52,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.36",
-        headline: "Purchase system groundwork",
+        version: "0.9.37",
+        headline: "Coffee tips and launch pricing",
         notes: [
             AppReleaseNote(
-                systemImage: "checkmark.seal",
-                title: "Early access",
-                detail: "Prepared a 14-day trial and lifetime unlock for testing. The current beta remains fully unlocked."
+                systemImage: "cup.and.saucer.fill",
+                title: "Optional coffee tips",
+                detail: "Added four coffee tip options and prepared a €4.99 launch price for lifetime access. Beta access remains unlocked."
             ),
         ]
     )

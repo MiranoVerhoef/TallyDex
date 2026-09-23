@@ -202,7 +202,7 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.36")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.37")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
@@ -271,9 +271,26 @@ final class TallyDexSmokeTests: XCTestCase {
         let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit"))
         let session = try SKTestSession(contentsOf: url)
         session.disableDialogs = true
-        let products = try await Product.products(for: [AccessConfiguration.lifetimeProductID])
-        XCTAssertEqual(products.first?.id, AccessConfiguration.lifetimeProductID)
-        XCTAssertEqual(products.first?.type, .nonConsumable)
+        session.locale = Locale(identifier: "en_US")
+        session.storefront = "NLD"
+        let products = try await Product.products(for: AccessConfiguration.productIDs)
+        XCTAssertEqual(products.count, 5)
+        let lifetime = try XCTUnwrap(products.first { $0.id == AccessConfiguration.lifetimeProductID })
+        XCTAssertEqual(lifetime.type, .nonConsumable)
+        XCTAssertTrue(lifetime.displayPrice.contains("€"))
+        XCTAssertTrue(lifetime.displayPrice.contains("4.99"))
+        for (tier, expectedPrice) in [
+            (CoffeeTipTier.espresso, "1.99"),
+            (.coffee, "2.99"),
+            (.largeCoffee, "4.99"),
+            (.coffeeRound, "9.99")
+        ] {
+            let product = try XCTUnwrap(products.first { $0.id == tier.productID })
+            XCTAssertEqual(product.type, .consumable)
+            XCTAssertTrue(product.displayPrice.contains("€"), "Displayed: \(product.displayPrice)")
+            XCTAssertTrue(product.displayPrice.contains(expectedPrice), "Displayed: \(product.displayPrice)")
+        }
+        XCTAssertEqual(Set(AccessConfiguration.productIDs).count, 5)
     }
 
     @MainActor
@@ -312,6 +329,26 @@ final class TallyDexSmokeTests: XCTestCase {
         await access.purchaseLifetime()
         XCTAssertEqual(access.status, .lifetime, access.message ?? "No purchase error")
         XCTAssertTrue(access.canEdit)
+    }
+
+    @MainActor
+    func testCoffeeTipCanBePurchasedWithoutUnlockingApp() async throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: url)
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions() }
+
+        let access = AccessStore(enforced: true, anchorStore: MemoryTrialAnchorStore(anchor: nil))
+        await access.start()
+        XCTAssertEqual(access.tipProducts.count, 4)
+        XCTAssertEqual(access.status, .notStarted)
+        await access.purchaseTip(.espresso)
+        XCTAssertEqual(access.tipMessage, "Thank you for supporting TallyDex!")
+        XCTAssertEqual(access.status, .notStarted)
+        XCTAssertFalse(access.canEdit)
+        await access.purchaseTip(.espresso)
+        XCTAssertEqual(access.tipMessage, "Thank you for supporting TallyDex!")
     }
 
     @MainActor

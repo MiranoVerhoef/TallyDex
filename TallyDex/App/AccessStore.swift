@@ -9,6 +9,7 @@ enum AccessConfiguration {
     // grandfathering policy, and sandbox purchase flow have been approved.
     static let lifetimeProductID = "com.miranoverhoef.TallyDex.lifetime"
     static let trialDuration: TimeInterval = 14 * 24 * 60 * 60
+    static let productIDs = [lifetimeProductID] + CoffeeTipTier.allCases.map(\.productID)
 
     static var isEnforced: Bool {
 #if DEBUG
@@ -16,6 +17,29 @@ enum AccessConfiguration {
 #else
         false
 #endif
+    }
+}
+
+enum CoffeeTipTier: String, CaseIterable, Identifiable {
+    case espresso
+    case coffee = "regular"
+    case largeCoffee = "large"
+    case coffeeRound = "round"
+
+    var id: String { rawValue }
+    var productID: String { "com.miranoverhoef.TallyDex.coffee.\(rawValue)" }
+
+    var title: String {
+        switch self {
+        case .espresso: "Espresso"
+        case .coffee: "Coffee"
+        case .largeCoffee: "Large coffee"
+        case .coffeeRound: "Coffee round"
+        }
+    }
+
+    static func matching(productID: String) -> Self? {
+        allCases.first { $0.productID == productID }
     }
 }
 
@@ -145,8 +169,10 @@ final class AccessStore {
 
     private(set) var status: AccessStatus
     private(set) var lifetimeProduct: Product?
+    private(set) var tipProducts: [CoffeeTipTier: Product] = [:]
     private(set) var isWorking = false
     var message: String?
+    var tipMessage: String?
     var isMembershipPresented = false
 
     var isEnforced: Bool { enforced }
@@ -190,27 +216,34 @@ final class AccessStore {
     }
 
     func start() async {
-        guard enforced, !hasStarted else { return }
+        guard !hasStarted else { return }
         hasStarted = true
         transactionTask = Task { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
-                if case .verified(let transaction) = result,
-                   transaction.productID == AccessConfiguration.lifetimeProductID {
-                    await transaction.finish()
+                if case .verified(let transaction) = result {
+                    if CoffeeTipTier.matching(productID: transaction.productID) != nil {
+                        self.tipMessage = "Thank you for supporting TallyDex!"
+                        await transaction.finish()
+                    } else if transaction.productID == AccessConfiguration.lifetimeProductID {
+                        await transaction.finish()
+                    }
                 }
-                await self.refreshEntitlement()
+                if self.enforced { await self.refreshEntitlement() }
             }
         }
-        clockTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
-                if Task.isCancelled { return }
-                self?.tick()
+        if enforced {
+            clockTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(60))
+                    if Task.isCancelled { return }
+                    self?.tick()
+                }
             }
+            await refreshEntitlement()
         }
-        await refreshEntitlement()
-        await loadProduct()
+        await finishUnfinishedTransactions()
+        await loadProducts()
         tick()
     }
 
@@ -295,6 +328,37 @@ final class AccessStore {
         }
     }
 
+    func purchaseTip(_ tier: CoffeeTipTier) async {
+        guard !isWorking else { return }
+        guard let product = tipProducts[tier] else {
+            tipMessage = "This coffee tip is not available right now."
+            return
+        }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            switch try await product.purchase() {
+            case .success(.verified(let transaction)):
+                guard transaction.productID == tier.productID else {
+                    tipMessage = "This purchase could not be matched to a coffee tip."
+                    return
+                }
+                tipMessage = "Thank you for supporting TallyDex!"
+                await transaction.finish()
+            case .success(.unverified):
+                tipMessage = "This tip could not be verified. Please check your purchase history."
+            case .pending:
+                tipMessage = "Your tip is pending approval. No further action is needed."
+            case .userCancelled:
+                tipMessage = nil
+            @unknown default:
+                tipMessage = "The tip could not be completed."
+            }
+        } catch {
+            tipMessage = "The tip could not be completed. Please try again later."
+        }
+    }
+
     private func refreshEntitlement() async {
         var foundVerifiedPurchase = false
         for await result in Transaction.currentEntitlements {
@@ -307,15 +371,37 @@ final class AccessStore {
         tick()
     }
 
-    private func loadProduct() async {
+    private func finishUnfinishedTransactions() async {
+        for await result in Transaction.unfinished {
+            guard case .verified(let transaction) = result else { continue }
+            if CoffeeTipTier.matching(productID: transaction.productID) != nil {
+                tipMessage = "Thank you for supporting TallyDex!"
+                await transaction.finish()
+            } else if transaction.productID == AccessConfiguration.lifetimeProductID {
+                if enforced { await refreshEntitlement() }
+                await transaction.finish()
+            }
+        }
+    }
+
+    private func loadProducts() async {
         do {
-            lifetimeProduct = try await Product.products(for: [AccessConfiguration.lifetimeProductID])
-                .first { $0.id == AccessConfiguration.lifetimeProductID && $0.type == .nonConsumable }
-            if lifetimeProduct == nil {
+            let products = try await Product.products(for: AccessConfiguration.productIDs)
+            lifetimeProduct = products.first {
+                $0.id == AccessConfiguration.lifetimeProductID && $0.type == .nonConsumable
+            }
+            tipProducts = Dictionary(uniqueKeysWithValues: products.compactMap { product in
+                guard product.type == .consumable,
+                      let tier = CoffeeTipTier.matching(productID: product.id) else { return nil }
+                return (tier, product)
+            })
+            if enforced && lifetimeProduct == nil {
                 message = "Lifetime purchase is not available yet. Your collection remains readable and exportable."
             }
         } catch {
-            message = "The store is unavailable. Your collection remains readable and exportable."
+            if enforced {
+                message = "The store is unavailable. Your collection remains readable and exportable."
+            }
         }
     }
 }
@@ -332,6 +418,9 @@ struct MembershipView: View {
                     if access.isEnforced {
                         Text("Try every feature for 14 days. There is no subscription and no automatic charge.")
                         Text("After the trial, your collection stays readable and exportable. Editing requires one lifetime purchase.")
+                        if let product = access.lifetimeProduct {
+                            Text("Launch price for lifetime access: \(product.displayPrice).")
+                        }
                     } else {
                         Text("Early access is unlocked. Purchases are not active in this build.")
                     }
@@ -397,5 +486,46 @@ struct MembershipView: View {
         case .expired: "Trial ended"
         case .lifetime: "Lifetime access"
         }
+    }
+}
+
+struct TipJarView: View {
+    @Environment(AccessStore.self) private var access
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Enjoying TallyDex? You can buy me a coffee. Tips are optional, can be repeated, and do not unlock app features.")
+            }
+
+            Section("Choose a coffee") {
+                ForEach(CoffeeTipTier.allCases) { tier in
+                    if let product = access.tipProducts[tier] {
+                        Button {
+                            Task { await access.purchaseTip(tier) }
+                        } label: {
+                            HStack {
+                                Label(tier.title, systemImage: "cup.and.saucer.fill")
+                                Spacer()
+                                Text(product.displayPrice)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .disabled(access.isWorking)
+                        .accessibilityIdentifier("tip.\(tier.rawValue)")
+                    }
+                }
+                if access.tipProducts.isEmpty {
+                    Text("Coffee tips are unavailable right now.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let tipMessage = access.tipMessage {
+                Section { Text(tipMessage).foregroundStyle(.secondary) }
+            }
+        }
+        .navigationTitle("Buy Me a Coffee")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

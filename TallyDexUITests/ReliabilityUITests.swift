@@ -175,12 +175,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.36"])
+        expectState(["intro=true", "seen=0.9.37"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.36"])
+        expectState(["intro=true", "seen=0.9.37"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -188,10 +188,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.36"])
+        expectState(["intro=true", "seen=0.9.37"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.36"])
+        expectState(["intro=true", "seen=0.9.37"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -201,10 +201,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.36"])
+        expectState(["intro=true", "seen=0.9.37"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.36"])
+        expectState(["intro=true", "seen=0.9.37"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -235,6 +235,23 @@ final class ReliabilityUITests: XCTestCase {
             .matching(NSPredicate(format: "label CONTAINS[c] %@", "14 days left"))
             .firstMatch
         XCTAssertTrue(trialStatus.waitForExistence(timeout: 10))
+    }
+
+    func testOptionalCoffeeTipsAppearWithoutAccessGate() {
+        launch("filters")
+        settings()
+        let tipJar = button("Buy Me a Coffee")
+        for _ in 0..<6 {
+            if tipJar.exists { break }
+            app.swipeUp()
+        }
+        tap(tipJar)
+        for tier in ["espresso", "regular", "large", "round"] {
+            XCTAssertTrue(app.buttons["tip.\(tier)"].waitForExistence(timeout: 10))
+        }
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Tips are optional")
+        ).firstMatch.exists)
     }
 
     func testRestoreCancelConfirmRollbackAndPreferencePersistence() {
