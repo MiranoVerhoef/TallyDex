@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.36",
+          "buildVersion": "72",
+          "date": "2026-09-23",
+          "localizedDescription": "Prepares a 14-day trial and one-time lifetime unlock for local testing. Beta access remains fully unlocked.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.36/TallyDex-v0.9.36.ipa",
+          "size": 30121223,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.35",
           "buildVersion": "71",
           "date": "2026-09-22",

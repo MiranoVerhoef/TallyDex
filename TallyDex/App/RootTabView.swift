@@ -97,6 +97,7 @@ struct SharedCardDocument: Codable, Equatable, Sendable {
 struct RootTabView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(AccessStore.self) private var accessStore
     @Environment(AppNavigationStore.self) private var appNavigation
     @State private var selection: AppTab = .sets
     @State private var deepLinkedCard: CatalogCard?
@@ -162,7 +163,12 @@ struct RootTabView: View {
             if id != nil { selection = .settings }
         }
         .task {
+            await accessStore.start()
             presentNextAppExperience()
+            presentMembershipIfNeeded()
+        }
+        .onChange(of: accessStore.status) { _, _ in
+            presentMembershipIfNeeded()
         }
         .onChange(of: introductionCompleted) { _, isCompleted in
             if !isCompleted, appExperience == nil {
@@ -246,15 +252,23 @@ struct RootTabView: View {
                     lastSeenReleaseVersion = completedState.lastSeenReleaseVersion
                     introductionCompleted = completedState.introductionCompleted
                     appExperience = nil
+                    presentMembershipIfNeeded()
                 }
                 .interactiveDismissDisabled()
             case .whatsNew:
                 WhatsNewView(release: AppReleaseNotes.current) {
                     lastSeenReleaseVersion = AppReleaseNotes.current.version
                     appExperience = nil
+                    presentMembershipIfNeeded()
                 }
                 .interactiveDismissDisabled()
             }
+        }
+        .sheet(isPresented: Binding(
+            get: { accessStore.isMembershipPresented },
+            set: { accessStore.isMembershipPresented = $0 }
+        )) {
+            MembershipView()
         }
     }
 
@@ -266,12 +280,19 @@ struct RootTabView: View {
             currentVersion: AppReleaseNotes.current.version
         )
     }
+
+    private func presentMembershipIfNeeded() {
+        guard accessStore.isEnforced, appExperience == nil,
+              accessStore.status == .notStarted else { return }
+        accessStore.isMembershipPresented = true
+    }
 }
 
 #Preview {
     RootTabView()
         .environment(CatalogStore())
         .environment(CollectionStore())
+        .environment(AccessStore())
         .environment(ArtworkCacheStore())
         .environment(LocalCollectionSharingController())
         .environment(AppNavigationStore())

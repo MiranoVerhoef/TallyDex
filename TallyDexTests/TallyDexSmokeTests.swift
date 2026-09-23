@@ -1,6 +1,8 @@
 import XCTest
 import UniformTypeIdentifiers
 import UIKit
+import StoreKit
+import StoreKitTest
 @testable import TallyDex
 
 final class TallyDexSmokeTests: XCTestCase {
@@ -200,13 +202,149 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.35")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.36")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
             AppReleaseNotes.current.notes.count
         )
         XCTAssertTrue(AppReleaseNotes.current.notes.allSatisfy { !$0.detail.isEmpty })
+    }
+
+    func testTrialPolicyUsesFourteenDaysAndRejectsClockRollback() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let trial = TrialAnchor(startedAt: start, lastSeenAt: start)
+        XCTAssertEqual(
+            AccessPolicy.status(enforced: false, hasVerifiedLifetime: false, anchor: nil, now: start),
+            .earlyAccess
+        )
+        XCTAssertEqual(
+            AccessPolicy.status(enforced: true, hasVerifiedLifetime: false, anchor: nil, now: start),
+            .notStarted
+        )
+        XCTAssertEqual(
+            AccessPolicy.status(enforced: true, hasVerifiedLifetime: false, anchor: trial, now: start),
+            .trial(daysRemaining: 14)
+        )
+        let end = start.addingTimeInterval(AccessConfiguration.trialDuration)
+        XCTAssertEqual(
+            AccessPolicy.status(enforced: true, hasVerifiedLifetime: false, anchor: trial, now: end),
+            .expired
+        )
+        let advanced = AccessPolicy.advancing(trial, to: end)
+        XCTAssertEqual(
+            AccessPolicy.status(enforced: true, hasVerifiedLifetime: false, anchor: advanced, now: start),
+            .expired
+        )
+        XCTAssertEqual(
+            AccessPolicy.status(enforced: true, hasVerifiedLifetime: true, anchor: advanced, now: end),
+            .lifetime
+        )
+    }
+
+    @MainActor
+    func testTrialCanStartWithoutStoreConnection() throws {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let storage = MemoryTrialAnchorStore(anchor: nil)
+        let access = AccessStore(enforced: true, anchorStore: storage, now: { now })
+        try access.startTrial()
+        XCTAssertEqual(access.status, .trial(daysRemaining: 14))
+        XCTAssertTrue(access.canEdit)
+        XCTAssertEqual(storage.anchor?.startedAt, now)
+    }
+
+    @MainActor
+    func testKeychainTrialAnchorRoundTrips() throws {
+        let storage = KeychainTrialAnchorStore(namespace: "unit-test")
+        let anchor = TrialAnchor(startedAt: Date(timeIntervalSince1970: 1_000_000),
+                                 lastSeenAt: Date(timeIntervalSince1970: 1_000_000))
+        try storage.save(anchor)
+        XCTAssertEqual(try storage.load(), anchor)
+        let advanced = TrialAnchor(startedAt: anchor.startedAt,
+                                   lastSeenAt: anchor.lastSeenAt.addingTimeInterval(86_400))
+        try storage.save(advanced)
+        XCTAssertEqual(try storage.load(), advanced)
+    }
+
+    @MainActor
+    func testLocalStoreKitConfigurationProvidesLifetimeProduct() async throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: url)
+        session.disableDialogs = true
+        let products = try await Product.products(for: [AccessConfiguration.lifetimeProductID])
+        XCTAssertEqual(products.first?.id, AccessConfiguration.lifetimeProductID)
+        XCTAssertEqual(products.first?.type, .nonConsumable)
+    }
+
+    @MainActor
+    func testVerifiedLifetimePurchaseUnlocksExpiredTrial() async throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: url)
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions() }
+        let transaction = try await session.buyProduct(identifier: AccessConfiguration.lifetimeProductID)
+        XCTAssertEqual(transaction.productID, AccessConfiguration.lifetimeProductID)
+
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let expired = TrialAnchor(startedAt: start, lastSeenAt: start.addingTimeInterval(AccessConfiguration.trialDuration))
+        let access = AccessStore(
+            enforced: true,
+            anchorStore: MemoryTrialAnchorStore(anchor: expired),
+            now: { start }
+        )
+        await access.start()
+        XCTAssertEqual(access.status, .lifetime)
+        XCTAssertTrue(access.canEdit)
+    }
+
+    @MainActor
+    func testLifetimeCheckoutCompletesInLocalStoreKit() async throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit"))
+        let session = try SKTestSession(contentsOf: url)
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions() }
+
+        let access = AccessStore(enforced: true, anchorStore: MemoryTrialAnchorStore(anchor: nil))
+        await access.start()
+        XCTAssertNotNil(access.lifetimeProduct)
+        await access.purchaseLifetime()
+        XCTAssertEqual(access.status, .lifetime, access.message ?? "No purchase error")
+        XCTAssertTrue(access.canEdit)
+    }
+
+    @MainActor
+    func testExpiredTrialBlocksCollectionChangesButKeepsExportAvailable() async throws {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let expired = TrialAnchor(
+            startedAt: start,
+            lastSeenAt: start.addingTimeInterval(AccessConfiguration.trialDuration)
+        )
+        let access = AccessStore(enforced: true, anchorStore: MemoryTrialAnchorStore(anchor: expired), now: { start })
+        access.tick()
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let collection = CollectionStore(repository: repository, accessStore: access, now: { start })
+
+        do {
+            try await collection.setQuantity(1, cardID: "test-001", variant: .normal)
+            XCTFail("An expired trial must not edit ownership")
+        } catch AccessError.editingRequiresAccess {
+            XCTAssertTrue(access.isMembershipPresented)
+        }
+        let readOnlyExport = try await collection.exportDocument()
+        XCTAssertTrue(readOnlyExport.ownership.isEmpty)
+
+        let active = AccessStore(
+            enforced: true,
+            anchorStore: MemoryTrialAnchorStore(anchor: .init(startedAt: start, lastSeenAt: start)),
+            now: { start }
+        )
+        active.tick()
+        let editable = CollectionStore(repository: repository, accessStore: active, now: { start })
+        try await editable.setQuantity(1, cardID: "test-001", variant: .normal)
+        let editableExport = try await editable.exportDocument()
+        XCTAssertEqual(editableExport.ownership.first?.quantity, 1)
     }
 
     func testPricePreferenceOffersNativeEURAndUSDMarkets() {
@@ -264,4 +402,13 @@ final class TallyDexSmokeTests: XCTestCase {
             CardmarketCountryPreference.allCases.count - 1
         )
     }
+}
+
+@MainActor
+private final class MemoryTrialAnchorStore: TrialAnchorStoring {
+    var anchor: TrialAnchor?
+
+    init(anchor: TrialAnchor?) { self.anchor = anchor }
+    func load() throws -> TrialAnchor? { anchor }
+    func save(_ anchor: TrialAnchor) throws { self.anchor = anchor }
 }

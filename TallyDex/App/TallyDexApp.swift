@@ -13,6 +13,7 @@ struct TallyDexApp: App {
     private var allowBrowserSharingWhileBackgrounded = BrowserSharingSettings.allowWhileBackgroundedDefault
     @State private var catalogStore: CatalogStore
     @State private var collectionStore: CollectionStore
+    @State private var accessStore: AccessStore
     @State private var artworkCacheStore = ArtworkCacheStore()
     @State private var localCollectionSharing = LocalCollectionSharingController()
     @State private var appNavigation = AppNavigationStore()
@@ -20,13 +21,17 @@ struct TallyDexApp: App {
     init() {
 #if DEBUG
         if let fixture = ReliabilityUITestFixture.current {
+            let accessStore = AccessStore(anchorStore: KeychainTrialAnchorStore(namespace: fixture.id.uuidString))
+            _accessStore = State(initialValue: accessStore)
             _catalogStore = State(initialValue: fixture.makeCatalogStore())
             _collectionStore = State(initialValue: fixture.makeCollectionStore())
             return
         }
 #endif
+        let accessStore = AccessStore()
+        _accessStore = State(initialValue: accessStore)
         _catalogStore = State(initialValue: CatalogStore())
-        _collectionStore = State(initialValue: CollectionStore())
+        _collectionStore = State(initialValue: CollectionStore(accessStore: accessStore))
     }
 
     private var preferencesDefaults: UserDefaults {
@@ -43,6 +48,7 @@ struct TallyDexApp: App {
                 .defaultAppStorage(preferencesDefaults)
                 .environment(catalogStore)
                 .environment(collectionStore)
+                .environment(accessStore)
                 .environment(artworkCacheStore)
                 .environment(localCollectionSharing)
                 .environment(appNavigation)
@@ -52,6 +58,7 @@ struct TallyDexApp: App {
 #if DEBUG
                     if let fixture = ReliabilityUITestFixture.current {
                         await fixture.prepare(collectionStore)
+                        collectionStore.installAccessStoreAfterFixtureSetup(accessStore)
                         return
                     }
 #endif
@@ -79,6 +86,7 @@ struct TallyDexApp: App {
                         }
                         return
                     }
+                    accessStore.tick()
                     Task {
                         await catalogStore.refreshIfNeeded()
 #if DEBUG

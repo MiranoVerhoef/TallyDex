@@ -21,17 +21,26 @@ final class CollectionStore {
     private(set) var externalImportError: String?
 
     @ObservationIgnored private var repository: (any CollectionRepository)?
+    @ObservationIgnored private var accessStore: AccessStore?
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var ownedEntriesByCardID: [String: [CollectionVariantEntry]] = [:]
 
     init(
         repository: (any CollectionRepository)? = nil,
+        accessStore: AccessStore? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.repository = repository
+        self.accessStore = accessStore
         self.now = now
     }
+
+#if DEBUG
+    func installAccessStoreAfterFixtureSetup(_ accessStore: AccessStore) {
+        self.accessStore = accessStore
+    }
+#endif
 
     func start() async {
         guard !hasStarted else { return }
@@ -90,6 +99,7 @@ final class CollectionStore {
     }
 
     func saveSetPreference(_ preference: SetCollectionPreference) async throws {
+        try accessStore?.requireEditing()
         let preference = preference.applyingCanonicalGoalRules()
         if preference.status == .notCollecting {
             try await resolveRepository().deleteSetPreference(setID: preference.setID)
@@ -113,6 +123,7 @@ final class CollectionStore {
     }
 
     func restoreBackup(_ backup: CollectionBackup) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().restoreBackup(
             id: backup.id,
             safetyBackupReason: "Before restoring: \(backup.reason)",
@@ -220,11 +231,13 @@ final class CollectionStore {
     }
 
     func importCollection(_ prepared: PreparedCollectionImport, mode: CollectionImportMode) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().importCollection(prepared.document, mode: mode, importedAt: now())
         try await reloadCollectionState()
     }
 
     func importPriceCharting(_ prepared: PreparedPriceChartingImport) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().importCollection(
             prepared.document,
             mode: .merge,
@@ -270,6 +283,7 @@ final class CollectionStore {
     }
 
     func saveCardMetadata(cardID: String, isWishlisted: Bool, notes: String) async throws {
+        try accessStore?.requireEditing()
         let metadata = CardCollectionMetadata(
             cardID: cardID,
             isWishlisted: isWishlisted,
@@ -281,6 +295,7 @@ final class CollectionStore {
     }
 
     func saveCustomFolder(_ folder: CustomCollectionFolder) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().saveCustomFolder(folder)
         customFolders.removeAll { $0.id == folder.id }
         customFolders.append(folder)
@@ -288,11 +303,13 @@ final class CollectionStore {
     }
 
     func deleteCustomFolder(id: UUID) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().deleteCustomFolder(id: id)
         customFolders.removeAll { $0.id == id }
     }
 
     func saveBinderPlan(_ plan: BinderPlan) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().saveBinderPlan(plan)
         binderPlans.removeAll { $0.id == plan.id }
         binderPlans.append(plan)
@@ -300,6 +317,7 @@ final class CollectionStore {
     }
 
     func deleteBinderPlan(id: UUID) async throws {
+        try accessStore?.requireEditing()
         try await resolveRepository().deleteBinderPlan(id: id)
         binderPlans.removeAll { $0.id == id }
     }
@@ -349,6 +367,7 @@ final class CollectionStore {
         cardID: String,
         variant: CatalogVariantKind
     ) async throws {
+        try accessStore?.requireEditing()
         let updatedAt = now()
         try await resolveRepository().setQuantity(
             quantity,
@@ -386,6 +405,7 @@ final class CollectionStore {
         cardID: String,
         printing: CatalogPrinting
     ) async throws {
+        try accessStore?.requireEditing()
         guard let variant = printing.kind else { return }
         let updatedAt = now()
         let repository = try resolveRepository()
@@ -406,6 +426,7 @@ final class CollectionStore {
         variant: CatalogVariantKind,
         printings: [CatalogPrinting]
     ) async throws {
+        try accessStore?.requireEditing()
         let matching = printings.filter { $0.kind == variant }
         if matching.count == 1, let printing = matching.first {
             try await reconcileExactOwnership(cardID: cardID, printings: printings)
@@ -433,6 +454,7 @@ final class CollectionStore {
     }
 
     func removeAllOwnership(cardID: String) async throws {
+        try accessStore?.requireEditing()
         let repository = try resolveRepository()
         let broad = try await repository.fetchEntries(cardID: cardID)
         let exact = try await repository.fetchPrintingEntries(cardID: cardID)

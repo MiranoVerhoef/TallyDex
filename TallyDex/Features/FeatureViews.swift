@@ -5880,6 +5880,7 @@ private struct CustomCollectionFolderDetailView: View {
 
 struct SettingsView: View {
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(AccessStore.self) private var accessStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(LocalCollectionSharingController.self) private var localCollectionSharing
 
@@ -5931,6 +5932,11 @@ struct SettingsView: View {
                     }
                 }
                 Section("Help & App") {
+                    if accessStore.isEnforced {
+                        NavigationLink { MembershipView() } label: {
+                            Label("Access & Purchase", systemImage: "checkmark.seal")
+                        }
+                    }
                     NavigationLink { WhatsNewView(release: AppReleaseNotes.current) } label: {
                         Label("What’s New", systemImage: "sparkles")
                     }

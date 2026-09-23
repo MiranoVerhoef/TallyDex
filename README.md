@@ -32,6 +32,7 @@ xcodebuild \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0' \
   -derivedDataPath .build/DerivedData \
   -parallel-testing-enabled NO \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY=- \
   test
 ```
 
@@ -41,6 +42,10 @@ one suite, add `-only-testing:TallyDexTests` or
 arguments, use a separate UUID-scoped database and preference suite, and are
 excluded from Release builds. Use a separate release-only DerivedData directory
 when packaging an IPA; never package test-run products.
+Local StoreKit tests use `Products.storekit`; the simulator build must be
+ad-hoc signed so the trial anchor can be saved in Keychain. Purchase gating is
+opt-in for Debug with `-AccessGateTesting` and disabled in Release until the
+App Store product and launch policy are ready.
 
 ## Development releases
 
@@ -749,6 +754,11 @@ Completed in v0.9.35:
 - Imports PriceCharting collection CSV with exact set, card, and printing matching, a review preview, and rollback backup; unmatched or graded rows are skipped.
 - Exports saved PriceCharting product IDs back to CSV with current quantities, or a text list for cards without IDs. Product mappings are preserved in full backups.
 - Bundles compact B, G, and R Mew thumbnails for 30th Celebration.
+
+Completed in v0.9.36:
+
+- Prepares a 14-day trial and one-time lifetime unlock with local StoreKit testing; beta access remains unlocked.
+- Keeps collection viewing and backup export available after trial expiry, while editing waits for a verified purchase.
 
 Supplemental cover sources:
 

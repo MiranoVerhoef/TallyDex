@@ -52,23 +52,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.35",
-        headline: "Smoother card browsing and transfers",
+        version: "0.9.36",
+        headline: "Purchase system groundwork",
         notes: [
             AppReleaseNote(
-                systemImage: "hand.draw",
-                title: "Card details",
-                detail: "Card pages now scroll naturally without snapping."
-            ),
-            AppReleaseNote(
-                systemImage: "arrow.left.arrow.right",
-                title: "Collection transfer",
-                detail: "Import PriceCharting CSV and export matched cards or a text list."
-            ),
-            AppReleaseNote(
-                systemImage: "photo",
-                title: "30th artwork",
-                detail: "Adds the missing B, G, and R Mew thumbnails."
+                systemImage: "checkmark.seal",
+                title: "Early access",
+                detail: "Prepared a 14-day trial and lifetime unlock for testing. The current beta remains fully unlocked."
             ),
         ]
     )

@@ -1,0 +1,42 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : []
+  },
+  "identifier" : "TALLYDEX_LOCAL_TEST",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "TALLYDEX_LIFETIME_TEST",
+      "localizations" : [
+        {
+          "description" : "One purchase for permanent TallyDex access. Local test price only.",
+          "displayName" : "TallyDex Lifetime Access",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.miranoverhoef.TallyDex.lifetime",
+      "referenceName" : "TallyDex Lifetime Access",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 5,
+    "minor" : 0
+  }
+}
