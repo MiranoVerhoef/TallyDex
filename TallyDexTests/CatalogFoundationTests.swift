@@ -5,6 +5,25 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    func testPriceDisplayPreservesExistingPreferenceAndKeepsSourcesSeparate() {
+        XCTAssertEqual(PricingSettings.resolveDisplayMode(nil, preferredSource: .cardmarket), .cardmarket)
+        XCTAssertEqual(PricingSettings.resolveDisplayMode(nil, preferredSource: .tcgplayer), .tcgplayer)
+        XCTAssertEqual(PricingSettings.resolveDisplayMode("both", preferredSource: .cardmarket), .both)
+        XCTAssertEqual(CatalogPriceDisplayMode.both.sources, [.cardmarket, .tcgplayer])
+        XCTAssertEqual(CatalogPriceDisplayMode.cardmarket.sources, [.cardmarket])
+    }
+
+    func testMarketplaceLinksUseEachSourcesOwnProductID() {
+        let cardmarket = CatalogPriceQuote(cardID: "me-1", variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 1, updatedAt: Date(), productID: 123)
+        let tcgplayer = CatalogPriceQuote(cardID: "me-1", variant: .normal, source: .tcgplayer,
+            currencyCode: "USD", amount: 2, updatedAt: Date(), productID: 456)
+        XCTAssertEqual(cardmarket.marketplaceURL?.absoluteString,
+            "https://www.cardmarket.com/en/Pokemon/Products?idProduct=123")
+        XCTAssertEqual(tcgplayer.marketplaceURL?.absoluteString,
+            "https://www.tcgplayer.com/product/456")
+    }
+
     func testSharedOwnershipReferencesDoNotDoubleValueOrPriceUnquotedStamps() {
         let normal = CollectionVariantEntry(cardID: "swsh8-16", variant: .normal, quantity: 3,
             updatedAt: Date(timeIntervalSince1970: 100))
@@ -2735,6 +2754,30 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(CatalogValueCalculator.cardTotals(
             entries: entries, prices: prices, source: .cardmarket
         ), ["one": 2.50])
+    }
+
+    func testManualValuesFillMissingPricesWithoutReplacingMarketUnlessChosen() {
+        let date = Date(timeIntervalSince1970: 1)
+        let cardID = "sma-SV64"
+        let entry = CollectionVariantEntry(cardID: cardID, variant: .normal, quantity: 2, updatedAt: date)
+        let market = CatalogPriceQuote(cardID: cardID, variant: .normal, source: .cardmarket,
+                                       currencyCode: "EUR", amount: 50, updatedAt: date)
+        let estimate = ManualCardValue(cardID: cardID, variant: .normal, currencyCode: "EUR",
+                                       amount: 75, preferredOverMarket: false, updatedAt: date)
+        XCTAssertEqual(CatalogValueCalculator.summary(entries: [entry], prices: [:], source: .cardmarket,
+                        manualValues: [estimate.key: estimate]).amount, 150)
+        let withMarket = CatalogValueCalculator.summary(entries: [entry], prices: [cardID: [market]],
+                                                        source: .cardmarket, manualValues: [estimate.key: estimate])
+        XCTAssertEqual(withMarket.amount, 100)
+        XCTAssertEqual(withMarket.manualVariants, 0)
+        let preferred = ManualCardValue(cardID: cardID, variant: .normal, currencyCode: "EUR",
+                                        amount: 75, preferredOverMarket: true, updatedAt: date)
+        let withOverride = CatalogValueCalculator.summary(entries: [entry], prices: [cardID: [market]],
+                                                          source: .cardmarket, manualValues: [preferred.key: preferred])
+        XCTAssertEqual(withOverride.amount, 150)
+        XCTAssertEqual(withOverride.manualVariants, 1)
+        XCTAssertEqual(CatalogValueCalculator.summary(entries: [entry], prices: [:], source: .tcgplayer,
+                        manualValues: [estimate.key: estimate]).missingVariants, 1)
     }
 
     func testCustomFolderNameSearchReturnsEveryNameMatchOnly() async throws {

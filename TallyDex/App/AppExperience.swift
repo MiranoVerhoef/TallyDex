@@ -24,6 +24,31 @@ enum AppExperienceSettings {
     }
 }
 
+enum ScannerFeedbackPreference: String, CaseIterable, Identifiable {
+    case off
+    case askEachTime
+    case automatic
+
+    // A future preference, not upload consent. A later release must request
+    // explicit confirmation after the feedback service and policy are ready.
+    static let storageKey = "scanner.feedback.futurePreference"
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .off: "Off"
+        case .askEachTime: "Ask each time"
+        case .automatic: "Automatic"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .off: "Do not submit scanner corrections."
+        case .askEachTime: "Review and approve each correction before it is sent."
+        case .automatic: "Submit corrections after you confirm the feature is active."
+        }
+    }
+}
+
 struct AppExperienceState: Equatable {
     let introductionCompleted: Bool
     let lastSeenReleaseVersion: String
@@ -52,18 +77,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.41",
-        headline: "Collection Manager ownership fix",
+        version: "0.9.42",
+        headline: "Prices and personal estimates",
         notes: [
             AppReleaseNote(
-                systemImage: "chart.bar.fill",
-                title: "Rounded Sets header",
-                detail: "The compact dashboard now has rounded corners and keeps the original TallyDex logo."
+                systemImage: "eurosign.arrow.circlepath",
+                title: "Both marketplaces",
+                detail: "Show Cardmarket and TCGplayer prices together, with separate links and one source for collection totals."
             ),
             AppReleaseNote(
-                systemImage: "checkmark.circle.fill",
-                title: "Owned cards in Collection Manager",
-                detail: "Individually tracked printings now appear as owned, with safer browser quantity controls."
+                systemImage: "pencil.line",
+                title: "Your estimates",
+                detail: "Save a private value for an unpriced printing and include it in collection backups."
             ),
         ]
     )
@@ -81,9 +106,13 @@ struct IntroductionView: View {
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayMode = ""
+    @AppStorage(ScannerFeedbackPreference.storageKey)
+    private var scannerFeedbackPreference = ScannerFeedbackPreference.off.rawValue
     @State private var page = 0
 
-    private let pageCount = 4
+    private let pageCount = 5
 
     var body: some View {
         NavigationStack {
@@ -93,6 +122,7 @@ struct IntroductionView: View {
                     browsingPage.tag(1)
                     collectionPage.tag(2)
                     pricingPage.tag(3)
+                    scannerFeedbackPage.tag(4)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
 
@@ -265,12 +295,26 @@ struct IntroductionView: View {
             )
 
             preferenceCard("Preferred prices") {
-                Picker("Preferred prices", selection: $preferredPriceSource) {
+                Picker("Show prices from", selection: Binding(
+                    get: {
+                        PricingSettings.resolveDisplayMode(
+                            priceDisplayMode,
+                            preferredSource: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+                        ).rawValue
+                    },
+                    set: { priceDisplayMode = $0 }
+                )) {
+                    ForEach(CatalogPriceDisplayMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Picker("Collection value", selection: $preferredPriceSource) {
                     ForEach(CatalogPriceSource.allCases) { source in
                         Text(source.currencyCode).tag(source.rawValue)
                     }
                 }
-                .labelsHidden()
                 .pickerStyle(.segmented)
 
                 let source = CatalogPriceSource(rawValue: preferredPriceSource)
@@ -293,17 +337,48 @@ struct IntroductionView: View {
                 .padding(.top, 4)
             }
 
-            Label("Your choice controls collection values and the default price shown for each printing. Historical data remains separated by marketplace and currency.", systemImage: "chart.line.uptrend.xyaxis")
+            Label("Show either market or both on cards and sets. Collection totals use only the selected value source; currencies are never mixed.", systemImage: "chart.line.uptrend.xyaxis")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 16))
 
-            Text("Everything is ready. You can revisit these choices in Settings.")
+            Text("You can revisit these choices in Settings.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+        }
+    }
+
+    private var scannerFeedbackPage: some View {
+        onboardingPage {
+            onboardingHeading(
+                systemImage: "camera.metering.center.weighted",
+                title: "Help improve scanning",
+                detail: "Choose how you'd like to handle wrong-card corrections in a future update."
+            )
+
+            preferenceCard("Correction reports") {
+                Picker("Correction reports", selection: $scannerFeedbackPreference) {
+                    ForEach(ScannerFeedbackPreference.allCases) { preference in
+                        Text(preference.title).tag(preference.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.navigationLink)
+                Text(ScannerFeedbackPreference(rawValue: scannerFeedbackPreference)?.detail
+                     ?? ScannerFeedbackPreference.off.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Label("No photos or corrections are sent now. The feedback service is not available yet. TallyDex will ask you to confirm again before enabling uploads.", systemImage: "lock.shield")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 16))
         }
     }
 

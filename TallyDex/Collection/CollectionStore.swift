@@ -14,6 +14,7 @@ final class CollectionStore {
     private(set) var customFolders: [CustomCollectionFolder] = []
     private(set) var binderPlans: [BinderPlan] = []
     private(set) var cardMetadataByID: [String: CardCollectionMetadata] = [:]
+    private(set) var manualValuesByKey: [String: ManualCardValue] = [:]
     private(set) var backups: [CollectionBackup] = []
     private(set) var isInitialLoading = true
     private(set) var loadMessage: String?
@@ -294,6 +295,26 @@ final class CollectionStore {
         cardMetadataByID[cardID] = metadata
     }
 
+    func manualValue(cardID: String, variant: CatalogVariantKind, currencyCode: String) -> ManualCardValue? {
+        manualValuesByKey["\(cardID)|\(variant.rawValue)|\(currencyCode)"]
+    }
+
+    func saveManualValue(cardID: String, variant: CatalogVariantKind, currencyCode: String,
+                         amount: Double, preferredOverMarket: Bool) async throws {
+        try accessStore?.requireEditing()
+        let value = ManualCardValue(cardID: cardID, variant: variant, currencyCode: currencyCode,
+                                    amount: amount, preferredOverMarket: preferredOverMarket, updatedAt: now())
+        guard value.isValid else { throw CollectionRepositoryError.invalidImport }
+        try await resolveRepository().saveManualValue(value)
+        manualValuesByKey[value.key] = value
+    }
+
+    func deleteManualValue(cardID: String, variant: CatalogVariantKind, currencyCode: String) async throws {
+        try accessStore?.requireEditing()
+        try await resolveRepository().deleteManualValue(cardID: cardID, variant: variant, currencyCode: currencyCode)
+        manualValuesByKey.removeValue(forKey: "\(cardID)|\(variant.rawValue)|\(currencyCode)")
+    }
+
     func saveCustomFolder(_ folder: CustomCollectionFolder) async throws {
         try accessStore?.requireEditing()
         try await resolveRepository().saveCustomFolder(folder)
@@ -492,6 +513,7 @@ final class CollectionStore {
         async let folders = repository.fetchCustomFolders()
         async let plans = repository.fetchBinderPlans()
         async let metadata = repository.fetchAllCardMetadata()
+        async let manualValues = repository.fetchManualValues()
         async let savedBackups = repository.fetchBackups()
         broadOwnedEntries = try await entries
         exactOwnedEntries = try await printingEntries
@@ -501,6 +523,7 @@ final class CollectionStore {
         customFolders = try await folders
         binderPlans = try await plans
         cardMetadataByID = try await metadata
+        manualValuesByKey = Dictionary(uniqueKeysWithValues: try await manualValues.map { ($0.key, $0) })
         backups = try await savedBackups
         quantitiesByCardID.removeAll()
     }

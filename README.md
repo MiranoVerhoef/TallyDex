@@ -60,7 +60,8 @@ https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.js
 ## Collection values
 
 TallyDex caches Cardmarket EUR and TCGplayer USD market prices supplied by
-TCGdex. You can choose the preferred source in Settings. Values are calculated
+TCGdex. You can display either source or both while choosing one source for
+collection totals in Settings. Values are calculated
 per exact printing and quantity; unpriced variants are reported separately
 instead of being estimated from another printing. Current prices refresh every
 18 hours and one snapshot per source day is retained locally for future price
@@ -403,6 +404,10 @@ Completed in v0.9.10:
    is to collect and review the real dataset, train and measure the model, integrate
    the accepted Core ML model into TallyDex, and validate automatic capture on a
    physical iPhone across glare, sleeves, top loaders, angles, and hard negatives.
+   Scanner correction reporting is not active: feedback.tallydex.nl has no
+   resolvable host or submission endpoint yet. First setup and Settings store
+   only a future preference; a later release must define the API, privacy
+   policy, and fresh opt-in before sending any scan images or corrections.
 3. Immediately before public release, implement the 14-day trial and lifetime
    unlock, choose whether existing beta users receive lifetime access, test
    purchase restore/refund/revocation/offline behavior, add App Store privacy and
@@ -808,6 +813,12 @@ Completed in v0.9.41:
 
 - Rounds the compact Sets dashboard while retaining the original illustrated TallyDex logo.
 - Makes Collection Manager include individually tracked printings in owned filters and quantities; browser edits preserve those printings rather than adding duplicate broad copies.
+
+Completed in v0.9.42:
+
+- Adds Cardmarket, TCGplayer, or both as a price-display preference on cards and set values, with separate marketplace links and one chosen source for collection totals.
+- Adds private per-printing estimates to value calculations and collection backups.
+- Saves a future scanner-correction preference without submitting images or corrections; uploading remains disabled until the feedback service and fresh consent are ready.
 
 Supplemental cover sources:
 

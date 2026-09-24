@@ -312,6 +312,21 @@ struct CardCollectionMetadata: Equatable, Sendable {
     }
 }
 
+struct ManualCardValue: Codable, Equatable, Hashable, Sendable {
+    let cardID: String
+    let variant: CatalogVariantKind
+    let currencyCode: String
+    let amount: Double
+    let preferredOverMarket: Bool
+    let updatedAt: Date
+
+    var key: String { "\(cardID)|\(variant.rawValue)|\(currencyCode)" }
+    var isValid: Bool {
+        !cardID.isEmpty && (currencyCode == "EUR" || currencyCode == "USD")
+            && amount.isFinite && amount > 0 && amount <= 1_000_000_000
+    }
+}
+
 struct CollectionProgress: Equatable, Sendable {
     let completedSlots: Int
     let requiredSlots: Int
@@ -1118,6 +1133,9 @@ protocol CollectionRepository: Sendable {
     func fetchBinderPlans() async throws -> [BinderPlan]
     func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata
     func fetchAllCardMetadata() async throws -> [String: CardCollectionMetadata]
+    func fetchManualValues() async throws -> [ManualCardValue]
+    func saveManualValue(_ value: ManualCardValue) async throws
+    func deleteManualValue(cardID: String, variant: CatalogVariantKind, currencyCode: String) async throws
     func fetchBackups() async throws -> [CollectionBackup]
     func exportCollection(exportedAt: Date, appVersion: String) async throws -> PortableCollectionDocument
     func previewImport(

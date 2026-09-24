@@ -29,8 +29,8 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testSettingsPreferencePagesHaveStableUniqueRoutes() {
-        XCTAssertEqual(SettingsPreferencePage.allCases, [.browsing, .collection, .prices])
-        XCTAssertEqual(Set(SettingsPreferencePage.allCases.map(\.id)).count, 3)
+        XCTAssertEqual(SettingsPreferencePage.allCases, [.browsing, .collection, .prices, .scanning])
+        XCTAssertEqual(Set(SettingsPreferencePage.allCases.map(\.id)).count, 4)
         XCTAssertTrue(SettingsPreferencePage.allCases.allSatisfy {
             !$0.title.isEmpty && !$0.detail.isEmpty && !$0.systemImage.isEmpty
         })
@@ -94,6 +94,13 @@ final class TallyDexSmokeTests: XCTestCase {
         let candidates = ["Bewear 130", "Split Spiral Punch"]
         XCTAssertTrue(CardTextRecognizer.nameLooksLikeCard("Bewear", candidates: candidates))
         XCTAssertFalse(CardTextRecognizer.nameLooksLikeCard("Omastar", candidates: candidates))
+    }
+
+    func testScannerRequiresRescanForMultipleDistinctCards() {
+        XCTAssertFalse(CardScanMatchPolicy.requiresRescan(candidateIDs: []))
+        XCTAssertFalse(CardScanMatchPolicy.requiresRescan(candidateIDs: ["sma-SV64"]))
+        XCTAssertFalse(CardScanMatchPolicy.requiresRescan(candidateIDs: ["sma-SV64", "sma-SV64"]))
+        XCTAssertTrue(CardScanMatchPolicy.requiresRescan(candidateIDs: ["sma-SV64", "sm4-54"]))
     }
 
     func testScannerFuzzyTitleMatchingRecoversDamagedOCRWithoutFalsePositive() {
@@ -202,7 +209,7 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.41")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.42")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,

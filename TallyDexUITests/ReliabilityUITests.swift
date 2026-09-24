@@ -280,9 +280,9 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertEqual(app.switches["Track multiple copies"].value as? String, "1")
         back()
         tap(button("Prices & Currency"))
-        tap(button("Price source"))
+        tap(button("Use for collection value"))
         tap(button("TCGplayer (USD)"))
-        if app.navigationBars["Price source"].exists { back() }
+        if app.navigationBars["Use for collection value"].exists { back() }
         back()
         tap(button("Collection Backups"))
         tap(button("Reliability baseline"))
@@ -308,7 +308,7 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertEqual(app.switches["Track multiple copies"].value as? String, "1")
         back()
         tap(button("Prices & Currency"))
-        let priceSource = button("Price source")
+        let priceSource = button("Use for collection value")
         XCTAssertTrue((priceSource.label + (priceSource.value as? String ?? "")).contains("TCGplayer")
                       || priceSource.staticTexts["TCGplayer (USD)"].exists,
                       "Unexpected price source: \(priceSource.debugDescription)")

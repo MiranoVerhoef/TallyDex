@@ -10,7 +10,7 @@ extension UTType {
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
-    static let currentSchemaVersion = 6
+    static let currentSchemaVersion = 7
 
     let format: String
     let schemaVersion: Int
@@ -23,6 +23,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
     let exactOwnership: [ExactOwnershipRecord]
     let binderPlans: [BinderPlan]
     let priceChartingMappings: [PriceChartingProductMapping]
+    let manualValues: [ManualCardValue]
 
     init(
         format: String,
@@ -35,7 +36,8 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         cardMetadata: [CardMetadataRecord],
         exactOwnership: [ExactOwnershipRecord] = [],
         binderPlans: [BinderPlan] = [],
-        priceChartingMappings: [PriceChartingProductMapping] = []
+        priceChartingMappings: [PriceChartingProductMapping] = [],
+        manualValues: [ManualCardValue] = []
     ) {
         self.format = format
         self.schemaVersion = schemaVersion
@@ -48,11 +50,12 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         self.exactOwnership = exactOwnership
         self.binderPlans = binderPlans
         self.priceChartingMappings = priceChartingMappings
+        self.manualValues = manualValues
     }
 
     private enum CodingKeys: String, CodingKey {
         case format, schemaVersion, exportedAt, appVersion, ownership
-        case setPreferences, folders, cardMetadata, exactOwnership, binderPlans, priceChartingMappings
+        case setPreferences, folders, cardMetadata, exactOwnership, binderPlans, priceChartingMappings, manualValues
     }
 
     init(from decoder: Decoder) throws {
@@ -68,6 +71,7 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         exactOwnership = try values.decodeIfPresent([ExactOwnershipRecord].self, forKey: .exactOwnership) ?? []
         binderPlans = try values.decodeIfPresent([BinderPlan].self, forKey: .binderPlans) ?? []
         priceChartingMappings = try values.decodeIfPresent([PriceChartingProductMapping].self, forKey: .priceChartingMappings) ?? []
+        manualValues = try values.decodeIfPresent([ManualCardValue].self, forKey: .manualValues) ?? []
     }
 
     struct OwnershipRecord: Codable, Equatable, Sendable {

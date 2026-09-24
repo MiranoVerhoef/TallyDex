@@ -17,6 +17,19 @@ private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> St
     )
 }
 
+private func displayedPriceText(
+    quotes: [CatalogPriceQuote],
+    variant: CatalogVariantKind,
+    mode: CatalogPriceDisplayMode
+) -> String {
+    mode.sources.map { source in
+        guard let quote = quotes.first(where: { $0.variant == variant && $0.source == source }) else {
+            return "\(source.displayName) —"
+        }
+        return "\(source.displayName) \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
+    }.joined(separator: " · ")
+}
+
 private func collectorPrintingLabel(
     _ printing: CatalogPrinting,
     within printings: [CatalogPrinting]
@@ -109,6 +122,7 @@ private struct OwnedCardProgressBadge: View {
 private struct CollectionValueSummaryView: View {
     let summary: CatalogValueSummary
     var title = "Estimated value"
+    var secondarySummary: CatalogValueSummary? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -122,6 +136,11 @@ private struct CollectionValueSummaryView: View {
                     summaryTitle
                     summaryAmount
                 }
+            }
+            if let secondarySummary {
+                Text("\(secondarySummary.source.displayName) · \(displayAmount(for: secondarySummary))")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
             Text(detailText)
                 .font(.caption)
@@ -138,16 +157,24 @@ private struct CollectionValueSummaryView: View {
     }
 
     private var summaryAmount: some View {
-        Text(formattedCatalogPrice(summary.amount, currencyCode: summary.currencyCode))
+        Text((secondarySummary == nil ? "" : "\(summary.source.displayName) · ")
+             + displayAmount(for: summary))
             .font(.headline.monospacedDigit())
     }
 
+    private func displayAmount(for value: CatalogValueSummary) -> String {
+        if value.pricedVariants == 0 && value.missingVariants > 0 { return "—" }
+        return formattedCatalogPrice(value.amount, currencyCode: value.currencyCode)
+    }
+
     private var detailText: String {
-        let priced = "\(summary.pricedVariants) priced printing\(summary.pricedVariants == 1 ? "" : "s")"
+        let priced = "\(summary.pricedVariants) valued printing\(summary.pricedVariants == 1 ? "" : "s")"
+        let manual = summary.manualVariants > 0
+            ? " · \(summary.manualVariants) your estimate\(summary.manualVariants == 1 ? "" : "s")" : ""
         guard summary.missingVariants > 0 else {
-            return "\(summary.source.displayName) · \(priced)"
+            return "\(summary.source.displayName) · \(priced)\(manual)"
         }
-        return "\(summary.source.displayName) · \(priced) · \(summary.missingVariants) without an exact price"
+        return "\(summary.source.displayName) · \(priced)\(manual) · \(summary.missingVariants) without an exact price"
     }
 }
 
@@ -401,6 +428,8 @@ private struct CollectionDashboardView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayModeRaw = ""
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var topCards: [CatalogCardSearchResult] = []
     @State private var featuredCard: CatalogCardSearchResult?
@@ -424,7 +453,7 @@ private struct CollectionDashboardView: View {
         let exactKey = collectionStore.exactOwnedEntries
             .map { "\($0.cardID):\($0.printingID):\($0.quantity):\($0.updatedAt.timeIntervalSince1970)" }
             .sorted().joined(separator: "|")
-        return "\(broadKey)#\(exactKey)#\(setKey)#\(preferredPriceSource)#\(catalogStore.lastUpdated?.timeIntervalSince1970 ?? 0)"
+        return "\(broadKey)#\(exactKey)#\(setKey)#\(preferredPriceSource)#\(priceDisplayModeRaw)#\(catalogStore.lastUpdated?.timeIntervalSince1970 ?? 0)"
     }
     private var source: CatalogPriceSource {
         CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
@@ -433,7 +462,19 @@ private struct CollectionDashboardView: View {
         CatalogValueCalculator.summary(
             entries: collectionStore.ownedEntries,
             prices: pricesByCardID,
-            source: source
+            source: source,
+            manualValues: collectionStore.manualValuesByKey
+        )
+    }
+    private var secondaryValueSummary: CatalogValueSummary? {
+        guard PricingSettings.resolveDisplayMode(priceDisplayModeRaw, preferredSource: source) == .both else {
+            return nil
+        }
+        return CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries,
+            prices: pricesByCardID,
+            source: source == .cardmarket ? .tcgplayer : .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
         )
     }
     private var copyCount: Int {
@@ -443,7 +484,8 @@ private struct CollectionDashboardView: View {
         let values = CatalogValueCalculator.cardTotals(
             entries: collectionStore.ownedEntries,
             prices: pricesByCardID,
-            source: source
+            source: source,
+            manualValues: collectionStore.manualValuesByKey
         )
         return values.map { (id: $0.key, amount: $0.value) }
             .sorted { $0.amount == $1.amount ? $0.id < $1.id : $0.amount > $1.amount }
@@ -481,6 +523,11 @@ private struct CollectionDashboardView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                         .foregroundStyle(.white.opacity(0.62))
+                    if let secondaryValueSummary, pricesLoaded {
+                        Text("\(secondaryValueSummary.source.displayName) · \(secondaryValueSummary.pricedVariants == 0 && !ownedIDs.isEmpty ? "—" : formattedCatalogPrice(secondaryValueSummary.amount, currencyCode: secondaryValueSummary.currencyCode))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.78))
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1688,6 +1735,8 @@ private struct CatalogSetDetailView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayModeRaw = ""
     @State private var isShowingInformation = false
     @State private var cards: [CatalogCard] = []
     @State private var isLoadingCards = true
@@ -1721,7 +1770,21 @@ private struct CatalogSetDetailView: View {
         return CatalogValueCalculator.summary(
             entries: cards.flatMap { collectionStore.entries(for: $0.id) },
             prices: pricesByCardID,
-            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
+        )
+    }
+
+    private var secondaryValueSummary: CatalogValueSummary? {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        guard PricingSettings.resolveDisplayMode(priceDisplayModeRaw, preferredSource: source) == .both else {
+            return nil
+        }
+        return CatalogValueCalculator.summary(
+            entries: cards.flatMap { collectionStore.entries(for: $0.id) },
+            prices: pricesByCardID,
+            source: source == .cardmarket ? .tcgplayer : .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
         )
     }
 
@@ -1812,7 +1875,11 @@ private struct CatalogSetDetailView: View {
                 .frame(maxWidth: .infinity)
 
                 if hasOwnedSetCards {
-                    CollectionValueSummaryView(summary: valueSummary, title: "Owned value")
+                    CollectionValueSummaryView(
+                        summary: valueSummary,
+                        title: "Owned value",
+                        secondarySummary: secondaryValueSummary
+                    )
                 }
 
                 if let collectionMessage {
@@ -2165,6 +2232,8 @@ private struct CatalogVariantPickerView: View {
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayModeRaw = ""
     @State private var snapshot: CatalogCardSnapshot?
     @State private var quantities: [CatalogVariantKind: Int] = [:]
     @State private var isLoading = true
@@ -2351,12 +2420,8 @@ private struct CatalogVariantPickerView: View {
 
     private func priceText(for variant: CatalogVariantKind) -> String {
         let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
-        guard let quote = snapshot?.prices.first(where: {
-            $0.variant == variant && $0.source == source
-        }) else {
-            return "No TCGdex \(source.displayName) price for this printing"
-        }
-        return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
+        let mode = PricingSettings.resolveDisplayMode(priceDisplayModeRaw, preferredSource: source)
+        return displayedPriceText(quotes: snapshot?.prices ?? [], variant: variant, mode: mode)
     }
 
     private func load() async {
@@ -2627,6 +2692,8 @@ struct CatalogCardDetailView: View {
     private var allowsMultipleCopies = CollectionSettings.allowsMultipleCopiesDefault
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayModeRaw = ""
     @AppStorage(CardDisplaySettings.detailsExpandedByDefaultKey)
     private var detailsExpandedByDefault = CardDisplaySettings.defaultDetailsExpanded
     @State private var snapshot: CatalogCardSnapshot?
@@ -2650,12 +2717,19 @@ struct CatalogCardDetailView: View {
         return CatalogVariantKind.allCases.filter(visibleVariants.contains)
     }
 
-    private var cardmarketURL: URL? {
+    private var priceDisplayMode: CatalogPriceDisplayMode {
+        PricingSettings.resolveDisplayMode(
+            priceDisplayModeRaw,
+            preferredSource: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        )
+    }
+
+    private func marketplaceURL(for source: CatalogPriceSource) -> URL? {
         let visibleOrder = Dictionary(
             uniqueKeysWithValues: availableVariants.enumerated().map { ($0.element, $0.offset) }
         )
         if let pricedURL = (snapshot?.prices
-            .filter { $0.source == .cardmarket && $0.marketplaceURL != nil }
+            .filter { $0.source == source && $0.marketplaceURL != nil }
             .sorted {
                 visibleOrder[$0.variant, default: Int.max]
                     < visibleOrder[$1.variant, default: Int.max]
@@ -2664,9 +2738,14 @@ struct CatalogCardDetailView: View {
             .first) {
             return pricedURL
         }
-        guard let productID = snapshot?.printings.compactMap(\.cardmarketProductID).first,
+        let productID = snapshot?.printings.compactMap {
+            source == .cardmarket ? $0.cardmarketProductID : $0.tcgplayerProductID
+        }.first
+        guard let productID,
               productID > 0 else { return nil }
-        return URL(string: "https://www.cardmarket.com/en/Pokemon/Products?idProduct=\(productID)")
+        return source == .cardmarket
+            ? URL(string: "https://www.cardmarket.com/en/Pokemon/Products?idProduct=\(productID)")
+            : URL(string: "https://www.tcgplayer.com/product/\(productID)")
     }
 
     var body: some View {
@@ -2681,14 +2760,25 @@ struct CatalogCardDetailView: View {
                     cardDetailsSection
                     collectionSection
 
-                    if let cardmarketURL {
-                        Link(destination: cardmarketURL) {
-                            Label("Open on Cardmarket", systemImage: "arrow.up.right.square")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
+                    if priceDisplayMode.sources.contains(where: { marketplaceURL(for: $0) != nil }) {
+                        HStack(spacing: 10) {
+                            ForEach(priceDisplayMode.sources) { source in
+                                if let url = marketplaceURL(for: source) {
+                                    Link(destination: url) {
+                                        Label(
+                                            priceDisplayMode == .both ? source.displayName : "Open on \(source.displayName)",
+                                            systemImage: "arrow.up.right.square"
+                                        )
+                                        .font(priceDisplayMode == .both ? .subheadline.weight(.semibold) : .headline)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.large)
+                                }
+                            }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
                     }
                 }
 
@@ -3102,6 +3192,21 @@ struct CatalogCardDetailView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            if !availableVariants.isEmpty || collectionStore.manualValuesByKey.values.contains(where: { $0.cardID == card.id }) {
+                NavigationLink {
+                    ManualCardValuesView(
+                        cardID: card.id,
+                        cardName: card.name,
+                        variants: availableVariants,
+                        marketPrices: snapshot?.prices ?? []
+                    )
+                } label: {
+                    Label("Your estimates", systemImage: "pencil.line")
+                        .font(.subheadline.weight(.medium))
+                }
+                .padding(.top, 4)
+            }
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -3229,12 +3334,18 @@ struct CatalogCardDetailView: View {
 
     private func priceText(for variant: CatalogVariantKind) -> String {
         let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
-        guard let quote = snapshot?.prices.first(where: {
-            $0.variant == variant && $0.source == source
-        }) else {
-            return "No TCGdex \(source.displayName) price for this printing"
+        let quotes = snapshot?.prices ?? []
+        let marketText = displayedPriceText(quotes: quotes, variant: variant, mode: priceDisplayMode)
+        let hasDisplayedQuote = quotes.contains {
+            $0.variant == variant && priceDisplayMode.sources.contains($0.source)
         }
-        return "\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: quote.currencyCode))"
+        let manual = collectionStore.manualValue(cardID: card.id, variant: variant,
+                                                 currencyCode: source.currencyCode)
+        if let manual {
+            let estimate = "Your estimate \(formattedCatalogPrice(manual.amount, currencyCode: manual.currencyCode))"
+            return hasDisplayedQuote ? "\(marketText) · \(estimate)" : estimate
+        }
+        return hasDisplayedQuote ? marketText : "\(marketText) · add your estimate"
     }
 
     private func updateQuantity(for variant: CatalogVariantKind, to newQuantity: Int) {
@@ -3295,6 +3406,190 @@ struct CatalogCardDetailView: View {
             } catch {
                 collectionMessage = "Your wishlist or notes couldn’t be saved. Please try again."
             }
+        }
+    }
+}
+
+private struct ManualValueEditTarget: Identifiable {
+    let variant: CatalogVariantKind
+    var id: String { variant.rawValue }
+}
+
+private struct ManualCardValuesView: View {
+    let cardID: String
+    let cardName: String
+    let variants: [CatalogVariantKind]
+    let marketPrices: [CatalogPriceQuote]
+
+    @Environment(CollectionStore.self) private var collectionStore
+    @AppStorage(PricingSettings.sourceKey)
+    private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @State private var editing: ManualValueEditTarget?
+
+    private var source: CatalogPriceSource {
+        CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+    }
+
+    private var displayVariants: [CatalogVariantKind] {
+        let saved = collectionStore.manualValuesByKey.values
+            .filter { $0.cardID == cardID && $0.currencyCode == source.currencyCode }
+            .map(\.variant)
+        let included = Set(variants).union(saved)
+        return CatalogVariantKind.allCases.filter(included.contains)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(displayVariants, id: \.self) { variant in
+                    let quote = marketPrices.first { $0.variant == variant && $0.source == source }
+                    let manual = collectionStore.manualValue(cardID: cardID, variant: variant,
+                                                             currencyCode: source.currencyCode)
+                    Button { editing = ManualValueEditTarget(variant: variant) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(variant.displayName).foregroundStyle(.primary)
+                                if !variants.contains(variant) {
+                                    Text("No longer listed in current card data")
+                                        .font(.caption).foregroundStyle(.orange)
+                                }
+                                if let quote {
+                                    Text("\(source.displayName) · \(formattedCatalogPrice(quote.amount, currencyCode: source.currencyCode))")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                Text(manual.map {
+                                    "Your estimate · \(formattedCatalogPrice($0.amount, currencyCode: $0.currencyCode))"
+                                } ?? "No personal estimate")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: manual == nil ? "plus.circle" : "pencil.circle")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+            } header: {
+                Text(cardName)
+            } footer: {
+                Text("Your estimates are private, saved with collection backups, and never presented as marketplace prices. Only values in the selected currency count toward totals.")
+            }
+        }
+        .navigationTitle("Your estimates")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $editing) { target in
+            ManualCardValueEditor(
+                cardID: cardID,
+                variant: target.variant,
+                currencyCode: source.currencyCode,
+                marketPrice: marketPrices.first { $0.variant == target.variant && $0.source == source },
+                existing: collectionStore.manualValue(cardID: cardID, variant: target.variant,
+                                                      currencyCode: source.currencyCode)
+            )
+            .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+private struct ManualCardValueEditor: View {
+    let cardID: String
+    let variant: CatalogVariantKind
+    let currencyCode: String
+    let marketPrice: CatalogPriceQuote?
+    let existing: ManualCardValue?
+
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var amountText: String
+    @State private var preferredOverMarket: Bool
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(cardID: String, variant: CatalogVariantKind, currencyCode: String,
+         marketPrice: CatalogPriceQuote?, existing: ManualCardValue?) {
+        self.cardID = cardID
+        self.variant = variant
+        self.currencyCode = currencyCode
+        self.marketPrice = marketPrice
+        self.existing = existing
+        _amountText = State(initialValue: existing?.amount.formatted(.number.precision(.fractionLength(2))) ?? "")
+        _preferredOverMarket = State(initialValue: existing?.preferredOverMarket ?? false)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Your estimate", text: $amountText)
+                        .keyboardType(.decimalPad)
+                    if let marketPrice {
+                        LabeledContent("\(marketPrice.source.displayName) price") {
+                            Text(formattedCatalogPrice(marketPrice.amount, currencyCode: currencyCode))
+                        }
+                        Toggle("Use my estimate in collection totals", isOn: $preferredOverMarket)
+                    }
+                } header: {
+                    Text("\(variant.displayName) · \(currencyCode)")
+                } footer: {
+                    Text("Your value is personal and will not change the TCGdex price or Cardmarket history.")
+                }
+                if existing != nil {
+                    Section {
+                        Button("Remove my estimate", role: .destructive) { remove() }
+                            .disabled(isSaving)
+                    }
+                }
+                if let errorMessage {
+                    Section { Text(errorMessage).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle("Your estimate")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }.disabled(isSaving || parsedAmount == nil)
+                }
+            }
+        }
+    }
+
+    private var parsedAmount: Double? {
+        let text = amountText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = .current
+        let amount = formatter.number(from: text)?.doubleValue
+            ?? Double(text.replacingOccurrences(of: ",", with: "."))
+        guard let amount, amount.isFinite, amount > 0, amount <= 1_000_000_000 else { return nil }
+        return amount
+    }
+
+    private func save() {
+        guard let amount = parsedAmount else { return }
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                try await collectionStore.saveManualValue(
+                    cardID: cardID, variant: variant, currencyCode: currencyCode,
+                    amount: amount, preferredOverMarket: preferredOverMarket
+                )
+                dismiss()
+            } catch { errorMessage = "Your estimate couldn't be saved. Please try again." }
+        }
+    }
+
+    private func remove() {
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                try await collectionStore.deleteManualValue(
+                    cardID: cardID, variant: variant, currencyCode: currencyCode
+                )
+                dismiss()
+            } catch { errorMessage = "Your estimate couldn't be removed. Please try again." }
         }
     }
 }
@@ -4989,6 +5284,8 @@ struct CollectionView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayModeRaw = ""
     @State private var cards: [CatalogCardSearchResult] = []
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isLoadingCards = false
@@ -5010,7 +5307,21 @@ struct CollectionView: View {
         CatalogValueCalculator.summary(
             entries: collectionStore.ownedEntries,
             prices: pricesByCardID,
-            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
+        )
+    }
+
+    private var secondaryValueSummary: CatalogValueSummary? {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        guard PricingSettings.resolveDisplayMode(priceDisplayModeRaw, preferredSource: source) == .both else {
+            return nil
+        }
+        return CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries,
+            prices: pricesByCardID,
+            source: source == .cardmarket ? .tcgplayer : .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
         )
     }
 
@@ -5040,7 +5351,10 @@ struct CollectionView: View {
 
                 if !ownedCardIDs.isEmpty {
                     Section {
-                        CollectionValueSummaryView(summary: valueSummary)
+                        CollectionValueSummaryView(
+                            summary: valueSummary,
+                            secondarySummary: secondaryValueSummary
+                        )
                             .listRowInsets(EdgeInsets())
                             .listRowBackground(Color.clear)
                     }
@@ -5802,6 +6116,8 @@ private struct CustomCollectionFolderDetailView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayModeRaw = ""
     @State private var matches: [CatalogCardSearchResult] = []
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
@@ -5879,7 +6195,21 @@ private struct CustomCollectionFolderDetailView: View {
         CatalogValueCalculator.summary(
             entries: collectionStore.ownedEntries.filter { ownedMatchIDs.contains($0.cardID) },
             prices: pricesByCardID,
-            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+            source: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
+        )
+    }
+
+    private var secondaryValueSummary: CatalogValueSummary? {
+        let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+        guard PricingSettings.resolveDisplayMode(priceDisplayModeRaw, preferredSource: source) == .both else {
+            return nil
+        }
+        return CatalogValueCalculator.summary(
+            entries: collectionStore.ownedEntries.filter { ownedMatchIDs.contains($0.cardID) },
+            prices: pricesByCardID,
+            source: source == .cardmarket ? .tcgplayer : .cardmarket,
+            manualValues: collectionStore.manualValuesByKey
         )
     }
 
@@ -5908,7 +6238,11 @@ private struct CustomCollectionFolderDetailView: View {
                     }
 
                     if !ownedMatchIDs.isEmpty {
-                        CollectionValueSummaryView(summary: valueSummary, title: "Collection value")
+                        CollectionValueSummaryView(
+                            summary: valueSummary,
+                            title: "Collection value",
+                            secondarySummary: secondaryValueSummary
+                        )
                             .padding(.top, 4)
                     }
 
@@ -6234,13 +6568,14 @@ struct SettingsView: View {
 }
 
 enum SettingsPreferencePage: String, CaseIterable, Identifiable {
-    case browsing, collection, prices
+    case browsing, collection, prices, scanning
     var id: String { rawValue }
     var title: String {
         switch self {
         case .browsing: "Appearance & Browsing"
         case .collection: "Collection Preferences"
         case .prices: "Prices & Currency"
+        case .scanning: "Scanner Feedback"
         }
     }
     var detail: String {
@@ -6248,6 +6583,7 @@ enum SettingsPreferencePage: String, CaseIterable, Identifiable {
         case .browsing: "Theme, set layout and card details"
         case .collection: "Default goals and copy tracking"
         case .prices: "Marketplace and currency preferences"
+        case .scanning: "Optional correction reports"
         }
     }
     var systemImage: String {
@@ -6255,6 +6591,7 @@ enum SettingsPreferencePage: String, CaseIterable, Identifiable {
         case .browsing: "paintpalette"
         case .collection: "checklist"
         case .prices: "eurosign.circle"
+        case .scanning: "camera.viewfinder"
         }
     }
 }
@@ -6298,10 +6635,14 @@ private struct SettingsPreferencesView: View {
     private var defaultCustomIncludesSecretCards = CollectionSettings.defaultCustomIncludesSecretCards
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
+    @AppStorage(PricingSettings.displayModeKey)
+    private var priceDisplayMode = ""
     @AppStorage(PricingSettings.cardmarketCountryKey)
     private var cardmarketCountry = CardmarketCountryPreference.all.rawValue
     @AppStorage(PricingSettings.cardmarketCurrencyKey)
     private var cardmarketCurrency = PricingSettings.defaultCardmarketCurrency.rawValue
+    @AppStorage(ScannerFeedbackPreference.storageKey)
+    private var scannerFeedbackPreference = ScannerFeedbackPreference.off.rawValue
     @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
 
     var body: some View {
@@ -6386,7 +6727,22 @@ private struct SettingsPreferencesView: View {
             }
             if page == .prices {
                 Section {
-                    Picker("Price source", selection: $preferredPriceSource) {
+                    Picker("Show prices from", selection: Binding(
+                        get: {
+                            PricingSettings.resolveDisplayMode(
+                                priceDisplayMode,
+                                preferredSource: CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
+                            ).rawValue
+                        },
+                        set: { priceDisplayMode = $0 }
+                    )) {
+                        ForEach(CatalogPriceDisplayMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+
+                    Picker("Use for collection value", selection: $preferredPriceSource) {
                         ForEach(CatalogPriceSource.allCases) { source in
                             Text("\(source.displayName) (\(source.currencyCode))")
                                 .tag(source.rawValue)
@@ -6396,7 +6752,7 @@ private struct SettingsPreferencesView: View {
                 } header: {
                     Text("Prices")
                 } footer: {
-                    Text("Prices come through TCGdex and use each marketplace’s native currency. Exact per-printing marketplace IDs are used when TCGdex provides them.")
+                    Text("Show one or both marketplaces on cards and in set values. Collection totals and rankings use one selected marketplace, so EUR and USD are never mixed. Prices come through TCGdex.")
                 }
 
                 Section {
@@ -6428,6 +6784,23 @@ private struct SettingsPreferencesView: View {
                     Text("Future Features")
                 } footer: {
                     Text("Current prices use the selected marketplace’s native currency: EUR for Cardmarket or USD for TCGplayer.")
+                }
+            }
+            if page == .scanning {
+                Section {
+                    Picker("Correction reports", selection: $scannerFeedbackPreference) {
+                        ForEach(ScannerFeedbackPreference.allCases) { preference in
+                            Text(preference.title).tag(preference.rawValue)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    Text(ScannerFeedbackPreference(rawValue: scannerFeedbackPreference)?.detail
+                         ?? ScannerFeedbackPreference.off.detail)
+                        .font(.footnote).foregroundStyle(.secondary)
+                } header: {
+                    Text("Future feedback preference")
+                } footer: {
+                    Text("No images or corrections are uploaded. The feedback service is not available yet, and you'll confirm again before submissions become active.")
                 }
             }
         }
@@ -8204,6 +8577,12 @@ enum CardScannerCaptureMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum CardScanMatchPolicy {
+    static func requiresRescan(candidateIDs: [String]) -> Bool {
+        Set(candidateIDs).count > 1
+    }
+}
+
 struct CardScannerView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
@@ -8216,6 +8595,7 @@ struct CardScannerView: View {
     @State private var scannedImage: UIImage?
     @State private var recognizedLines: [String] = []
     @State private var results: [CatalogCardSearchResult] = []
+    @State private var scanHasAmbiguousMatches = false
     @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var updatingCardIDs: Set<String> = []
     @State private var selectedVariantCard: CatalogCard?
@@ -8555,13 +8935,19 @@ struct CardScannerView: View {
             List {
                 if results.isEmpty {
                     ContentUnavailableView(
-                        "No Card Found",
+                        scanHasAmbiguousMatches ? "More Than One Match" : "No Card Found",
                         systemImage: "rectangle.and.text.magnifyingglass",
-                        description: Text("Try again in brighter, even light with the complete card inside the guide.")
+                        description: Text(scanHasAmbiguousMatches
+                            ? "TallyDex couldn't identify one exact card. Scan it again with the card name and number clearly visible."
+                            : "Try again in brighter, even light with the complete card inside the guide.")
                     )
                     .listRowBackground(Color.clear)
+                    if scanHasAmbiguousMatches {
+                        Button("Scan Again") { isShowingResults = false }
+                            .frame(maxWidth: .infinity)
+                    }
                 } else {
-                    Section(results.count == 1 ? "Card found" : "Choose a card") {
+                    Section("Card found") {
                         ForEach(results) { result in
                             HStack(spacing: 10) {
                                 NavigationLink {
@@ -8732,6 +9118,7 @@ struct CardScannerView: View {
         scannedImage = image
         recognizedLines = []
         results = []
+        scanHasAmbiguousMatches = false
         scanError = nil
         detectedCardCorners = nil
         scanStatus = "Finding card…"
@@ -8757,7 +9144,14 @@ struct CardScannerView: View {
                     lines = try await CardTextRecognizer.recognize(detection.cardImage)
                 }
                 recognizedLines = lines
-                results = try await searchRecognizedText(lines)
+                let matches = try await searchRecognizedText(lines)
+                // Never present several OCR guesses as if the camera identified
+                // the card. Ask for another scan instead of risking ownership of
+                // the wrong printing or set.
+                scanHasAmbiguousMatches = CardScanMatchPolicy.requiresRescan(
+                    candidateIDs: matches.map(\.card.id)
+                )
+                results = scanHasAmbiguousMatches ? [] : Array(matches.prefix(1))
                 // Keep the edge and scan animation visible long enough to make
                 // the detection step understandable instead of flashing by.
                 try? await Task.sleep(nanoseconds: 650_000_000)
@@ -8827,6 +9221,7 @@ struct CardScannerView: View {
         scanStatus = "Finding card…"
         recognizedLines = []
         results = []
+        scanHasAmbiguousMatches = false
         variantsByCardID = [:]
         updatingCardIDs = []
         selectedVariantCard = nil

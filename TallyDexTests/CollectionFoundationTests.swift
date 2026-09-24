@@ -1046,6 +1046,32 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(missing, .empty(cardID: "missing"))
     }
 
+    func testManualValuePersistsInCollectionExportAndBackupRestore() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let date = Date(timeIntervalSince1970: 600)
+        let value = ManualCardValue(cardID: "sma-SV64", variant: .normal, currencyCode: "EUR",
+                                    amount: 42.5, preferredOverMarket: true, updatedAt: date)
+        try await repository.saveManualValue(value)
+        let savedValues = try await repository.fetchManualValues()
+        XCTAssertEqual(savedValues, [value])
+
+        let document = try await repository.exportCollection(exportedAt: date, appVersion: "test")
+        XCTAssertEqual(document.manualValues, [value])
+        let imported = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        try await imported.importCollection(document, mode: .replace, importedAt: date)
+        let importedValues = try await imported.fetchManualValues()
+        XCTAssertEqual(importedValues, [value])
+        let backup = try await repository.createBackup(reason: "Manual value test", createdAt: date)
+        try await repository.deleteManualValue(cardID: value.cardID, variant: value.variant,
+                                               currencyCode: value.currencyCode)
+        let removedValues = try await repository.fetchManualValues()
+        XCTAssertTrue(removedValues.isEmpty)
+        try await repository.restoreBackup(id: backup.id, safetyBackupReason: "Before test restore",
+                                           restoredAt: date.addingTimeInterval(1))
+        let restoredValues = try await repository.fetchManualValues()
+        XCTAssertEqual(restoredValues, [value])
+    }
+
     func testGoalAwareProgressSeparatesNormalAndMaster() {
         let set = CatalogSet(
             id: "sv-test",

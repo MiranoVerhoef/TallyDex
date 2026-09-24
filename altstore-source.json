@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.42",
+          "buildVersion": "78",
+          "date": "2026-09-24",
+          "localizedDescription": "Adds optional Cardmarket and TCGplayer dual-price display with separate links, private per-printing value estimates, and a future scanner-feedback preference. No scanner data is submitted.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.42/TallyDex-v0.9.42.ipa",
+          "size": 29846996,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.41",
           "buildVersion": "77",
           "date": "2026-09-24",

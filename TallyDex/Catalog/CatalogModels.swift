@@ -340,6 +340,30 @@ enum CatalogPriceSource: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum CatalogPriceDisplayMode: String, CaseIterable, Identifiable, Sendable {
+    case cardmarket
+    case tcgplayer
+    case both
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cardmarket: "Cardmarket"
+        case .tcgplayer: "TCGplayer"
+        case .both: "Both"
+        }
+    }
+
+    var sources: [CatalogPriceSource] {
+        switch self {
+        case .cardmarket: [.cardmarket]
+        case .tcgplayer: [.tcgplayer]
+        case .both: CatalogPriceSource.allCases
+        }
+    }
+}
+
 enum CardDisplaySettings {
     static let detailsExpandedByDefaultKey = "cards.details.expandedByDefault"
     static let defaultDetailsExpanded = false
@@ -352,6 +376,7 @@ enum CardDisplaySettings {
 
 enum PricingSettings {
     static let sourceKey = "pricing.preferredSource"
+    static let displayModeKey = "pricing.displayMode"
     static let cardmarketCountryKey = "pricing.cardmarket.country"
     static let cardmarketCurrencyKey = "pricing.cardmarket.currency"
     static let historyRetentionKey = "pricing.history.retention"
@@ -367,6 +392,20 @@ enum PricingSettings {
             return defaultSource
         }
         return CatalogPriceSource(rawValue: rawValue) ?? defaultSource
+    }
+
+    static var displayMode: CatalogPriceDisplayMode {
+        resolveDisplayMode(
+            UserDefaults.standard.string(forKey: displayModeKey),
+            preferredSource: preferredSource
+        )
+    }
+
+    static func resolveDisplayMode(
+        _ rawValue: String?, preferredSource: CatalogPriceSource
+    ) -> CatalogPriceDisplayMode {
+        CatalogPriceDisplayMode(rawValue: rawValue ?? "")
+            ?? (preferredSource == .cardmarket ? .cardmarket : .tcgplayer)
     }
 
     static var historyRetention: CatalogPriceHistoryRetention {
@@ -735,6 +774,7 @@ struct CatalogValueSummary: Equatable, Sendable {
     let amount: Double
     let pricedVariants: Int
     let missingVariants: Int
+    let manualVariants: Int
     let source: CatalogPriceSource
 
     var currencyCode: String { source.currencyCode }
@@ -744,14 +784,14 @@ enum CatalogValueCalculator {
     static func cardTotals(
         entries: [CollectionVariantEntry],
         prices: [String: [CatalogPriceQuote]],
-        source: CatalogPriceSource
+        source: CatalogPriceSource,
+        manualValues: [String: ManualCardValue] = [:]
     ) -> [String: Double] {
         var totals: [String: Double] = [:]
         for entry in uniqueOwnedEntries(entries) {
-            guard let quote = prices[entry.cardID]?.first(where: {
-                $0.variant == entry.variant && $0.source == source
-            }) else { continue }
-            totals[entry.cardID, default: 0] += quote.amount * Double(entry.quantity)
+            guard let value = unitValue(for: entry, prices: prices, source: source,
+                                        manualValues: manualValues) else { continue }
+            totals[entry.cardID, default: 0] += value.amount * Double(entry.quantity)
         }
         return totals
     }
@@ -759,19 +799,21 @@ enum CatalogValueCalculator {
     static func summary(
         entries: [CollectionVariantEntry],
         prices: [String: [CatalogPriceQuote]],
-        source: CatalogPriceSource
+        source: CatalogPriceSource,
+        manualValues: [String: ManualCardValue] = [:]
     ) -> CatalogValueSummary {
         var amount = 0.0
         var pricedVariants = 0
         var missingVariants = 0
+        var manualVariants = 0
         // Shared views may reference the same canonical ownership record more
         // than once. Keep its latest value, rather than counting another copy.
         for entry in uniqueOwnedEntries(entries) {
-            if let quote = prices[entry.cardID]?.first(where: {
-                $0.variant == entry.variant && $0.source == source
-            }) {
-                amount += quote.amount * Double(entry.quantity)
+            if let value = unitValue(for: entry, prices: prices, source: source,
+                                     manualValues: manualValues) {
+                amount += value.amount * Double(entry.quantity)
                 pricedVariants += 1
+                if value.isManual { manualVariants += 1 }
             } else {
                 missingVariants += 1
             }
@@ -780,8 +822,27 @@ enum CatalogValueCalculator {
             amount: amount,
             pricedVariants: pricedVariants,
             missingVariants: missingVariants,
+            manualVariants: manualVariants,
             source: source
         )
+    }
+
+    private static func unitValue(
+        for entry: CollectionVariantEntry,
+        prices: [String: [CatalogPriceQuote]],
+        source: CatalogPriceSource,
+        manualValues: [String: ManualCardValue]
+    ) -> (amount: Double, isManual: Bool)? {
+        let quote = prices[entry.cardID]?.first {
+            $0.variant == entry.variant && $0.source == source
+        }
+        let key = "\(entry.cardID)|\(entry.variant.rawValue)|\(source.currencyCode)"
+        let manual = manualValues[key]
+        if let manual, quote == nil || manual.preferredOverMarket {
+            return (manual.amount, true)
+        }
+        if let quote { return (quote.amount, false) }
+        return nil
     }
 
     private static func uniqueOwnedEntries(_ entries: [CollectionVariantEntry]) -> [CollectionVariantEntry] {

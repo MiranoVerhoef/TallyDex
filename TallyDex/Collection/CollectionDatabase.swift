@@ -194,6 +194,18 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v15-manual-card-values") { database in
+            try database.create(table: "collectionManualValue") { table in
+                table.column("cardID", .text).notNull().indexed()
+                table.column("variant", .text).notNull()
+                table.column("currencyCode", .text).notNull()
+                table.column("amount", .double).notNull()
+                table.column("preferredOverMarket", .boolean).notNull()
+                table.column("updatedAt", .datetime).notNull()
+                table.primaryKey(["cardID", "variant", "currencyCode"])
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -513,6 +525,46 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 )
                 return (metadata.cardID, metadata)
             })
+        }
+    }
+
+    func fetchManualValues() async throws -> [ManualCardValue] {
+        try await database.queue.read { database in
+            try Row.fetchAll(database, sql: "SELECT cardID, variant, currencyCode, amount, preferredOverMarket, updatedAt FROM collectionManualValue")
+                .compactMap { row -> ManualCardValue? in
+                    guard let variant = CatalogVariantKind(rawValue: row["variant"]) else { return nil }
+                    return ManualCardValue(
+                        cardID: row["cardID"], variant: variant,
+                        currencyCode: row["currencyCode"], amount: row["amount"],
+                        preferredOverMarket: row["preferredOverMarket"], updatedAt: row["updatedAt"]
+                    )
+                }
+        }
+    }
+
+    func saveManualValue(_ value: ManualCardValue) async throws {
+        guard value.isValid else { throw CollectionRepositoryError.invalidImport }
+        try await database.queue.write { database in
+            try database.execute(
+                sql: """
+                INSERT INTO collectionManualValue (cardID, variant, currencyCode, amount, preferredOverMarket, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cardID, variant, currencyCode) DO UPDATE SET
+                    amount = excluded.amount, preferredOverMarket = excluded.preferredOverMarket,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [value.cardID, value.variant.rawValue, value.currencyCode,
+                            value.amount, value.preferredOverMarket, value.updatedAt]
+            )
+        }
+    }
+
+    func deleteManualValue(cardID: String, variant: CatalogVariantKind, currencyCode: String) async throws {
+        try await database.queue.write { database in
+            try database.execute(
+                sql: "DELETE FROM collectionManualValue WHERE cardID = ? AND variant = ? AND currencyCode = ?",
+                arguments: [cardID, variant.rawValue, currencyCode]
+            )
         }
     }
 
@@ -1015,6 +1067,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 updatedAt: $0["updatedAt"]
             )
         }
+        let manualValues = try Row.fetchAll(
+            database,
+            sql: "SELECT cardID, variant, currencyCode, amount, preferredOverMarket, updatedAt FROM collectionManualValue"
+        ).map {
+            CollectionBackupPayload.ManualValue(
+                cardID: $0["cardID"], variant: $0["variant"], currencyCode: $0["currencyCode"],
+                amount: $0["amount"], preferredOverMarket: $0["preferredOverMarket"], updatedAt: $0["updatedAt"]
+            )
+        }
         return CollectionBackupPayload(
             variants: variants,
             exactPrintings: exactPrintings,
@@ -1022,7 +1083,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             folders: folders,
             metadata: metadata,
             binderPlans: binderPlans,
-            priceChartingMappings: priceChartingMappings
+            priceChartingMappings: priceChartingMappings,
+            manualValues: manualValues
         )
     }
 
@@ -1136,6 +1198,12 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     fields: fields,
                     updatedAt: item.updatedAt
                 )
+            }.sorted { $0.key < $1.key },
+            manualValues: (payload.manualValues ?? []).compactMap { item in
+                guard let variant = CatalogVariantKind(rawValue: item.variant) else { return nil }
+                return ManualCardValue(cardID: item.cardID, variant: variant,
+                                       currencyCode: item.currencyCode, amount: item.amount,
+                                       preferredOverMarket: item.preferredOverMarket, updatedAt: item.updatedAt)
             }.sorted { $0.key < $1.key }
         )
     }
@@ -1207,6 +1275,11 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     fieldsJSON: String(data: try encoder.encode($0.fields), encoding: .utf8) ?? "[]",
                     updatedAt: $0.updatedAt
                 )
+            },
+            manualValues: document.manualValues.map {
+                .init(cardID: $0.cardID, variant: $0.variant.rawValue,
+                      currencyCode: $0.currencyCode, amount: $0.amount,
+                      preferredOverMarket: $0.preferredOverMarket, updatedAt: $0.updatedAt)
             }
         )
     }
@@ -1240,7 +1313,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                   !$0.cardID.isEmpty && $0.fields.count == PriceChartingTransferCodec.headers.count
                       && !$0.productID.isEmpty && $0.productID.allSatisfy(\.isNumber)
               }),
-              Set(document.priceChartingMappings.map(\.key)).count == document.priceChartingMappings.count else {
+              Set(document.priceChartingMappings.map(\.key)).count == document.priceChartingMappings.count,
+              document.manualValues.allSatisfy(\.isValid),
+              Set(document.manualValues.map(\.key)).count == document.manualValues.count else {
             throw CollectionRepositoryError.invalidImport
         }
     }
@@ -1390,6 +1465,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             keyText: { $0 },
             title: { "\($0.cardID) · \($0.variant.displayName)" },
             changeDetail: { "Product ID \($0.productID) → \($1.productID)" }
+        )
+        compare(
+            incoming: Dictionary(uniqueKeysWithValues: incoming.manualValues.map { ($0.key, $0) }),
+            current: Dictionary(uniqueKeysWithValues: current.manualValues.map { ($0.key, $0) }),
+            date: \.updatedAt,
+            category: "Your estimate",
+            keyText: { $0 },
+            title: { "\($0.cardID) · \($0.variant.displayName) · \($0.currencyCode)" },
+            changeDetail: { "\($0.amount) → \($1.amount)" }
         )
         return .init(
             additions: additions,
@@ -1557,6 +1641,21 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 ]
             )
         }
+        let currentManualValues = Dictionary(uniqueKeysWithValues: current.manualValues.map { ($0.key, $0) })
+        for item in incoming.manualValues {
+            if let saved = currentManualValues[item.key], item.updatedAt <= saved.updatedAt { continue }
+            try database.execute(
+                sql: """
+                INSERT INTO collectionManualValue (cardID, variant, currencyCode, amount, preferredOverMarket, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cardID, variant, currencyCode) DO UPDATE SET
+                    amount = excluded.amount, preferredOverMarket = excluded.preferredOverMarket,
+                    updatedAt = excluded.updatedAt
+                """,
+                arguments: [item.cardID, item.variant.rawValue, item.currencyCode,
+                            item.amount, item.preferredOverMarket, item.updatedAt]
+            )
+        }
     }
 
     private static func insertBackup(
@@ -1593,6 +1692,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
         if payload.priceChartingMappings != nil {
             try database.execute(sql: "DELETE FROM priceChartingProduct")
+        }
+        if payload.manualValues != nil {
+            try database.execute(sql: "DELETE FROM collectionManualValue")
         }
 
         for item in payload.variants {
@@ -1689,6 +1791,16 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 VALUES (?, ?, ?, ?)
                 """,
                 arguments: [item.cardID, item.variant, item.fieldsJSON, item.updatedAt]
+            )
+        }
+        for item in payload.manualValues ?? [] {
+            try database.execute(
+                sql: """
+                INSERT INTO collectionManualValue (cardID, variant, currencyCode, amount, preferredOverMarket, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [item.cardID, item.variant, item.currencyCode,
+                            item.amount, item.preferredOverMarket, item.updatedAt]
             )
         }
     }
@@ -1845,6 +1957,15 @@ private struct CollectionBackupPayload: Codable {
         let updatedAt: Date
     }
 
+    struct ManualValue: Codable, Equatable {
+        let cardID: String
+        let variant: String
+        let currencyCode: String
+        let amount: Double
+        let preferredOverMarket: Bool
+        let updatedAt: Date
+    }
+
     let variants: [Variant]
     let exactPrintings: [ExactPrinting]?
     let preferences: [Preference]
@@ -1852,4 +1973,5 @@ private struct CollectionBackupPayload: Codable {
     let metadata: [Metadata]
     let binderPlans: [Plan]?
     let priceChartingMappings: [PriceChartingMapping]?
+    let manualValues: [ManualValue]?
 }
