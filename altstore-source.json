@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.40",
+          "buildVersion": "76",
+          "date": "2026-09-24",
+          "localizedDescription": "Redesigns the Sets dashboard as a compact, full-width header with collection value, artwork, ownership counts, and top-card access.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.40/TallyDex-v0.9.40.ipa",
+          "size": 29784885,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.39",
           "buildVersion": "75",
           "date": "2026-09-24",

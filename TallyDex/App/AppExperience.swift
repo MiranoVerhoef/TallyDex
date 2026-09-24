@@ -52,13 +52,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.39",
-        headline: "A clearer collection dashboard",
+        version: "0.9.40",
+        headline: "A more integrated Sets dashboard",
         notes: [
             AppReleaseNote(
                 systemImage: "chart.bar.fill",
-                title: "Dashboard above Sets",
-                detail: "Collection value and top-priced cards now lead the Sets page, with collection counts just below."
+                title: "Cleaner Sets header",
+                detail: "The collection dashboard now spans the screen as a compact, integrated header above the sets."
             ),
         ]
     )

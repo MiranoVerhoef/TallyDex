@@ -293,23 +293,7 @@ struct SetsView: View {
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    if !dynamicTypeSize.isAccessibilitySize {
-                        HStack {
-                            Image("TallyDexLogo")
-                                .resizable()
-                                .interpolation(.high)
-                                .scaledToFit()
-                                .frame(width: 132, height: 44)
-                                .accessibilityLabel("TallyDex")
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    }
-
-                    catalogList
-                }
+                catalogList
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
@@ -331,7 +315,7 @@ struct SetsView: View {
     private var catalogList: some View {
         List {
             CollectionDashboardView()
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
 
@@ -345,8 +329,8 @@ struct SetsView: View {
                 }
                 .pickerStyle(.segmented)
             }
-            .padding(.top, dynamicTypeSize.isAccessibilitySize ? 4 : 10)
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 14, trailing: 16))
+            .padding(.top, dynamicTypeSize.isAccessibilitySize ? 0 : 2)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 10, trailing: 16))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
 
@@ -396,7 +380,7 @@ struct SetsView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color.clear)
         .refreshable { await catalogStore.refresh() }
@@ -467,113 +451,97 @@ private struct CollectionDashboardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Collection dashboard")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack(alignment: .center) {
+                Image("TallyDexLogo")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: 112, height: 38)
+                    .accessibilityLabel("TallyDex")
+                Spacer()
+                Text("YOUR COLLECTION")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1.3)
+                    .foregroundStyle(.white.opacity(0.62))
+            }
 
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Estimated collection value")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.blue.opacity(0.9))
-                        Text(priceLabel)
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .monospacedDigit()
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Collection value")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.68))
+                    Text(priceLabel)
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                        .foregroundStyle(.white)
+                    Text(priceSubtitle)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(.white.opacity(0.62))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let result = featuredCard {
+                    CachedCardImage(card: result.card)
+                        .frame(width: 56, height: 78)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .rotationEffect(.degrees(5))
+                        .shadow(color: .black.opacity(0.3), radius: 6, y: 4)
+                        .accessibilityHidden(true)
+                }
+            }
+
+            HStack(spacing: 0) {
+                metric("Distinct", value: ownedIDs.count.formatted())
+                metricDivider
+                metric("Copies", value: copyCount.formatted())
+                metricDivider
+                metric("My Sets", value: completionLabel)
+            }
+            .padding(.vertical, 9)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+
+            if let first = rankedValues.first,
+               let result = topCards.first(where: { $0.id == first.id }) {
+                NavigationLink {
+                    TopPricedCardsView(items: rankedValues, cards: topCards, source: source)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Top 10")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text(result.card.name)
+                            .font(.caption.weight(.semibold))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.55)
-                            .foregroundStyle(.white)
-                        Text(priceSubtitle)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.65))
+                        Spacer(minLength: 4)
+                        Text(formattedCatalogPrice(first.amount, currencyCode: source.currencyCode))
+                            .font(.caption.monospacedDigit())
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white.opacity(0.55))
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if let result = featuredCard {
-                        CachedCardImage(card: result.card)
-                            .frame(width: 82, height: 112)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .rotationEffect(.degrees(7))
-                            .shadow(color: .black.opacity(0.35), radius: 10, y: 8)
-                            .accessibilityHidden(true)
-                    } else {
-                        Image(systemName: "rectangle.portrait.on.rectangle.portrait")
-                            .font(.largeTitle)
-                            .foregroundStyle(.white.opacity(0.4))
-                            .frame(width: 82, height: 112)
-                            .accessibilityHidden(true)
-                    }
+                    .foregroundStyle(.white)
+                    .contentShape(Rectangle())
                 }
-
-                if !rankedValues.isEmpty {
-                    Rectangle()
-                        .fill(.white.opacity(0.16))
-                        .frame(height: 1)
-
-                    ForEach(Array(rankedValues.prefix(2).enumerated()), id: \.element.id) { _, item in
-                        if let result = topCards.first(where: { $0.id == item.id }) {
-                            NavigationLink {
-                                CatalogCardDetailView(card: result.card)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    CachedCardImage(card: result.card)
-                                        .frame(width: 27, height: 37)
-                                        .clipShape(RoundedRectangle(cornerRadius: 3))
-                                        .accessibilityHidden(true)
-                                    Text(result.card.name)
-                                        .font(.subheadline.weight(.semibold))
-                                        .lineLimit(1)
-                                    Spacer(minLength: 4)
-                                    Text(formattedCatalogPrice(item.amount, currencyCode: source.currencyCode))
-                                        .font(.subheadline.monospacedDigit())
-                                        .foregroundStyle(.white.opacity(0.75))
-                                }
-                                .foregroundStyle(.white)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    NavigationLink {
-                        TopPricedCardsView(items: rankedValues, cards: topCards, source: source)
-                    } label: {
-                        HStack {
-                            Text("View top 10 cards")
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("dashboard.topCards")
-                }
-            }
-            .padding(18)
-            .background(
-                LinearGradient(
-                    colors: [Color(red: 0.18, green: 0.20, blue: 0.24), Color(red: 0.12, green: 0.14, blue: 0.17)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: 22)
-            )
-
-            HStack(spacing: 8) {
-                metric("Distinct", value: ownedIDs.count.formatted(), symbol: "square.stack")
-                metric("Copies", value: copyCount.formatted(), symbol: "square.on.square")
-                metric("My Sets", value: completionLabel, symbol: "checkmark.circle")
-            }
-            if pricesLoaded && valueSummary.missingVariants > 0 {
-                Text("\(valueSummary.missingVariants) owned printings have no exact \(source.displayName) price.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if failedSetCount > 0 {
-                Text("My Sets progress is unavailable for \(failedSetCount) set\(failedSetCount == 1 ? "" : "s").")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("dashboard.topCards")
+                .accessibilityHint("Shows the top 10 priced cards")
             }
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.14, green: 0.19, blue: 0.27), Color(red: 0.10, green: 0.13, blue: 0.19)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .task(id: refreshKey) { await refresh() }
     }
 
@@ -595,30 +563,37 @@ private struct CollectionDashboardView: View {
     }
 
     private var priceSubtitle: String {
+        if priceLoadFailed { return "Prices unavailable" }
         if pricesLoaded && !ownedIDs.isEmpty && valueSummary.pricedVariants == 0 {
-            return "No exact \(source.displayName) prices yet"
+            return "No exact \(source.displayName) prices"
         }
-        return "\(source.displayName) · owned copies"
+        if pricesLoaded && valueSummary.missingVariants > 0 {
+            return "\(source.displayName) · \(valueSummary.missingVariants) unpriced"
+        }
+        return "\(source.displayName) estimate"
     }
 
-    private func metric(_ title: String, value: String, symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.blue)
+    private var metricDivider: some View {
+        Rectangle()
+            .fill(.white.opacity(0.13))
+            .frame(width: 1, height: 27)
+    }
+
+    private func metric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.58))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             Text(value)
-                .font(.subheadline.weight(.bold).monospacedDigit())
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 10)
     }
 
     private func refresh() async {

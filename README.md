@@ -794,6 +794,11 @@ Completed in v0.9.39:
 - Moves the collection dashboard to the top of Sets and presents collection value and top-priced cards in a focused hero card.
 - Keeps distinct cards, copies, and My Sets progress directly beneath it, and avoids showing a false €0 value when exact prices are unavailable.
 
+Completed in v0.9.40:
+
+- Replaces the stacked dashboard cards with a compact, edge-to-edge Sets header containing value, artwork, collection counts, and a top-priced-card shortcut.
+- Removes the excess top spacing and keeps Sets browsing directly beneath the header.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),
