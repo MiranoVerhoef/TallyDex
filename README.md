@@ -804,6 +804,11 @@ Completed in v0.9.40:
 - Replaces the stacked dashboard cards with a compact, edge-to-edge Sets header containing value, artwork, collection counts, and a top-priced-card shortcut.
 - Removes the excess top spacing and keeps Sets browsing directly beneath the header.
 
+Completed in v0.9.41:
+
+- Rounds the compact Sets dashboard while retaining the original illustrated TallyDex logo.
+- Makes Collection Manager include individually tracked printings in owned filters and quantities; browser edits preserve those printings rather than adding duplicate broad copies.
+
 Supplemental cover sources:
 
 - Trick or Trade logos: the respective [2022](https://www.pokellector.com/Trick-or-Trade-Collection/),

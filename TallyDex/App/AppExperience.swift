@@ -52,13 +52,18 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.40",
-        headline: "A more integrated Sets dashboard",
+        version: "0.9.41",
+        headline: "Collection Manager ownership fix",
         notes: [
             AppReleaseNote(
                 systemImage: "chart.bar.fill",
-                title: "Cleaner Sets header",
-                detail: "The collection dashboard now spans the screen as a compact, integrated header above the sets."
+                title: "Rounded Sets header",
+                detail: "The compact dashboard now has rounded corners and keeps the original TallyDex logo."
+            ),
+            AppReleaseNote(
+                systemImage: "checkmark.circle.fill",
+                title: "Owned cards in Collection Manager",
+                detail: "Individually tracked printings now appear as owned, with safer browser quantity controls."
             ),
         ]
     )

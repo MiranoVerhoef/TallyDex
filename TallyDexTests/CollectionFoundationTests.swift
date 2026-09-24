@@ -1757,6 +1757,54 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(object["showMarket"] as? Bool, true)
     }
 
+    @MainActor
+    func testCollectionManagerShowsBroadAndExactOwnershipWithoutDuplicatingEdits() throws {
+        let timestamp = Date(timeIntervalSince1970: 1_000_000)
+        let cardID = "sv-test-001"
+        let exactOnlyID = "sv-test-002"
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: timestamp,
+            appVersion: "Test",
+            ownership: [
+                .init(cardID: cardID, variant: .normal, quantity: 2, updatedAt: timestamp)
+            ],
+            setPreferences: [],
+            folders: [],
+            cardMetadata: [],
+            exactOwnership: [
+                .init(cardID: cardID, printingID: "normal-printing", variant: .normal, quantity: 1, updatedAt: timestamp),
+                .init(cardID: cardID, printingID: "holo-printing", variant: .holo, quantity: 1, updatedAt: timestamp),
+                .init(cardID: exactOnlyID, printingID: "exact-only", variant: .normal, quantity: 1, updatedAt: timestamp)
+            ]
+        )
+        let response = LocalCollectionSharingController.cardsDTO(
+            results: [
+                .init(card: card(id: cardID, number: "001"), setName: "Test Set"),
+                .init(card: card(id: exactOnlyID, number: "002"), setName: "Test Set")
+            ],
+            variantsByCardID: [cardID: [.normal]],
+            document: document,
+            mayBeTruncated: false
+        )
+
+        let result = try XCTUnwrap(response.cards.first)
+        XCTAssertTrue(result.owned)
+        let normal = try XCTUnwrap(result.variants.first { $0.id == CatalogVariantKind.normal.rawValue })
+        let holo = try XCTUnwrap(result.variants.first { $0.id == CatalogVariantKind.holo.rawValue })
+        XCTAssertEqual(normal.quantity, 3)
+        XCTAssertEqual(normal.exactQuantity, 1)
+        XCTAssertEqual(holo.quantity, 1)
+        XCTAssertEqual(holo.exactQuantity, 1)
+        let exactOnly = try XCTUnwrap(response.cards.first { $0.id == exactOnlyID })
+        XCTAssertTrue(exactOnly.owned)
+        XCTAssertEqual(exactOnly.variants.first?.quantity, 1)
+        XCTAssertEqual(exactOnly.variants.first?.exactQuantity, 1)
+        XCTAssertEqual(LocalCollectionSharingController.broadQuantity(forTotal: 3, exactQuantity: 1), 2)
+        XCTAssertNil(LocalCollectionSharingController.broadQuantity(forTotal: 0, exactQuantity: 1))
+    }
+
     private func card(id: String, number: String) -> CatalogCard {
         CatalogCard(
             id: id,

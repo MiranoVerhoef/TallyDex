@@ -267,6 +267,7 @@ struct LocalSharingVariantDTO: Encodable, Sendable {
     let id: String
     let name: String
     let quantity: Int
+    let exactQuantity: Int
 }
 
 struct LocalSharingCardDTO: Encodable, Sendable {
@@ -328,6 +329,12 @@ struct LocalSharingMarketDTO: Encodable, Sendable {
 private struct LocalSharingQuantityUpdate: Decodable {
     let variant: String
     let quantity: Int
+}
+
+private struct LocalSharingQuantityResponse: Encodable {
+    let saved: Bool
+    let quantity: Int
+    let exactQuantity: Int
 }
 
 private struct LocalSharingMetadataUpdate: Decodable {
@@ -742,9 +749,25 @@ final class LocalCollectionSharingController {
                   update.quantity <= 999
             else { return .error("Invalid quantity update.", statusCode: 400) }
             do {
-                try await collectionStore.setQuantity(update.quantity, cardID: cardID, variant: variant)
+                let exactQuantity = collectionStore.exactOwnedEntries
+                    .filter { $0.cardID == cardID && $0.variant == variant }
+                    .reduce(0) { $0 + $1.quantity }
+                guard let broadQuantity = Self.broadQuantity(
+                    forTotal: update.quantity,
+                    exactQuantity: exactQuantity
+                ) else {
+                    return .error(
+                        "This card has \(exactQuantity) individually tracked printing(s). Remove those in the iPhone app first.",
+                        statusCode: 409
+                    )
+                }
+                try await collectionStore.setQuantity(broadQuantity, cardID: cardID, variant: variant)
                 editCount += 1
-                return .json(["saved": true])
+                return .json(LocalSharingQuantityResponse(
+                    saved: true,
+                    quantity: update.quantity,
+                    exactQuantity: exactQuantity
+                ))
             } catch {
                 return .error("The quantity couldn’t be saved.", statusCode: 500)
             }
@@ -773,17 +796,32 @@ final class LocalCollectionSharingController {
         request.cookies["tallydex_session"] == sessionToken && !sessionToken.isEmpty
     }
 
-    private static func cardsDTO(
+    static func broadQuantity(forTotal total: Int, exactQuantity: Int) -> Int? {
+        guard total >= exactQuantity else { return nil }
+        return total - exactQuantity
+    }
+
+    static func cardsDTO(
         results: [CatalogCardSearchResult],
         variantsByCardID: [String: Set<CatalogVariantKind>],
         document: PortableCollectionDocument,
         mayBeTruncated: Bool
     ) -> LocalSharingCardsDTO {
-        let ownership = Dictionary(grouping: document.ownership, by: \.cardID)
+        let broadOwnership = Dictionary(grouping: document.ownership, by: \.cardID)
+        let exactOwnership = Dictionary(grouping: document.exactOwnership, by: \.cardID)
         let metadata = Dictionary(uniqueKeysWithValues: document.cardMetadata.map { ($0.cardID, $0) })
         let cards = results.map { result in
-            let owned = ownership[result.card.id] ?? []
-            let quantities = Dictionary(uniqueKeysWithValues: owned.map { ($0.variant, $0.quantity) })
+            let broad = broadOwnership[result.card.id] ?? []
+            let exact = exactOwnership[result.card.id] ?? []
+            var quantities: [CatalogVariantKind: Int] = [:]
+            var exactQuantities: [CatalogVariantKind: Int] = [:]
+            for entry in broad {
+                quantities[entry.variant, default: 0] += entry.quantity
+            }
+            for entry in exact {
+                quantities[entry.variant, default: 0] += entry.quantity
+                exactQuantities[entry.variant, default: 0] += entry.quantity
+            }
             var knownVariants = variantsByCardID[result.card.id] ?? []
             knownVariants.formUnion(quantities.keys)
             if knownVariants.isEmpty { knownVariants = [.normal] }
@@ -800,7 +838,8 @@ final class LocalCollectionSharingController {
                     LocalSharingVariantDTO(
                         id: $0.rawValue,
                         name: $0.displayName,
-                        quantity: quantities[$0, default: 0]
+                        quantity: quantities[$0, default: 0],
+                        exactQuantity: exactQuantities[$0, default: 0]
                     )
                 },
                 wishlisted: cardMetadata?.isWishlisted ?? false,
@@ -970,8 +1009,8 @@ final class LocalCollectionSharingController {
         function renderSetList(){const query=document.querySelector('#set-search').value.trim().toLowerCase();const filtered=state.sets.filter(set=>(state.setScope==='all'||set.category===state.setScope)&&(!query||(set.name+' '+set.seriesName).toLowerCase().includes(query)));const groups=new Map();filtered.forEach(set=>{if(!groups.has(set.seriesName))groups.set(set.seriesName,[]);groups.get(set.seriesName).push(set);});document.querySelector('#set-list').innerHTML=[...groups].map(([series,sets])=>`<section class="set-group"><h3>${esc(series)}</h3>${sets.map(set=>`<button type="button" class="set-option" data-set-id="${esc(set.id)}"><span><strong>${esc(set.name)}</strong><small>${esc(series)}</small></span><span class="set-date">${esc(set.releaseDate||'Date unknown')}</span></button>`).join('')}</section>`).join('')||'<div class="empty compact">No sets match this search.</div>';}
         function visible(){const query=state.loadedSetID?document.querySelector('#within-set-search').value.trim().toLocaleLowerCase():'';return state.cards.filter(card=>(state.filter==='all'||(state.filter==='owned'&&card.owned)||(state.filter==='missing'&&!card.owned))&&(!query||(card.name+' '+card.number).toLocaleLowerCase().includes(query)));}
         function render(){const root=document.querySelector('#cards');root.innerHTML=visible().map(card=>`<article class="card" data-id="${esc(card.id)}"><div class="cardtop">${card.imageURL?`<img loading="lazy" src="${esc(card.imageURL)}" alt="${esc(card.name)}">`:'<div class="placeholder">TD</div>'}<div class="card-copy"><h2 title="${esc(card.name)}">${esc(card.name)}</h2><p title="${esc(card.setName)} · #${esc(card.number)}">${esc(card.setName)} · #${esc(card.number)}</p></div></div><div class="variants">${card.variants.map(v=>variantHTML(card,v)).join('')}</div>${state.showDetails||state.showMarket?`<div class="card-actions">${state.showDetails?`<button type="button" class="metadata-button" data-edit-meta title="Edit wishlist and notes"><span class="action-icon">${card.wishlisted?'♥':'♡'}</span><span class="action-copy"><strong>Details</strong><small>${card.notes?'Notes added':card.wishlisted?'Wishlisted':'Wishlist & notes'}</small></span></button>`:''}${state.showMarket?`<button type="button" class="market-button" data-open-market title="Open Cardmarket prices and history"><span class="action-icon">€</span><span class="action-copy"><strong>Market</strong><small>Prices & history</small></span></button>`:''}</div>`:''}</article>`).join('')||'<div class="empty">No cards match this filter.</div>';}
-        function variantHTML(card,v){if(state.multiple)return `<div class="variant"><span>${esc(v.name)}</span><div class="stepper"><button data-step="-1" data-variant="${esc(v.id)}" aria-label="Remove one">−</button><strong data-quantity="${esc(v.id)}">${v.quantity}</strong><button data-step="1" data-variant="${esc(v.id)}" aria-label="Add one">+</button></div></div>`;return `<label class="variant check"><span>${esc(v.name)}</span><input type="checkbox" data-check data-variant="${esc(v.id)}" ${v.quantity>0?'checked':''}></label>`;}
-        async function setQuantity(card,variant,quantity){quantity=Math.max(0,Math.min(999,quantity));await api('/api/cards/'+encodeURIComponent(card.id)+'/quantity',{method:'POST',body:JSON.stringify({variant,quantity})});const item=card.variants.find(v=>v.id===variant);item.quantity=quantity;card.owned=card.variants.some(v=>v.quantity>0);toast('Saved '+card.name);if(state.filter!=='all')render();}
+        function variantHTML(card,v){const exact=v.exactQuantity||0,note=exact>0?'<small class="exact-note">Exact printing tracked in app</small>':'';if(state.multiple)return `<div class="variant"><span>${esc(v.name)}${note}</span><div class="stepper"><button data-step="-1" data-variant="${esc(v.id)}" aria-label="Remove one" ${v.quantity<=exact?'disabled':''}>−</button><strong data-quantity="${esc(v.id)}">${v.quantity}</strong><button data-step="1" data-variant="${esc(v.id)}" aria-label="Add one">+</button></div></div>`;return `<label class="variant check"><span>${esc(v.name)}${note}</span><input type="checkbox" data-check data-variant="${esc(v.id)}" ${v.quantity>0?'checked':''} ${exact>0?'disabled':''}></label>`;}
+        async function setQuantity(card,variant,quantity){quantity=Math.max(0,Math.min(999,quantity));const saved=await api('/api/cards/'+encodeURIComponent(card.id)+'/quantity',{method:'POST',body:JSON.stringify({variant,quantity})});const item=card.variants.find(v=>v.id===variant);item.quantity=saved.quantity;item.exactQuantity=saved.exactQuantity;card.owned=card.variants.some(v=>v.quantity>0);render();toast('Saved '+card.name);}
         function openMetadata(card){state.metadataCardID=card.id;document.querySelector('#metadata-title').textContent=card.name;document.querySelector('#metadata-subtitle').textContent=card.setName+' · #'+card.number;document.querySelector('#metadata-wishlist').checked=card.wishlisted;document.querySelector('#metadata-notes').value=card.notes;document.querySelector('#metadata-dialog').showModal();}
         function applyLayout(){const columns=document.querySelector('#grid-columns').value,spacing=document.querySelector('#grid-spacing').value,root=document.querySelector('#cards');root.style.setProperty('--grid-columns',columns==='auto'?'repeat(auto-fill,minmax(280px,1fr))':`repeat(${columns},minmax(0,1fr))`);root.dataset.spacing=spacing;}
         async function saveLayout(){applyLayout();try{await api('/api/browser-layout',{method:'POST',body:JSON.stringify({columns:document.querySelector('#grid-columns').value,spacing:document.querySelector('#grid-spacing').value,showDetails:state.showDetails,showMarket:state.showMarket})});}catch(err){toast(err.message,true);}}
@@ -994,8 +1033,8 @@ final class LocalCollectionSharingController {
         document.querySelector('#set-search').oninput=renderSetList;document.querySelector('.set-scopes').onclick=e=>{const button=e.target.closest('[data-set-scope]');if(!button)return;state.setScope=button.dataset.setScope;document.querySelectorAll('[data-set-scope]').forEach(b=>b.classList.toggle('active',b===button));renderSetList();};
         document.querySelector('#set-list').onclick=e=>{const option=e.target.closest('[data-set-id]');if(!option)return;const set=state.sets.find(item=>item.id===option.dataset.setId);state.selectedSetID=set.id;document.querySelector('#selected-set').textContent=set.seriesName+' · '+set.name;document.querySelector('#search').value='';document.querySelector('#set-dialog').close();load();};
         document.querySelector('.filters').onclick=e=>{const button=e.target.closest('[data-filter]');if(!button)return;state.filter=button.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>b.classList.toggle('active',b===button));render();};
-        document.querySelector('#cards').addEventListener('click',async e=>{const article=e.target.closest('.card');if(!article)return;const card=state.cards.find(c=>c.id===article.dataset.id);try{const step=e.target.closest('[data-step]');if(step){const item=card.variants.find(v=>v.id===step.dataset.variant);await setQuantity(card,item.id,item.quantity+Number(step.dataset.step));article.querySelector(`[data-quantity="${CSS.escape(item.id)}"]`).textContent=item.quantity;return;}if(e.target.closest('[data-edit-meta]')){openMetadata(card);return;}if(e.target.closest('[data-open-market]'))openMarket(card);}catch(err){toast(err.message,true);render();}});
-        document.querySelector('#cards').addEventListener('change',async e=>{if(!e.target.matches('[data-check]'))return;const article=e.target.closest('.card'),card=state.cards.find(c=>c.id===article.dataset.id);try{await setQuantity(card,e.target.dataset.variant,e.target.checked?1:0);}catch(err){toast(err.message,true);render();}});
+        document.querySelector('#cards').addEventListener('click',async e=>{const article=e.target.closest('.card');if(!article)return;const card=state.cards.find(c=>c.id===article.dataset.id);try{const step=e.target.closest('[data-step]');if(step){const item=card.variants.find(v=>v.id===step.dataset.variant);await setQuantity(card,item.id,item.quantity+Number(step.dataset.step));return;}if(e.target.closest('[data-edit-meta]')){openMetadata(card);return;}if(e.target.closest('[data-open-market]'))openMarket(card);}catch(err){toast(err.message,true);await load();}});
+        document.querySelector('#cards').addEventListener('change',async e=>{if(!e.target.matches('[data-check]'))return;const article=e.target.closest('.card'),card=state.cards.find(c=>c.id===article.dataset.id);try{await setQuantity(card,e.target.dataset.variant,e.target.checked?1:0);}catch(err){toast(err.message,true);await load();}});
         document.querySelector('#save-metadata').onclick=async()=>{const card=state.cards.find(c=>c.id===state.metadataCardID);if(!card)return;const wishlisted=document.querySelector('#metadata-wishlist').checked,notes=document.querySelector('#metadata-notes').value;try{await api('/api/cards/'+encodeURIComponent(card.id)+'/metadata',{method:'POST',body:JSON.stringify({wishlisted,notes})});card.wishlisted=wishlisted;card.notes=notes;document.querySelector('#metadata-dialog').close();render();toast('Wishlist and notes saved');}catch(err){toast(err.message,true);}};
         document.querySelector('#grid-columns').onchange=saveLayout;document.querySelector('#grid-spacing').onchange=saveLayout;document.querySelector('[data-close-market]').onclick=()=>document.querySelector('#market-dialog').close();
         document.querySelectorAll('dialog').forEach(dialog=>dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();}));
@@ -1010,6 +1049,9 @@ final class LocalCollectionSharingController {
 
     private static let editorCSS = """
     header{display:flex;justify-content:space-between;align-items:center;padding:1rem 4vw;background:white;position:sticky;top:0;z-index:5;box-shadow:0 2px 20px #102a4320}header small{color:#66758a}.secure{font-weight:700;color:#18794e;background:#def7e7;padding:.55rem .8rem;border-radius:999px}.editor{width:min(94%,1400px);margin:1.5rem auto}.toolbar{display:flex;gap:1rem;align-items:end;background:white;padding:1rem;border-radius:18px}.grow{flex:1}.field label{margin-top:0}.select-button{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;background:white;color:#14213d;border:1px solid #cad2df;font-weight:500;padding:.8rem}.statusbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:1rem 0;color:#536277}.view-tools{display:flex;align-items:center;gap:.7rem;margin-left:auto}.view-tools label{display:flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:700;white-space:nowrap}.view-tools select{width:auto;padding:.5rem 2rem .5rem .65rem}.filters,.set-scopes,.range-picker{display:flex;background:#e2e7ef;border-radius:12px;padding:3px}.filters button,.set-scopes button,.range-picker button{background:transparent;color:#344054;padding:.55rem .9rem}.filters button.active,.set-scopes button.active,.range-picker button.active{background:white;color:#087fe8;box-shadow:0 2px 7px #1112}.cards{--grid-columns:repeat(4,minmax(0,1fr));--card-gap:1rem;--card-padding:1rem;display:grid;grid-template-columns:var(--grid-columns);grid-auto-rows:1fr;gap:var(--card-gap);align-items:stretch}.cards[data-spacing="compact"]{--card-gap:.55rem;--card-padding:.7rem}.cards[data-spacing="spacious"]{--card-gap:1.5rem;--card-padding:1.3rem}.card{height:100%;display:flex;flex-direction:column;background:white;border-radius:20px;padding:var(--card-padding);box-shadow:0 7px 26px #102a4312;min-width:0}.cardtop{display:flex;gap:1rem;align-items:center;min-height:103px}.cardtop>div:last-child{min-width:0}.cardtop img,.placeholder{flex:none;width:74px;height:103px;object-fit:contain;border-radius:8px;background:#edf1f7}.placeholder{display:grid;place-items:center;font-weight:900;color:#087fe8}.card h2{font-size:1.1rem;margin:0 0 .35rem;overflow-wrap:anywhere}.card p{margin:0;color:#6b778c;overflow-wrap:anywhere}.variants{margin-top:1rem;border-top:1px solid #e8ebf0}.variant{min-height:48px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e8ebf0}.check input{width:24px;height:24px}.stepper{display:flex;align-items:center;gap:.6rem}.stepper button{width:36px;height:36px;padding:0;font-size:1.3rem}.stepper strong{min-width:2ch;text-align:center}.card-actions{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:auto;padding-top:1rem}.metadata-button,.market-button{width:100%;min-width:0;background:#eef6ff;color:#075fae;display:flex;justify-content:space-between;align-items:flex-start;flex-direction:column;gap:.15rem;text-align:left;padding:.7rem}.metadata-button small,.market-button small{color:#66758a;font-weight:500}.market-button{background:#fff5d6;color:#725200}.sheet{width:min(92vw,760px);max-height:86vh;border:0;border-radius:24px;padding:0;box-shadow:0 30px 100px #102a4355}.sheet::backdrop{background:#102a4366;backdrop-filter:blur(3px)}.dialog-shell{padding:1.25rem}.dialog-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.dialog-heading h2{margin:0}.dialog-heading p{margin:.35rem 0 1rem;color:#66758a}.icon-button{flex:none;width:42px;height:42px;padding:0;border-radius:50%;font-size:1.6rem;background:#edf1f7;color:#344054}.set-scopes{margin:1rem 0;overflow-x:auto}.set-scopes button{white-space:nowrap}.set-list{max-height:55vh;overflow:auto;padding-right:.3rem}.set-group{margin:0 0 1rem}.set-group h3{position:sticky;top:0;margin:0;padding:.65rem .25rem;background:white;color:#536277;font-size:.9rem;text-transform:uppercase;letter-spacing:.04em}.set-option{width:100%;display:flex;justify-content:space-between;align-items:center;gap:1rem;text-align:left;background:white;color:#14213d;border-top:1px solid #e8ebf0;border-radius:0;padding:.8rem .25rem}.set-option span:first-child{display:flex;flex-direction:column;gap:.15rem}.set-option small,.set-date{color:#66758a;font-weight:500}.set-date{white-space:nowrap}.metadata-sheet{width:min(92vw,560px)}.metadata-sheet label{display:block;font-weight:700;margin:1rem 0 .4rem}.wish{display:flex!important;align-items:center;gap:.65rem}.wish input{width:24px;height:24px}.metadata-sheet textarea{min-height:150px;resize:vertical}.dialog-actions{display:flex;justify-content:flex-end;gap:.7rem;margin-top:1rem}.secondary{background:#e8edf4;color:#344054}.market-sheet{width:min(94vw,900px)}.market-controls{display:flex;justify-content:space-between;align-items:end;gap:1rem;margin-bottom:1rem}.market-controls label{font-weight:700}.market-controls select{margin-top:.35rem}.quote-panel{background:#f5f8fc;border-radius:18px;padding:1rem;display:grid;grid-template-columns:minmax(150px,.7fr) minmax(320px,1.5fr);gap:1rem;align-items:center}.quote-panel>div:first-child{display:flex;flex-direction:column;gap:.25rem}.quote-panel>div:first-child>strong{font-size:2rem}.quote-panel span,.summary-grid span{color:#66758a;font-size:.85rem}.quote-panel small,.summary-grid small{color:#66758a}.averages{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}.averages div,.summary-grid div{display:flex;flex-direction:column;gap:.2rem;background:white;border-radius:12px;padding:.75rem}.market-link{grid-column:1/-1;color:#075fae;font-weight:700;text-decoration:none}.history-heading{display:flex;justify-content:space-between;align-items:end;margin:1.3rem 0 .4rem}.history-heading h3{margin:0}.history-heading p{margin:.25rem 0 0;color:#66758a}.chart{background:#f5f8fc;border-radius:16px;padding:.5rem}.chart svg{display:block;width:100%;height:auto;max-height:290px;overflow:visible}.chart line{stroke:#b8c4d4;stroke-width:1}.chart text{fill:#66758a;font-size:13px}.chart-area{fill:#cfe8ff;stroke:none}.chart-line{fill:none;stroke:#087fe8;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}.chart circle{fill:white;stroke:#087fe8;stroke-width:3}.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-top:.8rem}.summary-grid strong{font-size:1.15rem}.up{color:#18794e}.down{color:#b42318}.market-note{color:#66758a;font-size:.85rem;line-height:1.45}.market-empty{min-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;text-align:center;color:#66758a}.market-empty strong{font-size:1.1rem;color:#344054}.market-empty.compact{min-height:auto;padding:1.2rem;background:#f5f8fc;border-radius:16px}#toast{position:fixed;right:1rem;bottom:1rem;background:#14213d;color:white;padding:.8rem 1rem;border-radius:12px;opacity:0;transform:translateY(20px);transition:.2s;pointer-events:none;z-index:20}#toast.show{opacity:1;transform:none}#toast.bad{background:#b42318}.loader{width:42px;height:42px;border:5px solid #d8e9fb;border-top-color:#087fe8;border-radius:50%;animation:spin .8s linear infinite;margin:4rem auto}.empty{text-align:center;color:#66758a;padding:4rem}.empty.compact{padding:2rem}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:900px){.statusbar{flex-wrap:wrap}.view-tools{order:3;width:100%;margin:0}.quote-panel{grid-template-columns:1fr}.market-link{grid-column:auto}}@media(max-width:700px){.toolbar{flex-direction:column;align-items:stretch}.statusbar{align-items:flex-start;flex-direction:column}.view-tools{align-items:flex-start;flex-wrap:wrap}.cards{grid-template-columns:1fr}.secure{font-size:.8rem}.set-date{display:none}.card-actions{grid-template-columns:1fr}.market-controls{align-items:stretch;flex-direction:column}.range-picker{width:100%}.range-picker button{flex:1}.averages,.summary-grid{grid-template-columns:1fr 1fr}}
+    .exact-note{display:block;color:#66758a;font-size:.72rem;line-height:1.2;margin-top:.15rem}
+    .stepper button:disabled{opacity:.4}
+    .check input:disabled{opacity:.7}
     .cards{grid-auto-rows:auto;align-items:stretch}
     .card{height:auto;container-type:inline-size;border:1px solid #e4e9f1;border-radius:18px;box-shadow:0 8px 24px #102a4310;transition:transform .16s ease,box-shadow .16s ease}
     .card:hover{transform:translateY(-2px);box-shadow:0 12px 30px #102a431a}

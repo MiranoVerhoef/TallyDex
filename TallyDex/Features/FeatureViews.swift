@@ -540,8 +540,11 @@ private struct CollectionDashboardView: View {
                 colors: [Color(red: 0.14, green: 0.19, blue: 0.27), Color(red: 0.10, green: 0.13, blue: 0.19)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
-            )
+            ),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
+        .padding(.horizontal, 10)
+        .padding(.top, 8)
         .task(id: refreshKey) { await refresh() }
     }
 

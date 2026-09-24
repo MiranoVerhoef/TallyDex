@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.41",
+          "buildVersion": "77",
+          "date": "2026-09-24",
+          "localizedDescription": "Rounds the compact Sets dashboard while retaining the original logo, and fixes Collection Manager ownership for individually tracked printings.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.41/TallyDex-v0.9.41.ipa",
+          "size": 29787360,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.40",
           "buildVersion": "76",
           "date": "2026-09-24",
