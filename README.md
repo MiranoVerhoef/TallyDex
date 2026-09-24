@@ -112,6 +112,11 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 
 ### Before public release
 
+- [ ] Keep an in-app history of What’s New entries starting with the public
+  release. Settings → Help & Updates should let people browse past versions at
+  any time, including releases they skipped. Keep the once-per-update popup for
+  the newest version, store the history with the app so it works offline, and
+  verify version ordering and accessibility in tests.
 - [ ] Add a 14-day full-feature trial followed by one permanent lifetime unlock.
   This is deliberately deferred until immediately before public release; current
   development stays focused on bug fixes, reliability, and the learned scanner.
@@ -322,7 +327,7 @@ Completed in v0.9.14:
    the starting Sets view, set organization, appearance, default collection goal,
    and exact copy counts.
 2. Every future app version can present its own What’s New sheet once after update.
-   Release notes are stored by version, and a completed version is not shown again.
+   The current release notes carry a version, and a completed version is not shown again.
 3. Settings → Help & Updates keeps the current What’s New notes available and adds
    Reset Introduction so setup can be replayed without resetting collection data.
 4. Setup now includes a truthful EUR or USD price preference: EUR selects native
