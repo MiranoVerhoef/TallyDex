@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum AppDistributionChannel: String, CaseIterable {
+    case development, testflight, publicRelease = "public"
+
+    static func resolve(_ value: String?) -> Self {
+        Self(rawValue: value ?? "") ?? .development
+    }
+
+    static var current: Self {
+        resolve(Bundle.main.object(forInfoDictionaryKey: "TallyDexDistributionChannel") as? String)
+    }
+
+    var enablesReleaseFeatures: Bool { self != .development }
+}
+
 enum AppExperienceSettings {
     static let introductionCompletedKey = "app.experience.introductionCompleted"
     static let lastSeenReleaseVersionKey = "app.experience.lastSeenReleaseVersion"
@@ -77,21 +91,52 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.42",
-        headline: "Prices and personal estimates",
+        version: "0.9.43",
+        headline: "Make your collection your own",
         notes: [
             AppReleaseNote(
-                systemImage: "eurosign.arrow.circlepath",
-                title: "Both marketplaces",
-                detail: "Show Cardmarket and TCGplayer prices together, with separate links and one source for collection totals."
+                systemImage: "medal",
+                title: "Collector badges",
+                detail: "Earn permanent badges as your collection grows."
             ),
             AppReleaseNote(
-                systemImage: "pencil.line",
-                title: "Your estimates",
-                detail: "Save a private value for an unpriced printing and include it in collection backups."
+                systemImage: "paintpalette",
+                title: "Binder colors",
+                detail: "Choose a background color when creating or editing a binder."
             ),
         ]
     )
+
+    // Add each published release here before replacing `current`. Development
+    // releases deliberately do not become part of the public update archive.
+    static let publishedArchive: [AppRelease] = []
+
+    static func history(channel: AppDistributionChannel, current: AppRelease = current,
+                        archive: [AppRelease] = publishedArchive) -> [AppRelease] {
+        guard channel.enablesReleaseFeatures else { return [] }
+        var versions = Set<String>()
+        return ([current] + archive).filter { versions.insert($0.version).inserted }
+            .sorted { $0.version.compare($1.version, options: .numeric) == .orderedDescending }
+    }
+}
+
+struct ReleaseHistoryView: View {
+    var body: some View {
+        List {
+            ForEach(AppReleaseNotes.history(channel: .current), id: \.version) { release in
+                NavigationLink {
+                    WhatsNewView(release: release)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Version \(release.version)").font(.headline)
+                        Text(release.headline).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Update History")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 struct IntroductionView: View {

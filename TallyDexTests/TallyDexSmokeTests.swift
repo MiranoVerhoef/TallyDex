@@ -209,13 +209,26 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.42")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.43")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
             AppReleaseNotes.current.notes.count
         )
         XCTAssertTrue(AppReleaseNotes.current.notes.allSatisfy { !$0.detail.isEmpty })
+    }
+
+    func testReleaseFeaturesRequireExplicitDistributionChannel() {
+        XCTAssertEqual(AppDistributionChannel.resolve(nil), .development)
+        XCTAssertEqual(AppDistributionChannel.resolve("invalid"), .development)
+        XCTAssertFalse(AppDistributionChannel.development.enablesReleaseFeatures)
+        XCTAssertTrue(AppDistributionChannel.resolve("testflight").enablesReleaseFeatures)
+        XCTAssertTrue(AppDistributionChannel.resolve("public").enablesReleaseFeatures)
+        XCTAssertTrue(AppReleaseNotes.history(channel: .development).isEmpty)
+        let current = AppRelease(version: "1.10", headline: "Current", notes: [])
+        let previous = AppRelease(version: "1.9", headline: "Previous", notes: [])
+        XCTAssertEqual(AppReleaseNotes.history(channel: .testflight, current: current,
+            archive: [previous, current]).map(\.version), ["1.10", "1.9"])
     }
 
     func testTrialPolicyUsesFourteenDaysAndRejectsClockRollback() {

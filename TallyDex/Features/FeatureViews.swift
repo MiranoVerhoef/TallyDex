@@ -4736,6 +4736,59 @@ struct SearchView: View {
     }
 }
 
+private struct CollectorBadgesView: View {
+    @Environment(CollectionStore.self) private var collectionStore
+
+    private var awards: [CollectorBadge: CollectorBadgeAward] {
+        Dictionary(uniqueKeysWithValues: collectionStore.collectorBadges.map { ($0.badge, $0) })
+    }
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("Earned", value: "\(awards.count) of \(CollectorBadge.allCases.count)")
+            } footer: {
+                Text("TallyDex achievements are earned from your collection. Existing cards count, and earned badges stay yours and travel with collection backups.")
+            }
+            Section("Milestones") {
+                ForEach(CollectorBadge.allCases) { badge in
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(systemName: badge.systemImage)
+                            .font(.title2)
+                            .foregroundStyle(awards[badge] == nil ? Color.secondary : Color.accentColor)
+                            .frame(width: 40, height: 40)
+                            .background(Color.accentColor.opacity(awards[badge] == nil ? 0.04 : 0.12),
+                                        in: RoundedRectangle(cornerRadius: 12))
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(badge.title).font(.headline)
+                            Text(badge.requirement).font(.subheadline).foregroundStyle(.secondary)
+                            if let award = awards[badge] {
+                                Label("Earned \(award.earnedAt.formatted(date: .abbreviated, time: .omitted))",
+                                      systemImage: "checkmark.seal.fill")
+                                    .font(.caption).foregroundStyle(Color.accentColor)
+                            } else {
+                                let progress = badge.progress(in: collectionStore.collectorMilestones)
+                                ProgressView(value: Double(progress), total: Double(badge.target))
+                                Text("\(progress.formatted()) / \(badge.target.formatted())")
+                                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 5)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            if let message = collectionStore.badgeMessage {
+                Section { Text(message).foregroundStyle(.secondary) }
+            }
+        }
+        .navigationTitle("Collector Badges")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await collectionStore.refreshCollectorBadges() }
+        .refreshable { await collectionStore.refreshCollectorBadges() }
+    }
+}
+
 private struct BinderPlanEditorRequest: Identifiable {
     let id = UUID()
     let plan: BinderPlan?
@@ -4853,6 +4906,23 @@ private struct BinderPlannerView: View {
     }
 }
 
+private extension BinderBackgroundColor {
+    var tint: Color {
+        switch self {
+        case .graphite: .secondary
+        case .ivory: .orange
+        case .blue: .blue
+        case .green: .green
+        case .purple: .purple
+        case .red: .red
+        }
+    }
+
+    var surface: Color {
+        self == .graphite ? Color(.secondarySystemFill) : tint.opacity(0.15)
+    }
+}
+
 private struct BinderPlanRow: View {
     let plan: BinderPlan
 
@@ -4860,9 +4930,9 @@ private struct BinderPlanRow: View {
         HStack(spacing: 12) {
             Image(systemName: "square.grid.3x3.fill")
                 .font(.title2)
-                .foregroundStyle(.indigo)
+                .foregroundStyle(plan.effectiveBackgroundColor.tint)
                 .frame(width: 44, height: 50)
-                .background(.indigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                .background(plan.effectiveBackgroundColor.surface, in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 4) {
                 Text(plan.name).font(.body.weight(.semibold))
                 Text("\(plan.sourceName) · \(plan.pocketLayout.shortName)")
@@ -4890,6 +4960,7 @@ private struct BinderPlanEditorView: View {
     @State private var pocketLayout: BinderPocketLayout
     @State private var includesMissingCards: Bool
     @State private var cardOrder: BinderCardOrder
+    @State private var backgroundColor: BinderBackgroundColor
 
     private var setChoices: [BinderSetChoice] {
         groups.flatMap { group in
@@ -4934,6 +5005,7 @@ private struct BinderPlanEditorView: View {
         _pocketLayout = State(initialValue: plan?.pocketLayout ?? .nine)
         _includesMissingCards = State(initialValue: plan?.includesMissingCards ?? true)
         _cardOrder = State(initialValue: plan?.effectiveCardOrder ?? .setRelease)
+        _backgroundColor = State(initialValue: plan?.effectiveBackgroundColor ?? .graphite)
     }
 
     var body: some View {
@@ -4960,6 +5032,27 @@ private struct BinderPlanEditorView: View {
                     Text("Plan")
                 } footer: {
                     Text("Long-press a saved plan and choose Edit whenever you want to change its layout or card order.")
+                }
+
+                Section("Appearance") {
+                    Picker("Background color", selection: $backgroundColor) {
+                        ForEach(BinderBackgroundColor.allCases) { color in
+                            Label(color.displayName, systemImage: "circle.fill")
+                                .foregroundStyle(color.tint)
+                                .tag(color)
+                        }
+                    }
+                    .accessibilityValue(backgroundColor.displayName)
+                    HStack(spacing: 8) {
+                        ForEach(0..<4, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(.systemBackground).opacity(0.8))
+                                .frame(height: 36)
+                        }
+                    }
+                    .padding(10)
+                    .background(backgroundColor.surface, in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel("\(backgroundColor.displayName) binder preview")
                 }
 
                 Section {
@@ -5023,6 +5116,7 @@ private struct BinderPlanEditorView: View {
             pocketLayout: pocketLayout,
             includesMissingCards: includesMissingCards,
             cardOrder: cardOrder,
+            backgroundColor: backgroundColor,
             createdAt: plan?.createdAt ?? now,
             updatedAt: now
         ))
@@ -5125,7 +5219,8 @@ private struct BinderPlanDetailView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    BinderPageView(items: currentPage, layout: plan.pocketLayout)
+                    BinderPageView(items: currentPage, layout: plan.pocketLayout,
+                                   backgroundColor: plan.effectiveBackgroundColor)
                 }
             }
             .padding()
@@ -5222,6 +5317,7 @@ private struct BinderPlanDetailView: View {
 private struct BinderPageView: View {
     let items: [BinderPocketItem]
     let layout: BinderPocketLayout
+    var backgroundColor: BinderBackgroundColor = .graphite
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 8), count: layout.columns)
@@ -5240,7 +5336,7 @@ private struct BinderPageView: View {
             }
         }
         .padding(10)
-        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .background(backgroundColor.surface, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -5347,6 +5443,25 @@ struct CollectionView: View {
                         }
                         .padding(.vertical, 2)
                     }
+                    NavigationLink {
+                        CollectorBadgesView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "medal.fill")
+                                .font(.title2).foregroundStyle(Color.accentColor)
+                                .frame(width: 44, height: 50)
+                                .background(Color.accentColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Collector Badges").font(.body.weight(.semibold))
+                                Text("Collection milestones")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("\(collectionStore.collectorBadges.count)/\(CollectorBadge.allCases.count)")
+                                .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityIdentifier("collection.badges")
                 }
 
                 if !ownedCardIDs.isEmpty {
@@ -6548,7 +6663,13 @@ struct SettingsView: View {
                     NavigationLink { TipJarView() } label: {
                         Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill")
                     }
-                    NavigationLink { WhatsNewView(release: AppReleaseNotes.current) } label: {
+                    NavigationLink {
+                        if AppDistributionChannel.current.enablesReleaseFeatures {
+                            ReleaseHistoryView()
+                        } else {
+                            WhatsNewView(release: AppReleaseNotes.current)
+                        }
+                    } label: {
                         Label("What’s New", systemImage: "sparkles")
                     }
                     NavigationLink { CatalogIssueReportingView() } label: {

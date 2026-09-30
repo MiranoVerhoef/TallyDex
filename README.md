@@ -44,8 +44,8 @@ excluded from Release builds. Use a separate release-only DerivedData directory
 when packaging an IPA; never package test-run products.
 Local StoreKit tests use `Products.storekit`; the simulator build must be
 ad-hoc signed so the trial anchor can be saved in Keychain. Purchase gating is
-opt-in for Debug with `-AccessGateTesting` and disabled in Release until the
-App Store product and launch policy are ready.
+opt-in for Debug with `-AccessGateTesting`; both configurations otherwise remain
+unlocked unless the explicit TestFlight/public distribution channel is selected.
 
 ## Development releases
 
@@ -113,11 +113,12 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 
 ### Before public release
 
-- [ ] Keep an in-app history of What’s New entries starting with the public
+- [x] Prepare an in-app history of What’s New entries starting with TestFlight/public
   release. Settings → Help & Updates should let people browse past versions at
   any time, including releases they skipped. Keep the once-per-update popup for
   the newest version, store the history with the app so it works offline, and
-  verify version ordering and accessibility in tests.
+  verify version ordering and accessibility in tests. Activation is explicitly
+  deferred to the first TestFlight/public distribution build.
 - [ ] Add a 14-day full-feature trial followed by one permanent lifetime unlock.
   This is deliberately deferred until immediately before public release; current
   development stays focused on bug fixes, reliability, and the learned scanner.
@@ -408,8 +409,9 @@ Completed in v0.9.10:
    resolvable host or submission endpoint yet. First setup and Settings store
    only a future preference; a later release must define the API, privacy
    policy, and fresh opt-in before sending any scan images or corrections.
-3. Immediately before public release, implement the 14-day trial and lifetime
-   unlock, choose whether existing beta users receive lifetime access, test
+3. Trial/lifetime gating and update-history activation are prepared, but inactive
+   in development builds. Before TestFlight/public release, configure real products,
+   choose whether existing beta users receive lifetime access, test
    purchase restore/refund/revocation/offline behavior, add App Store privacy and
    product metadata, and complete a TestFlight release pass. App Store Connect
    product setup and real sandbox purchases require Apple Developer enrollment.
@@ -419,13 +421,12 @@ Completed in v0.9.10:
 - Added a compact dashboard above Sets with collection-wide distinct-card and
   physical-copy counts, My Sets goal completion, collection value, and an
   expandable top-10 priced-card ranking.
-- Add TallyDex-exclusive collector badges earned from verifiable collection
-  milestones; define the badge catalogue and thresholds before implementation.
+- Collector badges now reward eight collection milestones and retain earned awards
+  in backups and imports.
 - Collection Manager now has search within the loaded set, independent controls
   to hide/show Details and Market actions, and paired-browser import/export
   with preview and rollback protection.
-- Let users choose a binder background color when creating or editing a binder;
-  preserve that choice in backups and imports.
+- Binder editing now offers six background colors, preserved in backups and imports.
 - Make the camera guide a loose scan focus area so a card need not line up exactly
   with its border; verify how candidate selection works before changing capture.
 - Set the intended one-time lifetime unlock price to €9.99. The local StoreKit
@@ -843,6 +844,28 @@ Coverage references (metadata only; no artwork copied):
   establishes August 30, rather than the later date shown by the browsing reference.
 - [TallyDex SVE API](https://tcgdex.tallydex.nl/v2/en/sets/sve) and
   [MEE API](https://tcgdex.tallydex.nl/v2/en/sets/mee): 24 and 16 exact Energy IDs on the development API as of September 22, 2026. The official API still has 8 MEE cards; the additional development records currently lack TCGdex-hosted images.
+
+## Release-only features
+
+Both Debug and Release builds default to `TALLYDEX_DISTRIBUTION_CHANNEL=development`:
+editing remains unlocked and the public update-history archive stays inactive.
+For the first TestFlight or public release, explicitly build with
+`TALLYDEX_DISTRIBUTION_CHANNEL=testflight` or `TALLYDEX_DISTRIBUTION_CHANNEL=public`.
+These channels enable the existing 14-day trial/lifetime-access gate and Settings update history.
+Do not enable them until App Store Connect products and sandbox purchase/restore tests are ready.
+The lifetime product is €9.99; live localized prices always come from StoreKit.
+Trial state is stored in the device Keychain, not a server-backed anti-abuse service.
+
+Keep every published release in `AppReleaseNotes.publishedArchive` before replacing
+`current`. The first published build starts the archive; development versions are
+not presented as public releases. History is bundled, available offline, and sorted
+newest first. Release notes should stay short and professional.
+
+Prepared in v0.9.43:
+
+- Adds eight collector badges with permanent awards and backup/import support.
+- Adds six binder background colors, with existing binders retaining their default appearance.
+- Prepares release-only update history and trial activation; both remain inactive in development builds.
 
 ## Reporting catalog data
 

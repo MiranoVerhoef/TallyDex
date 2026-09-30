@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.43",
+          "buildVersion": "79",
+          "date": "2026-09-30",
+          "localizedDescription": "Adds collector badges and editable binder colors, preserved in backups. Prepares update history and trial controls, inactive until TestFlight or public release.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.43/TallyDex-v0.9.43.ipa",
+          "size": 30247151,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.42",
           "buildVersion": "78",
           "date": "2026-09-24",

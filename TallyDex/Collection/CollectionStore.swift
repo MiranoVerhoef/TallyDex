@@ -13,6 +13,8 @@ final class CollectionStore {
     private(set) var setPreferencesByID: [String: SetCollectionPreference] = [:]
     private(set) var customFolders: [CustomCollectionFolder] = []
     private(set) var binderPlans: [BinderPlan] = []
+    private(set) var collectorBadges: [CollectorBadgeAward] = []
+    private(set) var badgeMessage: String?
     private(set) var cardMetadataByID: [String: CardCollectionMetadata] = [:]
     private(set) var manualValuesByKey: [String: ManualCardValue] = [:]
     private(set) var backups: [CollectionBackup] = []
@@ -321,6 +323,7 @@ final class CollectionStore {
         customFolders.removeAll { $0.id == folder.id }
         customFolders.append(folder)
         sortCustomFolders()
+        await refreshCollectorBadges()
     }
 
     func deleteCustomFolder(id: UUID) async throws {
@@ -335,6 +338,7 @@ final class CollectionStore {
         binderPlans.removeAll { $0.id == plan.id }
         binderPlans.append(plan)
         sortBinderPlans()
+        await refreshCollectorBadges()
     }
 
     func deleteBinderPlan(id: UUID) async throws {
@@ -419,6 +423,7 @@ final class CollectionStore {
             )
         }
         rebuildAggregatedOwnership()
+        await refreshCollectorBadges()
     }
 
     func setPrintingQuantity(
@@ -526,6 +531,7 @@ final class CollectionStore {
         manualValuesByKey = Dictionary(uniqueKeysWithValues: try await manualValues.map { ($0.key, $0) })
         backups = try await savedBackups
         quantitiesByCardID.removeAll()
+        await refreshCollectorBadges()
     }
 
     private func migrateLegacyBinderPlans(using repository: any CollectionRepository) async throws {
@@ -605,6 +611,27 @@ final class CollectionStore {
         exactOwnedEntries.removeAll { $0.cardID == cardID }
         exactOwnedEntries.append(contentsOf: exactForCard.filter { $0.quantity > 0 })
         rebuildAggregatedOwnership()
+        await refreshCollectorBadges()
+    }
+
+    var collectorMilestones: CollectorMilestones {
+        CollectorMilestones(
+            distinctCards: ownedCardIDs.count,
+            exactPrintings: Set(exactOwnedEntries.filter { $0.quantity > 0 }.map(\.id)).count,
+            binderPlans: binderPlans.count,
+            collections: customFolders.count
+        )
+    }
+
+    func refreshCollectorBadges() async {
+        let milestones = collectorMilestones
+        let eligible = CollectorBadge.allCases.filter { $0.progress(in: milestones) == $0.target }
+        do {
+            collectorBadges = try await resolveRepository().awardCollectorBadges(eligible, earnedAt: now())
+            badgeMessage = nil
+        } catch {
+            badgeMessage = "Badges couldn’t be updated. Your collection is saved; try again later."
+        }
     }
 
     private static func aggregateQuantities(

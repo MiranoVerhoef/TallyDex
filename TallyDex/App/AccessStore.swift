@@ -5,17 +5,18 @@ import StoreKit
 import SwiftUI
 
 enum AccessConfiguration {
-    // Leave the public beta unlocked until the real App Store product, pricing,
-    // grandfathering policy, and sandbox purchase flow have been approved.
+    // Normal development builds remain unlocked. Enable deliberately when
+    // preparing the first TestFlight/public build and its real StoreKit products.
     static let lifetimeProductID = "com.miranoverhoef.TallyDex.lifetime"
     static let trialDuration: TimeInterval = 14 * 24 * 60 * 60
     static let productIDs = [lifetimeProductID] + CoffeeTipTier.allCases.map(\.productID)
 
     static var isEnforced: Bool {
 #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("-AccessGateTesting")
+        AppDistributionChannel.current.enablesReleaseFeatures ||
+            ProcessInfo.processInfo.arguments.contains("-AccessGateTesting")
 #else
-        false
+        AppDistributionChannel.current.enablesReleaseFeatures
 #endif
     }
 }

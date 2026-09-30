@@ -206,6 +206,19 @@ final class CollectionDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("collection-v16-binder-colors") { database in
+            try database.alter(table: "binderPlan") { table in
+                table.add(column: "backgroundColor", .text)
+            }
+        }
+
+        migrator.registerMigration("collection-v17-collector-badges") { database in
+            try database.create(table: "collectorBadge") { table in
+                table.column("badgeID", .text).primaryKey()
+                table.column("earnedAt", .datetime).notNull()
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -480,11 +493,35 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 database,
                 sql: """
                 SELECT id, name, sourceKind, sourceID, sourceName, pocketLayout,
-                       includesMissingCards, cardOrder, createdAt, updatedAt
+                       includesMissingCards, cardOrder, backgroundColor, createdAt, updatedAt
                 FROM binderPlan
                 ORDER BY updatedAt DESC, name COLLATE NOCASE, id
                 """
             ).compactMap(Self.binderPlan)
+        }
+    }
+
+    func awardCollectorBadges(_ badges: [CollectorBadge], earnedAt: Date) async throws -> [CollectorBadgeAward] {
+        try await database.queue.write { database in
+            try Self.mergeBadgeAwards(badges.map { .init(badge: $0, earnedAt: earnedAt) }, in: database)
+            return try Self.fetchBadgeAwards(in: database)
+        }
+    }
+
+    private static func fetchBadgeAwards(in database: Database) throws -> [CollectorBadgeAward] {
+        try Row.fetchAll(database, sql: "SELECT badgeID, earnedAt FROM collectorBadge ORDER BY earnedAt, badgeID")
+            .compactMap { row in
+                guard let badge = CollectorBadge(rawValue: row["badgeID"]) else { return nil }
+                return .init(badge: badge, earnedAt: row["earnedAt"])
+            }
+    }
+
+    private static func mergeBadgeAwards(_ awards: [CollectorBadgeAward], in database: Database) throws {
+        for award in awards {
+            try database.execute(sql: """
+                INSERT INTO collectorBadge (badgeID, earnedAt) VALUES (?, ?)
+                ON CONFLICT(badgeID) DO UPDATE SET earnedAt = MIN(earnedAt, excluded.earnedAt)
+                """, arguments: [award.id, award.earnedAt])
         }
     }
 
@@ -809,8 +846,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 sql: """
                 INSERT INTO binderPlan
                     (id, name, sourceKind, sourceID, sourceName, pocketLayout,
-                     includesMissingCards, cardOrder, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     includesMissingCards, cardOrder, backgroundColor, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     sourceKind = excluded.sourceKind,
@@ -819,6 +856,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     pocketLayout = excluded.pocketLayout,
                     includesMissingCards = excluded.includesMissingCards,
                     cardOrder = excluded.cardOrder,
+                    backgroundColor = excluded.backgroundColor,
                     updatedAt = excluded.updatedAt
                 """,
                 arguments: [
@@ -830,6 +868,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     plan.pocketLayout.rawValue,
                     plan.includesMissingCards,
                     plan.cardOrder?.rawValue,
+                    plan.backgroundColor?.rawValue,
                     plan.createdAt,
                     plan.updatedAt,
                 ]
@@ -1039,7 +1078,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             database,
             sql: """
             SELECT id, name, sourceKind, sourceID, sourceName, pocketLayout,
-                   includesMissingCards, cardOrder, createdAt, updatedAt
+                   includesMissingCards, cardOrder, backgroundColor, createdAt, updatedAt
             FROM binderPlan
             """
         ).map {
@@ -1052,6 +1091,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 pocketLayout: $0["pocketLayout"],
                 includesMissingCards: $0["includesMissingCards"],
                 cardOrder: $0["cardOrder"],
+                backgroundColor: $0["backgroundColor"],
                 createdAt: $0["createdAt"],
                 updatedAt: $0["updatedAt"]
             )
@@ -1084,7 +1124,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             metadata: metadata,
             binderPlans: binderPlans,
             priceChartingMappings: priceChartingMappings,
-            manualValues: manualValues
+            manualValues: manualValues,
+            collectorBadges: try fetchBadgeAwards(in: database)
         )
     }
 
@@ -1184,6 +1225,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     pocketLayout: pocketLayout,
                     includesMissingCards: item.includesMissingCards,
                     cardOrder: cardOrder ?? .setRelease,
+                    backgroundColor: item.backgroundColor.flatMap(BinderBackgroundColor.init(rawValue:)) ?? .graphite,
                     createdAt: item.createdAt,
                     updatedAt: item.updatedAt
                 )
@@ -1204,7 +1246,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 return ManualCardValue(cardID: item.cardID, variant: variant,
                                        currencyCode: item.currencyCode, amount: item.amount,
                                        preferredOverMarket: item.preferredOverMarket, updatedAt: item.updatedAt)
-            }.sorted { $0.key < $1.key }
+            }.sorted { $0.key < $1.key },
+            collectorBadges: payload.collectorBadges ?? []
         )
     }
 
@@ -1264,6 +1307,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     pocketLayout: $0.pocketLayout.rawValue,
                     includesMissingCards: $0.includesMissingCards,
                     cardOrder: $0.cardOrder?.rawValue,
+                    backgroundColor: $0.backgroundColor?.rawValue,
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt
                 )
@@ -1280,7 +1324,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 .init(cardID: $0.cardID, variant: $0.variant.rawValue,
                       currencyCode: $0.currencyCode, amount: $0.amount,
                       preferredOverMarket: $0.preferredOverMarket, updatedAt: $0.updatedAt)
-            }
+            },
+            collectorBadges: document.collectorBadges
         )
     }
 
@@ -1315,7 +1360,9 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
               }),
               Set(document.priceChartingMappings.map(\.key)).count == document.priceChartingMappings.count,
               document.manualValues.allSatisfy(\.isValid),
-              Set(document.manualValues.map(\.key)).count == document.manualValues.count else {
+              Set(document.manualValues.map(\.key)).count == document.manualValues.count,
+              Set(document.collectorBadges.map(\.id)).count == document.collectorBadges.count,
+              document.collectorBadges.allSatisfy({ $0.earnedAt.timeIntervalSince1970.isFinite }) else {
             throw CollectionRepositoryError.invalidImport
         }
     }
@@ -1475,6 +1522,21 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             title: { "\($0.cardID) · \($0.variant.displayName) · \($0.currencyCode)" },
             changeDetail: { "\($0.amount) → \($1.amount)" }
         )
+        let savedAwards = Dictionary(uniqueKeysWithValues: current.collectorBadges.map { ($0.id, $0) })
+        for award in incoming.collectorBadges {
+            if let saved = savedAwards[award.id] {
+                if award.earnedAt < saved.earnedAt {
+                    changes += 1
+                    items.append(.init(id: "change|badge|\(award.id)", action: .change,
+                        category: "Collector badge", title: award.badge.title,
+                        detail: "Earlier earned date will be kept"))
+                } else { skipped += 1 }
+            } else {
+                additions += 1
+                items.append(.init(id: "addition|badge|\(award.id)", action: .addition,
+                    category: "Collector badge", title: award.badge.title, detail: "Will be added"))
+            }
+        }
         return .init(
             additions: additions,
             changes: changes,
@@ -1600,13 +1662,14 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 sql: """
                 INSERT INTO binderPlan
                     (id, name, sourceKind, sourceID, sourceName, pocketLayout,
-                     includesMissingCards, cardOrder, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     includesMissingCards, cardOrder, backgroundColor, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET name = excluded.name,
                     sourceKind = excluded.sourceKind, sourceID = excluded.sourceID,
                     sourceName = excluded.sourceName, pocketLayout = excluded.pocketLayout,
                     includesMissingCards = excluded.includesMissingCards,
-                    cardOrder = excluded.cardOrder, updatedAt = excluded.updatedAt
+                    cardOrder = excluded.cardOrder, backgroundColor = excluded.backgroundColor,
+                    updatedAt = excluded.updatedAt
                 """,
                 arguments: [
                     item.id.uuidString,
@@ -1617,6 +1680,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     item.pocketLayout.rawValue,
                     item.includesMissingCards,
                     item.cardOrder?.rawValue,
+                    item.backgroundColor?.rawValue,
                     item.createdAt,
                     item.updatedAt,
                 ]
@@ -1656,6 +1720,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                             item.amount, item.preferredOverMarket, item.updatedAt]
             )
         }
+        try mergeBadgeAwards(incoming.collectorBadges, in: database)
     }
 
     private static func insertBackup(
@@ -1767,8 +1832,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 sql: """
                 INSERT INTO binderPlan
                     (id, name, sourceKind, sourceID, sourceName, pocketLayout,
-                     includesMissingCards, cardOrder, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     includesMissingCards, cardOrder, backgroundColor, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     item.id,
@@ -1779,6 +1844,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                     item.pocketLayout,
                     item.includesMissingCards,
                     item.cardOrder,
+                    item.backgroundColor,
                     item.createdAt,
                     item.updatedAt,
                 ]
@@ -1803,6 +1869,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                             item.amount, item.preferredOverMarket, item.updatedAt]
             )
         }
+        try mergeBadgeAwards(payload.collectorBadges ?? [], in: database)
     }
 
     private static func pruneBackups(in database: Database) throws {
@@ -1860,6 +1927,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             pocketLayout: pocketLayout,
             includesMissingCards: row["includesMissingCards"],
             cardOrder: cardOrder ?? .setRelease,
+            backgroundColor: (row["backgroundColor"] as String?).flatMap(BinderBackgroundColor.init(rawValue:)) ?? .graphite,
             createdAt: row["createdAt"],
             updatedAt: row["updatedAt"]
         )
@@ -1946,6 +2014,7 @@ private struct CollectionBackupPayload: Codable {
         let pocketLayout: String
         let includesMissingCards: Bool
         let cardOrder: String?
+        let backgroundColor: String?
         let createdAt: Date
         let updatedAt: Date
     }
@@ -1974,4 +2043,5 @@ private struct CollectionBackupPayload: Codable {
     let binderPlans: [Plan]?
     let priceChartingMappings: [PriceChartingMapping]?
     let manualValues: [ManualValue]?
+    let collectorBadges: [CollectorBadgeAward]?
 }

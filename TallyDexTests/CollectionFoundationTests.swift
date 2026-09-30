@@ -139,8 +139,10 @@ final class CollectionFoundationTests: XCTestCase {
             JSONSerialization.jsonObject(with: try JSONEncoder().encode([plans[0]])) as? [[String: Any]]
         )
         legacyJSON[0].removeValue(forKey: "cardOrder")
+        legacyJSON[0].removeValue(forKey: "backgroundColor")
         defaults.set(try JSONSerialization.data(withJSONObject: legacyJSON), forKey: BinderPlanStorage.key)
         XCTAssertEqual(BinderPlanStorage.load(from: defaults).first?.effectiveCardOrder, .setRelease)
+        XCTAssertEqual(BinderPlanStorage.load(from: defaults).first?.effectiveBackgroundColor, .graphite)
 
         XCTAssertThrowsError(try BinderPlanStorage.save([
             BinderPlan(
@@ -187,6 +189,7 @@ final class CollectionFoundationTests: XCTestCase {
             pocketLayout: .twelveXL,
             includesMissingCards: true,
             cardOrder: .setRelease,
+            backgroundColor: .blue,
             createdAt: timestamp,
             updatedAt: timestamp
         )
@@ -211,6 +214,7 @@ final class CollectionFoundationTests: XCTestCase {
             pocketLayout: .sixteenXXL,
             includesMissingCards: false,
             cardOrder: .newestRelease,
+            backgroundColor: .red,
             createdAt: original.createdAt,
             updatedAt: timestamp.addingTimeInterval(2)
         )
@@ -222,6 +226,32 @@ final class CollectionFoundationTests: XCTestCase {
         )
         let restoredPlans = try await repository.fetchBinderPlans()
         XCTAssertEqual(restoredPlans, [original])
+    }
+
+    func testBadgeAwardsPersistAcrossExportsAndOlderBackupRestore() async throws {
+        let repository = GRDBCollectionRepository(database: try .inMemory())
+        let now = Date(timeIntervalSince1970: 500)
+        let beforeAwards = try await repository.createBackup(reason: "Before awards", createdAt: now)
+        _ = try await repository.awardCollectorBadges([.firstCard], earnedAt: now)
+        let repeated = try await repository.awardCollectorBadges([.firstCard], earnedAt: now.addingTimeInterval(100))
+        XCTAssertEqual(repeated, [CollectorBadgeAward(badge: .firstCard, earnedAt: now)])
+        let export = try await repository.exportCollection(exportedAt: now, appVersion: "test")
+        XCTAssertEqual(export.collectorBadges, repeated)
+        let destination = GRDBCollectionRepository(database: try .inMemory())
+        try await destination.importCollection(export, mode: .replace, importedAt: now)
+        let imported = try await destination.awardCollectorBadges([], earnedAt: now)
+        XCTAssertEqual(imported, repeated)
+        try await repository.restoreBackup(id: beforeAwards.id, safetyBackupReason: "Restore", restoredAt: now)
+        let retained = try await repository.awardCollectorBadges([], earnedAt: now)
+        XCTAssertEqual(retained, repeated)
+    }
+
+    func testCollectorBadgeMilestonesUseDistinctCardsAndExactPrintings() {
+        let progress = CollectorMilestones(distinctCards: 50, exactPrintings: 24, binderPlans: 1, collections: 2)
+        XCTAssertEqual(CollectorBadge.fiftyCards.progress(in: progress), 50)
+        XCTAssertEqual(CollectorBadge.firstCard.progress(in: progress), 1)
+        XCTAssertEqual(CollectorBadge.printingCollector.progress(in: progress), 24)
+        XCTAssertEqual(CollectorBadge.collectionOrganizer.progress(in: progress), 2)
     }
 
     func testBinderCardOrderSupportsReleaseNameAndPokedexLayouts() {
@@ -676,6 +706,11 @@ final class CollectionFoundationTests: XCTestCase {
         let quantities = try await relaunchedStore.quantities(for: "sv03.5-011")
 
         XCTAssertEqual(quantities[.reverseHolo], 3)
+        XCTAssertEqual(firstStore.collectorMilestones.distinctCards, 1)
+        XCTAssertEqual(firstStore.collectorBadges.map(\.badge), [.firstCard])
+        try await firstStore.setQuantity(0, cardID: "sv03.5-011", variant: .reverseHolo)
+        XCTAssertEqual(firstStore.collectorMilestones.distinctCards, 0)
+        XCTAssertEqual(firstStore.collectorBadges.map(\.badge), [.firstCard])
     }
 
     @MainActor

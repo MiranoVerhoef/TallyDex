@@ -882,6 +882,84 @@ enum BinderCardOrder: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+struct CollectorMilestones: Equatable, Sendable {
+    let distinctCards: Int
+    let exactPrintings: Int
+    let binderPlans: Int
+    let collections: Int
+}
+
+enum CollectorBadge: String, Codable, CaseIterable, Identifiable, Sendable {
+    case firstCard, fiftyCards, hundredCards, fiveHundredCards, thousandCards
+    case printingCollector, firstBinder, collectionOrganizer
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .firstCard: "First Find"
+        case .fiftyCards: "Building Momentum"
+        case .hundredCards: "Century Collector"
+        case .fiveHundredCards: "Growing Library"
+        case .thousandCards: "Thousand Club"
+        case .printingCollector: "Printing Enthusiast"
+        case .firstBinder: "Binder Planner"
+        case .collectionOrganizer: "Collection Curator"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .firstCard: "sparkles"
+        case .fiftyCards: "rectangle.stack"
+        case .hundredCards: "star.circle"
+        case .fiveHundredCards: "books.vertical"
+        case .thousandCards: "trophy"
+        case .printingCollector: "square.on.square"
+        case .firstBinder: "square.grid.3x3"
+        case .collectionOrganizer: "folder"
+        }
+    }
+    var target: Int {
+        switch self {
+        case .firstCard, .firstBinder: 1
+        case .fiftyCards: 50
+        case .hundredCards: 100
+        case .fiveHundredCards: 500
+        case .thousandCards: 1_000
+        case .printingCollector: 25
+        case .collectionOrganizer: 3
+        }
+    }
+    var requirement: String {
+        switch self {
+        case .firstBinder: "Create a binder plan"
+        case .collectionOrganizer: "Create 3 custom collections"
+        case .printingCollector: "Own 25 exact printings"
+        default: "Own \(target.formatted()) distinct card\(target == 1 ? "" : "s")"
+        }
+    }
+    func progress(in milestones: CollectorMilestones) -> Int {
+        let value: Int = switch self {
+        case .firstBinder: milestones.binderPlans
+        case .collectionOrganizer: milestones.collections
+        case .printingCollector: milestones.exactPrintings
+        default: milestones.distinctCards
+        }
+        return min(target, max(0, value))
+    }
+}
+
+struct CollectorBadgeAward: Codable, Equatable, Identifiable, Sendable {
+    let badge: CollectorBadge
+    let earnedAt: Date
+    var id: String { badge.rawValue }
+}
+
+enum BinderBackgroundColor: String, Codable, CaseIterable, Identifiable, Sendable {
+    case graphite, ivory, blue, green, purple, red
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+}
+
 struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let name: String
@@ -891,10 +969,12 @@ struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
     let pocketLayout: BinderPocketLayout
     let includesMissingCards: Bool
     let cardOrder: BinderCardOrder?
+    let backgroundColor: BinderBackgroundColor?
     let createdAt: Date
     let updatedAt: Date
 
     var effectiveCardOrder: BinderCardOrder { cardOrder ?? .setRelease }
+    var effectiveBackgroundColor: BinderBackgroundColor { backgroundColor ?? .graphite }
 
     init(
         id: UUID,
@@ -905,6 +985,7 @@ struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
         pocketLayout: BinderPocketLayout,
         includesMissingCards: Bool,
         cardOrder: BinderCardOrder = .setRelease,
+        backgroundColor: BinderBackgroundColor = .graphite,
         createdAt: Date,
         updatedAt: Date
     ) {
@@ -916,6 +997,7 @@ struct BinderPlan: Codable, Equatable, Identifiable, Sendable {
         self.pocketLayout = pocketLayout
         self.includesMissingCards = includesMissingCards
         self.cardOrder = cardOrder
+        self.backgroundColor = backgroundColor
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -1131,6 +1213,7 @@ protocol CollectionRepository: Sendable {
     func fetchSetPreferences() async throws -> [String: SetCollectionPreference]
     func fetchCustomFolders() async throws -> [CustomCollectionFolder]
     func fetchBinderPlans() async throws -> [BinderPlan]
+    func awardCollectorBadges(_ badges: [CollectorBadge], earnedAt: Date) async throws -> [CollectorBadgeAward]
     func fetchCardMetadata(cardID: String) async throws -> CardCollectionMetadata
     func fetchAllCardMetadata() async throws -> [String: CardCollectionMetadata]
     func fetchManualValues() async throws -> [ManualCardValue]
