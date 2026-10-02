@@ -847,6 +847,25 @@ Coverage references (metadata only; no artwork copied):
 
 ## Release-only features
 
+### Preview features
+
+The dashboard is hidden by default. **Settings → Advanced → Preview Features**
+accepts `Dashboard021026` to enable the dashboard on that device. The dashboard
+switch can disable/re-enable it, and preferences persist across app updates.
+No collection data, set-navigation preferences, or purchase entitlements change.
+These local codes are not secure access controls and must never protect paid features.
+Disclose previews and their codes in App Review notes when submitting public builds.
+
+Implementation lives in `TallyDex/Features/FeatureFlags/PreviewFeatures.swift`.
+When the dashboard is ready, set `dashboardReleased` to true, then retire the
+code/settings branch and preview keys. Released features ignore old disabled
+preview preferences. Add future previews here independently, not to AccessStore.
+
+Prepared in v0.9.44: hides the dashboard by default and adds persistent,
+code-enabled dashboard preview access in Advanced Settings.
+
+### Distribution controls
+
 Both Debug and Release builds default to `TALLYDEX_DISTRIBUTION_CHANNEL=development`:
 editing remains unlocked and the public update-history archive stays inactive.
 For the first TestFlight or public release, explicitly build with

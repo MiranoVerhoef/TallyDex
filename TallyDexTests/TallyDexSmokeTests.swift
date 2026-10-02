@@ -209,13 +209,26 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.43")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.44")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
             AppReleaseNotes.current.notes.count
         )
         XCTAssertTrue(AppReleaseNotes.current.notes.allSatisfy { !$0.detail.isEmpty })
+    }
+
+    func testDashboardPreviewRequiresValidCodeAndExplicitEnablement() {
+        XCTAssertFalse(PreviewFeatures.dashboardReleased)
+        XCTAssertTrue(PreviewFeatures.acceptsDashboardCode("Dashboard021026"))
+        XCTAssertTrue(PreviewFeatures.acceptsDashboardCode(" Dashboard021026\n"))
+        XCTAssertFalse(PreviewFeatures.acceptsDashboardCode("dashboard021026"))
+        XCTAssertFalse(PreviewFeatures.acceptsDashboardCode(""))
+        XCTAssertFalse(PreviewFeatures.dashboardEnabled(unlocked: false, enabled: false))
+        XCTAssertFalse(PreviewFeatures.dashboardEnabled(unlocked: false, enabled: true))
+        XCTAssertFalse(PreviewFeatures.dashboardEnabled(unlocked: true, enabled: false))
+        XCTAssertTrue(PreviewFeatures.dashboardEnabled(unlocked: true, enabled: true))
+        XCTAssertTrue(PreviewFeatures.dashboardEnabled(unlocked: false, enabled: false, released: true))
     }
 
     func testReleaseFeaturesRequireExplicitDistributionChannel() {

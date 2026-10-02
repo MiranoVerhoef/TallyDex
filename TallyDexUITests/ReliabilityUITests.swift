@@ -91,6 +91,8 @@ final class ReliabilityUITests: XCTestCase {
     func testSetsDashboardShowsCollectionWideCounts() {
         launch("filters")
         expectState(["owned=1", "error=none"])
+        enableDashboardPreview()
+        tap(app.tabBars.buttons["Sets"])
         XCTAssertTrue(app.staticTexts["Collection value"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Distinct"].exists)
         XCTAssertTrue(app.staticTexts["Copies"].exists)
@@ -99,6 +101,56 @@ final class ReliabilityUITests: XCTestCase {
         snapshot.name = "Integrated dashboard header"
         snapshot.lifetime = .keepAlways
         add(snapshot)
+    }
+
+    private func openPreviewFeatures() {
+        settings()
+        let advanced = button("Advanced")
+        for _ in 0..<8 {
+            if advanced.exists && advanced.isHittable { break }
+            app.swipeUp()
+        }
+        tap(advanced)
+        tap(app.buttons["settings.previewFeatures"])
+    }
+
+    private func enableDashboardPreview() {
+        openPreviewFeatures()
+        let code = app.secureTextFields["preview.code"]
+        tap(code)
+        code.typeText("Dashboard021026")
+        tap(app.buttons["preview.unlock"])
+    }
+
+    func testDashboardPreviewIsHiddenByDefaultAndCodeChoicePersists() {
+        launch("filters")
+        XCTAssertFalse(app.staticTexts["Collection value"].exists)
+        openPreviewFeatures()
+        let code = app.secureTextFields["preview.code"]
+        tap(code)
+        code.typeText("wrong-code")
+        tap(app.buttons["preview.unlock"])
+        XCTAssertTrue(app.staticTexts["Code not recognized."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.switches["preview.dashboard"].exists)
+        tap(code)
+        code.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10) + "Dashboard021026")
+        tap(app.buttons["preview.unlock"])
+        XCTAssertTrue(app.switches["preview.dashboard"].waitForExistence(timeout: 5))
+        tap(app.tabBars.buttons["Sets"])
+        XCTAssertTrue(app.staticTexts["Collection value"].waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Collection value"].waitForExistence(timeout: 5))
+        openPreviewFeatures()
+        let toggle = app.switches["preview.dashboard"]
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        tap(app.tabBars.buttons["Sets"])
+        XCTAssertFalse(app.staticTexts["Collection value"].exists)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Sets"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Collection value"].exists)
+        expectState(["owned=1", "error=none"])
     }
 
     private func chooseFilter(_ label: String, option: String) {
@@ -202,12 +254,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<4 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.43"])
+        expectState(["intro=true", "seen=0.9.44"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.43"])
+        expectState(["intro=true", "seen=0.9.44"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -215,10 +267,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.43"])
+        expectState(["intro=true", "seen=0.9.44"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.43"])
+        expectState(["intro=true", "seen=0.9.44"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -228,10 +280,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.43"])
+        expectState(["intro=true", "seen=0.9.44"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.43"])
+        expectState(["intro=true", "seen=0.9.44"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

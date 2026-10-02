@@ -91,18 +91,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.43",
-        headline: "Make your collection your own",
+        version: "0.9.44",
+        headline: "Optional dashboard preview",
         notes: [
             AppReleaseNote(
-                systemImage: "medal",
-                title: "Collector badges",
-                detail: "Earn permanent badges as your collection grows."
-            ),
-            AppReleaseNote(
-                systemImage: "paintpalette",
-                title: "Binder colors",
-                detail: "Choose a background color when creating or editing a binder."
+                systemImage: "testtube.2",
+                title: "Preview features",
+                detail: "The dashboard is hidden by default. Enable its preview with a code in Advanced Settings."
             ),
         ]
     )

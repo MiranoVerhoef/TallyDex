@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.44",
+          "buildVersion": "80",
+          "date": "2026-10-02",
+          "localizedDescription": "Hides the dashboard by default and adds code-enabled preview access in Advanced Settings. Preview preferences persist across updates; collection data and Sets navigation are unchanged.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.44/TallyDex-v0.9.44.ipa",
+          "size": 30259674,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.43",
           "buildVersion": "79",
           "date": "2026-09-30",

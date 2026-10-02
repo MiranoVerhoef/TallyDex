@@ -295,6 +295,8 @@ struct SetsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(SetsScope.storageKey) private var defaultScope = SetsScope.all.rawValue
     @AppStorage(SetsBrowsingStyle.storageKey) private var browsingStyle = SetsBrowsingStyle.seriesFirst.rawValue
+    @AppStorage(PreviewFeatures.dashboardUnlockedKey) private var dashboardUnlocked = false
+    @AppStorage(PreviewFeatures.dashboardEnabledKey) private var dashboardPreviewEnabled = false
     @State private var selectedScope = SetsScope.all
     @State private var didApplyDefault = false
     @State private var editingSet: CatalogSet?
@@ -341,10 +343,12 @@ struct SetsView: View {
 
     private var catalogList: some View {
         List {
-            CollectionDashboardView()
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+            if PreviewFeatures.dashboardEnabled(unlocked: dashboardUnlocked, enabled: dashboardPreviewEnabled) {
+                CollectionDashboardView()
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Sets")
@@ -8107,6 +8111,14 @@ private struct AdvancedAPISettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                NavigationLink {
+                    PreviewFeaturesSettingsView()
+                } label: {
+                    Label("Preview Features", systemImage: "testtube.2")
+                }
+                .accessibilityIdentifier("settings.previewFeatures")
+            }
             Section {
                 Toggle(isOn: $customEnabled) {
                     HStack(spacing: 8) {
