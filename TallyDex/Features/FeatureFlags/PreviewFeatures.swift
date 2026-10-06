@@ -44,16 +44,12 @@ struct PreviewFeaturesSettingsView: View {
                             .accessibilityIdentifier("preview.message")
                     }
                 } header: {
-                    Text("Preview Access")
-                } footer: {
-                    Text("Preview features are unfinished and enabled only on this device. Codes do not unlock paid access or change your collection.")
+                    HelpSectionHeader(title: "Preview Access", message: "Experimental features are enabled only on this device. Preview codes don’t unlock paid access or change your collection.")
                 }
                 if unlocked {
                     Section {
                         Toggle("Dashboard Preview", isOn: $enabled)
                             .accessibilityIdentifier("preview.dashboard")
-                    } footer: {
-                        Text("Show the experimental dashboard above Sets. You can turn it off at any time; your choice is kept across updates.")
                     }
                 }
             } else {

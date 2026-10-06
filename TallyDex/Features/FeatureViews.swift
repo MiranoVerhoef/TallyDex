@@ -10,6 +10,50 @@ import LinkPresentation
 @preconcurrency import AVFoundation
 @preconcurrency import ImageIO
 
+/// Keeps optional guidance accessible without filling settings with paragraphs.
+struct HelpSectionHeader: View {
+    let title: String
+    let message: String
+    @State private var showingHelp = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+            Button { showingHelp = true } label: {
+                Image(systemName: "info.circle")
+                    .font(.body)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("About \(title)")
+            .accessibilityHint("Shows additional information")
+        }
+        .textCase(nil)
+        .sheet(isPresented: $showingHelp) {
+            NavigationStack {
+                ScrollView {
+                    Text(message)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showingHelp = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+}
+
 private func formattedCatalogPrice(_ amount: Double, currencyCode: String) -> String {
     amount.formatted(
         .currency(code: currencyCode)
@@ -3475,7 +3519,7 @@ private struct ManualCardValuesView: View {
             } header: {
                 Text(cardName)
             } footer: {
-                Text("Your estimates are private, saved with collection backups, and never presented as marketplace prices. Only values in the selected currency count toward totals.")
+                Text("Private estimates are included in backups. Only estimates in the selected currency count toward totals.")
             }
         }
         .navigationTitle("Your estimates")
@@ -3534,7 +3578,7 @@ private struct ManualCardValueEditor: View {
                 } header: {
                     Text("\(variant.displayName) · \(currencyCode)")
                 } footer: {
-                    Text("Your value is personal and will not change the TCGdex price or Cardmarket history.")
+                    Text("Private estimate, not a marketplace price.")
                 }
                 if existing != nil {
                     Section {
@@ -4752,7 +4796,7 @@ private struct CollectorBadgesView: View {
             Section {
                 LabeledContent("Earned", value: "\(awards.count) of \(CollectorBadge.allCases.count)")
             } footer: {
-                Text("TallyDex achievements are earned from your collection. Existing cards count, and earned badges stay yours and travel with collection backups.")
+                Text("Existing cards count. Earned badges are kept and included in backups.")
             }
             Section("Milestones") {
                 ForEach(CollectorBadge.allCases) { badge in
@@ -4820,7 +4864,7 @@ private struct BinderPlannerView: View {
                     Label("Create binder plan", systemImage: "plus.circle.fill")
                 }
             } footer: {
-                Text("Build automatic pages from a set or Pokémon collection. Plans are included in collection backups and never change card ownership.")
+                Text("Plan pages from your collections without changing ownership. Plans are included in backups.")
             }
 
             Section("Saved plans") {
@@ -5033,9 +5077,7 @@ private struct BinderPlanEditorView: View {
                     }
                     Toggle("Include missing cards", isOn: $includesMissingCards)
                 } header: {
-                    Text("Plan")
-                } footer: {
-                    Text("Long-press a saved plan and choose Edit whenever you want to change its layout or card order.")
+                    HelpSectionHeader(title: "Plan", message: "To edit a saved plan, touch and hold it and choose Edit. You can change its layout and card order.")
                 }
 
                 Section("Appearance") {
@@ -5091,7 +5133,7 @@ private struct BinderPlanEditorView: View {
                 } header: {
                     Text("Source")
                 } footer: {
-                    Text("The plan follows each set’s current Normal, Master, or Custom goal. Exact printings receive separate pockets when TCGdex provides them.")
+                    Text("Layouts follow your set goals, with separate pockets for exact printings.")
                 }
             }
             .navigationTitle(plan == nil ? "New Binder Plan" : "Edit Binder Plan")
@@ -5503,7 +5545,7 @@ struct CollectionView: View {
                 } header: {
                     Text("Collections")
                 } footer: {
-                        Text("Collections group matching cards. Ownership is shared with Sets and the rest of your collection.")
+                        Text("Ownership is shared across Sets and Collections.")
                 }
 
                 Section {
@@ -5778,7 +5820,7 @@ private struct CustomCollectionFolderEditorView: View {
                 } footer: {
                     Text(pokemonRules.isEmpty && folder != nil
                          ? "Your original name rule stays unchanged until you choose a Pokémon."
-                         : "Choose one or two Pokémon. Cards featuring either are included, with GX, V, ex, and Mega forms kept together.")
+                         : "Choose up to two Pokémon. All card forms are included.")
                 }
 
                 Section("Collection image") {
@@ -6184,9 +6226,7 @@ private struct CollectionCardFilterSheet: View {
                         ForEach(options.releaseYears, id: \.self) { Text(String($0)).tag($0) }
                     }
                 } header: {
-                    Text("Card Filters")
-                } footer: {
-                    Text("Type and rarity use available provider data. Cards without those fields remain visible with All types and All rarities. These filters change the view, not membership, ownership, or totals.")
+                    HelpSectionHeader(title: "Card Filters", message: "Filters change only this view, not ownership or totals. Type and rarity depend on available card data; choose All to include cards with missing fields.")
                 }
                 .pickerStyle(.navigationLink)
 
@@ -6762,10 +6802,6 @@ private struct SettingsPreferencesView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @AppStorage(PricingSettings.displayModeKey)
     private var priceDisplayMode = ""
-    @AppStorage(PricingSettings.cardmarketCountryKey)
-    private var cardmarketCountry = CardmarketCountryPreference.all.rawValue
-    @AppStorage(PricingSettings.cardmarketCurrencyKey)
-    private var cardmarketCurrency = PricingSettings.defaultCardmarketCurrency.rawValue
     @AppStorage(ScannerFeedbackPreference.storageKey)
     private var scannerFeedbackPreference = ScannerFeedbackPreference.off.rawValue
     @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
@@ -6790,9 +6826,7 @@ private struct SettingsPreferencesView: View {
                     }
                     .pickerStyle(.navigationLink)
                 } header: {
-                    Text("Sets")
-                } footer: {
-                    Text(SetsBrowsingStyle.resolve(browsingStyle).description)
+                    HelpSectionHeader(title: "Sets", message: "Series First opens a series before its sets. Grouped shows all sets in one list, grouped by series.")
                 }
 
                 Section("Appearance") {
@@ -6809,8 +6843,6 @@ private struct SettingsPreferencesView: View {
                     Toggle("Expand card details by default", isOn: $detailsExpandedByDefault)
                 } header: {
                     Text("Card Pages")
-                } footer: {
-                    Text("Only the optional Card details block is affected. Printings, prices, notes, and collection controls stay visible as usual.")
                 }
             }
             if page == .collection {
@@ -6824,13 +6856,7 @@ private struct SettingsPreferencesView: View {
 
                     Toggle("Track multiple copies", isOn: $allowsMultipleCopies)
                 } header: {
-                    Text("Collection")
-                } footer: {
-                    Text("The default goal applies to sets you have not configured yet. Existing set choices remain unchanged. " + (
-                        allowsMultipleCopies
-                            ? "Use − and + controls to save exact quantities for each printing."
-                            : "A checkmark only records whether you own a printing. Existing quantities are preserved."
-                    ))
+                    HelpSectionHeader(title: "Collection", message: "The default goal applies only to sets you haven’t configured. Track multiple copies records exact quantities for each printing. Turning it off preserves saved quantities.")
                 }
 
                 if CollectionGoal(rawValue: defaultCollectionGoal) == .custom {
@@ -6844,9 +6870,7 @@ private struct SettingsPreferencesView: View {
                         }
                         Toggle("Include cards beyond the main set number", isOn: $defaultCustomIncludesSecretCards)
                     } header: {
-                        Text("Default Custom Goal")
-                    } footer: {
-                        Text("New Custom sets will start with these printing types. At least one printing type must remain selected; each set can still be edited separately.")
+                        HelpSectionHeader(title: "Default Custom Goal", message: "Default printings for newly configured Custom goals. Keep at least one printing selected. Each set can be edited separately.")
                     }
                 }
             }
@@ -6875,40 +6899,7 @@ private struct SettingsPreferencesView: View {
                     }
                     .pickerStyle(.navigationLink)
                 } header: {
-                    Text("Prices")
-                } footer: {
-                    Text("Show one or both marketplaces on cards and in set values. Collection totals and rankings use one selected marketplace, so EUR and USD are never mixed. Prices come through TCGdex.")
-                }
-
-                Section {
-                    DisclosureGroup("Future Cardmarket Listings") {
-                    LabeledContent {
-                        Text("Waiting for access")
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Label("Official API", systemImage: "hourglass")
-                    }
-
-                    Picker("Seller country", selection: $cardmarketCountry) {
-                        ForEach(CardmarketCountryPreference.allCases) { country in
-                            Text(country.displayName).tag(country.rawValue)
-                        }
-                    }
-                    .pickerStyle(.navigationLink)
-
-                    Picker("Display currency", selection: $cardmarketCurrency) {
-                        ForEach(CardmarketCurrencyPreference.allCases) { currency in
-                            Text(currency.displayName).tag(currency.rawValue)
-                        }
-                    }
-                    .pickerStyle(.navigationLink)
-                    Text("These saved choices do not filter or convert current TCGdex prices. They are reserved for future permitted Cardmarket API access.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Future Features")
-                } footer: {
-                    Text("Current prices use the selected marketplace’s native currency: EUR for Cardmarket or USD for TCGplayer.")
+                    HelpSectionHeader(title: "Prices", message: "Show one marketplace or both on cards and sets. Collection totals and rankings use one marketplace: EUR for Cardmarket or USD for TCGplayer. Currencies are never mixed. Prices are supplied by TCGdex.")
                 }
             }
             if page == .scanning {
@@ -6983,9 +6974,7 @@ private struct CatalogueIndexSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text("Catalogue Speed")
-                } footer: {
-                    Text("Downloads the lightweight complete TCGdex card index in one request so names, sets, and collector numbers search locally. Full card details and artwork stay on demand to control storage use.")
+                    HelpSectionHeader(title: "Catalogue Speed", message: "Download the search index to find card names, sets, and numbers locally. Full details and artwork download as needed.")
                 }
         }
         .navigationTitle("Catalogue Index")
@@ -7056,17 +7045,15 @@ private struct LocalCollectionSharingView: View {
                 Text("Local Session")
             } footer: {
                 Text(allowWhileBackgrounded
-                    ? "Starting creates a backup first. Access can continue while iOS keeps TallyDex running in the background, but iOS may suspend it at any time."
-                    : "Starting creates a backup first. The six-digit code and browser session are replaced each time sharing starts, and sharing stops when TallyDex is minimized."
+                    ? "A safety backup is saved before starting. Background access may be interrupted by iOS."
+                    : "A safety backup is saved before starting. Keep TallyDex open while editing."
                 )
             }
 
             Section {
                 Toggle("Allow access while app is minimized", isOn: $allowWhileBackgrounded)
             } header: {
-                Text("Background Access")
-            } footer: {
-                Text("Best effort only: iOS can suspend or close background apps, so prolonged browser access still requires keeping TallyDex visible.")
+                HelpSectionHeader(title: "Background Access", message: "iOS can suspend background apps. For uninterrupted access, keep TallyDex open. Each new session replaces the pairing code and browser session.")
             }
 
             if let message = sharing.statusMessage {
@@ -7248,9 +7235,7 @@ private struct CollectionDataTransferView: View {
                 }
                 .disabled(isPreparing)
             } header: {
-                Text("Export")
-            } footer: {
-                Text("The full backup preserves all TallyDex data. PriceCharting CSV includes cards whose product IDs were learned from an earlier import. Use the text list for cards without IDs; review matches and quantities on PriceCharting after importing it.")
+                HelpSectionHeader(title: "Export", message: "A full backup preserves all TallyDex data. PriceCharting CSV includes cards with product IDs learned from an earlier import. For cards without IDs, use the text list. Review matches and quantities on PriceCharting after importing.")
             }
 
             Section {
@@ -7270,9 +7255,9 @@ private struct CollectionDataTransferView: View {
                 }
                 .disabled(isPreparing)
             } header: {
-                Text("Import")
+                HelpSectionHeader(title: "Import", message: "PriceCharting rows are matched by set, number, name, and printing. Uncertain matches are skipped, not guessed.")
             } footer: {
-                Text("Every import is previewed first. PriceCharting rows are matched by set, collector number, card name, and printing; uncertain rows are skipped instead of guessed. A rollback backup is created before changes.")
+                Text("Review every import before applying it. A safety backup is saved first.")
             }
 
             if isPreparing {
@@ -7954,7 +7939,7 @@ private struct CollectionBackupsView: View {
                 } header: {
                     Text("Automatic Backups")
                 } footer: {
-                    Text("The newest 10 backups stay on this iPhone. Restoring also saves the current collection first, so the restore can be undone.")
+                    Text("The latest 10 backups are stored on this iPhone. Restoring saves a safety backup first.")
                 }
             }
 
@@ -8160,8 +8145,8 @@ private struct AdvancedAPISettingsView: View {
                 LabeledContent("4", value: "Bundled thumbnails")
                 LabeledContent("5", value: "Pokémon official image host")
                 LabeledContent("6", value: "Placeholder")
-            } header: { Text("Card Image Fallback Order") } footer: {
-                Text("Only exact card IDs and collector numbers are used. Bundled images are thumbnails, not high-resolution artwork. Cached and kept-offline images remain available without a connection.")
+            } header: {
+                HelpSectionHeader(title: "Card Image Fallback Order", message: "Only exact card IDs and collector numbers are used. Bundled images are thumbnails, not high-resolution artwork. Cached and offline artwork remain available without a connection.")
             }
             Section {
                 NavigationLink {
@@ -8169,8 +8154,6 @@ private struct AdvancedAPISettingsView: View {
                 } label: {
                     Label("Missing Artwork Report", systemImage: "photo.badge.exclamationmark")
                 }
-            } footer: {
-                Text("Review observed image-loading failures and share exact card IDs for API fixes. This is not a full-catalogue scan.")
             }
             Section("Maintenance") {
                 NavigationLink {
@@ -8268,9 +8251,7 @@ private struct PriceDataSettingsView: View {
                     value: statistics.map { size($0.databaseByteCount) } ?? "—"
                 )
             } header: {
-                Text("Usage")
-            } footer: {
-                Text("The catalog database also contains series, sets, cards, variants, and the complete search index. Artwork storage is reported separately in Artwork Cache.")
+                HelpSectionHeader(title: "Usage", message: "The catalogue database includes card data and the search index. Artwork storage is shown separately in Artwork Cache.")
             }
 
             Section {
@@ -8448,7 +8429,7 @@ private struct OfflineSetsSettingsView: View {
             } header: {
                 Text("Usage")
             } footer: {
-                Text("Offline-set artwork is stored separately from the automatic 400 MB cache and is excluded from iCloud device backups. Card metadata stays in the local catalog database.")
+                Text("Offline artwork is separate from your cache limit and isn’t included in iCloud device backups.")
             }
 
             if pinnedSets.isEmpty {
@@ -8562,8 +8543,10 @@ private struct ArtworkCacheSettingsView: View {
                         Text(limit.title).tag(limit.rawValue)
                     }
                 }
+            } header: {
+                HelpSectionHeader(title: "Automatic Cache", message: "Images are resized and compressed on this iPhone. Least recently used images are removed at the limit. Offline sets and bundled images are stored separately and are never removed here.")
             } footer: {
-                Text("Card images are resized and compressed on this iPhone. At the selected limit, the least recently used card images are removed first. Lowering the limit trims the automatic cache immediately. Kept-offline sets and bundled images are separate and are never removed here.")
+                Text("Lowering the limit removes older cached images immediately. Offline downloads are kept.")
             }
 
             Section("Choose What to Remove") {
@@ -8666,7 +8649,7 @@ private struct AboutTallyDexView: View {
                     isConfirmingIntroductionReset = true
                 }
             } footer: {
-                Text("Show the setup introduction again. Your collection and preferences are not reset.")
+                Text("Replay setup without resetting your collection or preferences.")
             }
 
             Section("Data & Artwork") {

@@ -864,6 +864,11 @@ preview preferences. Add future previews here independently, not to AccessStore.
 Prepared in v0.9.44: hides the dashboard by default and adds persistent,
 code-enabled dashboard preview access in Advanced Settings.
 
+Prepared in v0.9.45: simplifies help text and adds optional information buttons.
+Inactive Cardmarket listings preferences are hidden; marketplace prices, links,
+collection data, and browsing behavior are unchanged. Import, restore, purchase,
+and scanner-privacy warnings remain visible.
+
 ### Distribution controls
 
 Both Debug and Release builds default to `TALLYDEX_DISTRIBUTION_CHANNEL=development`:

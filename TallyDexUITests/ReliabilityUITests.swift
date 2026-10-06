@@ -254,12 +254,12 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
         for _ in 0..<4 { tap(app.buttons["Continue"]) }
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.44"])
+        expectState(["intro=true", "seen=0.9.45"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.44"])
+        expectState(["intro=true", "seen=0.9.45"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -267,10 +267,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.44"])
+        expectState(["intro=true", "seen=0.9.45"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.44"])
+        expectState(["intro=true", "seen=0.9.45"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -280,10 +280,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.44"])
+        expectState(["intro=true", "seen=0.9.45"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.44"])
+        expectState(["intro=true", "seen=0.9.45"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -331,6 +331,33 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Tips are optional")
         ).firstMatch.exists)
+    }
+
+    func testSettingsHelpAndActiveMarketplaceOptionsRemainAvailable() {
+        launch("restore")
+        settings()
+        tap(button("Prices & Currency"))
+        XCTAssertFalse(app.buttons["Future Cardmarket Listings"].exists)
+        XCTAssertFalse(app.staticTexts["Future Cardmarket Listings"].exists)
+        tap(app.buttons["About Prices"])
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Currencies are never mixed")
+        ).firstMatch.waitForExistence(timeout: 5))
+        tap(app.buttons["Done"])
+        tap(button("Show prices from"))
+        XCTAssertTrue(button("Cardmarket").waitForExistence(timeout: 5))
+        XCTAssertTrue(button("TCGplayer").exists)
+        XCTAssertTrue(button("Both").exists)
+        back()
+        back()
+        tap(button("Appearance & Browsing"))
+        XCTAssertTrue(app.switches["Expand card details by default"].exists)
+        tap(app.buttons["About Sets"])
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Series First")
+        ).firstMatch.waitForExistence(timeout: 5))
+        tap(app.buttons["Done"])
+        XCTAssertTrue(app.switches["Expand card details by default"].exists)
     }
 
     func testRestoreCancelConfirmRollbackAndPreferencePersistence() {

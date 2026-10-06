@@ -91,13 +91,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.44",
-        headline: "Optional dashboard preview",
+        version: "0.9.45",
+        headline: "Cleaner settings",
         notes: [
             AppReleaseNote(
-                systemImage: "testtube.2",
-                title: "Preview features",
-                detail: "The dashboard is hidden by default. Enable its preview with a code in Advanced Settings."
+                systemImage: "info.circle",
+                title: "Simplified help",
+                detail: "Shorter help text and optional information buttons keep settings clear. Inactive marketplace settings are hidden."
             ),
         ]
     )
@@ -384,10 +384,6 @@ struct IntroductionView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 16))
 
-            Text("You can revisit these choices in Settings.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
     }
 
