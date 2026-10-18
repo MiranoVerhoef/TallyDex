@@ -29,8 +29,8 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testSettingsPreferencePagesHaveStableUniqueRoutes() {
-        XCTAssertEqual(SettingsPreferencePage.allCases, [.browsing, .collection, .prices, .scanning])
-        XCTAssertEqual(Set(SettingsPreferencePage.allCases.map(\.id)).count, 4)
+        XCTAssertEqual(SettingsPreferencePage.allCases, [.browsing, .collection, .prices])
+        XCTAssertEqual(Set(SettingsPreferencePage.allCases.map(\.id)).count, 3)
         XCTAssertTrue(SettingsPreferencePage.allCases.allSatisfy {
             !$0.title.isEmpty && !$0.detail.isEmpty && !$0.systemImage.isEmpty
         })
@@ -208,8 +208,26 @@ final class TallyDexSmokeTests: XCTestCase {
         )
     }
 
+    func testBundledPrivacyManifestDeclaresLocalPreferencesAndCacheMetadata() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"))
+        let data = try Data(contentsOf: url)
+        let manifest = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+        XCTAssertEqual(manifest["NSPrivacyTracking"] as? Bool, false)
+        let entries = try XCTUnwrap(manifest["NSPrivacyAccessedAPITypes"] as? [[String: Any]])
+        let preferences = try XCTUnwrap(entries.first {
+            $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryUserDefaults"
+        })
+        XCTAssertEqual(preferences["NSPrivacyAccessedAPITypeReasons"] as? [String], ["CA92.1"])
+        let timestamps = try XCTUnwrap(entries.first {
+            $0["NSPrivacyAccessedAPIType"] as? String == "NSPrivacyAccessedAPICategoryFileTimestamp"
+        })
+        XCTAssertEqual(timestamps["NSPrivacyAccessedAPITypeReasons"] as? [String], ["C617.1"])
+    }
+
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.45")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.47")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,

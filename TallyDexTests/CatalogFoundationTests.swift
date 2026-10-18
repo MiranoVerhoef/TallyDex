@@ -799,6 +799,151 @@ final class CatalogFoundationTests: XCTestCase {
         )
     }
 
+    func testMarketplaceBucketCannotCreatePhantomPrintingAndBothPricesUseExactProduct() async throws {
+        // The dev API's 30th-001 response uses Normal in the catalogue but
+        // holofoil for the same TCGplayer product. Test stamped and unstamped
+        // exact records so this protection also applies to future sets.
+        for stamp in [#", "stamp": ["30th-anniversary"]"#, ""] {
+            let response = """
+            {
+              "id": "30th-001", "localId": "001", "name": "Exeggcute",
+              "set": { "id": "30th" }, "variants": { "normal": true, "holo": false },
+              "variants_detailed": [{
+                "type": "normal", "size": "standard", "variantId": "exact-normal"\(stamp),
+                "thirdParty": { "cardmarket": 907607, "tcgplayer": 716435 },
+                "pricing": {
+                  "cardmarket": { "updated": "2026-10-18T04:05:58Z", "unit": "EUR",
+                    "idProduct": 907607, "trend": 0.05 },
+                  "tcgplayer": { "updated": "2026-10-17T20:05:21+0000", "unit": "USD",
+                    "holofoil": { "productId": 716435, "marketPrice": 0.21 } }
+                }
+              }],
+              "pricing": { "tcgplayer": {
+                "updated": "2026-10-17T20:05:21+0000", "unit": "USD",
+                "holofoil": { "productId": 716435, "marketPrice": 0.21 }
+              } }
+            }
+            """
+            let client = TCGdexClient(httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]), retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero))
+            let snapshot = try await client.fetchCard(id: "30th-001")
+            XCTAssertEqual(snapshot.variants, [.normal])
+            XCTAssertEqual(snapshot.printings.count, 1)
+            XCTAssertEqual(snapshot.prices.count, 2)
+            XCTAssertTrue(snapshot.prices.allSatisfy { $0.variant == .normal })
+            XCTAssertEqual(snapshot.prices.first { $0.source == .cardmarket }?.amount, 0.05)
+            XCTAssertEqual(snapshot.prices.first { $0.source == .tcgplayer }?.amount, 0.21)
+            XCTAssertEqual(snapshot.prices.first { $0.source == .tcgplayer }?.productID, 716435)
+
+            let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+            try await repository.upsertSeries([.init(id: "me", name: "Mega Evolution", logoURL: nil)])
+            try await repository.replaceSets([set(id: "30th", seriesID: "me", name: "30th Celebration")], forSeriesID: "me")
+            try await repository.replaceCard(.init(card: snapshot.card, variants: [.normal, .holo],
+                prices: [.init(cardID: snapshot.card.id, variant: .holo, source: .tcgplayer,
+                    currencyCode: "USD", amount: 0.21, updatedAt: .now)], printings: snapshot.printings))
+            try await repository.replaceCard(snapshot)
+            let repaired = try await repository.fetchVariants(cardID: snapshot.card.id)
+            let prices = try await repository.fetchPrices(cardIDs: [snapshot.card.id])
+            XCTAssertEqual(repaired, [.normal])
+            XCTAssertEqual(prices[snapshot.card.id]?.count, 2)
+
+            let ownership = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+            try await ownership.setPrintingQuantity(2, cardID: snapshot.card.id,
+                printingID: "exact-normal", variant: .normal, updatedAt: .now)
+            _ = try await ownership.reconcileExactOwnership(cardID: snapshot.card.id, printings: snapshot.printings)
+            let entries = try await ownership.fetchPrintingEntries(cardID: snapshot.card.id)
+            XCTAssertEqual(entries.map(\.quantity), [2])
+            XCTAssertEqual(entries.map(\.variant), [.normal])
+        }
+    }
+
+    @MainActor
+    func testSetRefreshRepairsFreshCachedPhantomVariantOnceWithoutManualCardRefresh() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.upsertSeries([.init(id: "me", name: "Mega Evolution", logoURL: nil)])
+        try await repository.replaceSets([set(id: "30th", seriesID: "me", name: "30th Celebration")], forSeriesID: "me")
+        let card = CatalogCard(id: "30th-001", setID: "30th", localID: "001", name: "Exeggcute",
+            imageURL: nil, category: "Pokemon", illustrator: nil, rarity: "Common")
+        let printing = CatalogPrinting(cardID: card.id, providerID: "exact-normal", rawType: "normal",
+            kind: .normal, subtype: nil, size: "standard", stamps: ["30th-anniversary"], foil: nil,
+            languages: [], cardmarketProductID: 907607, tcgplayerProductID: 716435, cardtraderProductID: nil)
+        let date = Date(timeIntervalSince1970: 100_000)
+        let price = CatalogPriceQuote(cardID: card.id, variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 0.05, updatedAt: date)
+        try await repository.replaceCard(.init(card: card, variants: [.normal, .holo], prices: [price], printings: [printing]))
+        try await repository.setMetadataDate(date, forKey: "catalog.price.\(card.id).lastRefresh")
+        try await repository.setMetadataDate(date, forKey: "catalog.card.\(card.id).detailedPrintingsChecked")
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: card, variants: [.normal], prices: [price], printings: [printing]))
+        let store = CatalogStore(provider: provider, repository: repository, now: { date })
+        let repaired = await store.prepareVariants(for: [card], refreshCachedDetails: false)
+        XCTAssertEqual(repaired[card.id], [.normal])
+        _ = await store.prepareVariants(for: [card], refreshCachedDetails: false)
+        let requests = await provider.cardRequestCount
+        XCTAssertEqual(requests, 1)
+    }
+
+    func testIdentifiedNormalAndReversePrintingsKeepSeparateMarketplacePrices() async throws {
+        let response = #"""
+        { "id": "future-001", "localId": "001", "name": "Example",
+          "set": { "id": "future" }, "variants": { "normal": true, "reverse": true },
+          "variants_detailed": [
+            { "type": "normal", "variantId": "normal", "pricing": {
+              "cardmarket": { "updated": "2026-10-17T20:05:21Z", "trend": 1, "trend-holo": 2 },
+              "tcgplayer": { "updated": "2026-10-17T20:05:21Z",
+                "normal": { "productId": 123, "marketPrice": 3 },
+                "reverse-holofoil": { "productId": 123, "marketPrice": 4 } } } },
+            { "type": "reverse", "variantId": "reverse", "pricing": {
+              "cardmarket": { "updated": "2026-10-17T20:05:21Z", "trend": 1, "trend-holo": 2 },
+              "tcgplayer": { "updated": "2026-10-17T20:05:21Z",
+                "normal": { "productId": 123, "marketPrice": 3 },
+                "reverse-holofoil": { "productId": 123, "marketPrice": 4 } } } }
+          ] }
+        """#
+        let client = TCGdexClient(httpClient: HTTPClientStub(responses: [
+            HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+        ]), retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero))
+        let snapshot = try await client.fetchCard(id: "future-001")
+        XCTAssertEqual(snapshot.variants, [.normal, .reverseHolo])
+        XCTAssertEqual(snapshot.prices.count, 4)
+        XCTAssertEqual(snapshot.prices.first { $0.source == .cardmarket && $0.variant == .normal }?.amount, 1)
+        XCTAssertEqual(snapshot.prices.first { $0.source == .cardmarket && $0.variant == .reverseHolo }?.amount, 2)
+        XCTAssertEqual(snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .normal }?.amount, 3)
+        XCTAssertEqual(snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .reverseHolo }?.amount, 4)
+    }
+
+    func testIdentifiedFinishCorrectionOverridesStaleLegacyFlagsAndPriceLabels() async throws {
+        for type in ["normal", "holo"] {
+            let response = """
+            { "id": "future-001", "localId": "001", "name": "Example",
+              "set": { "id": "future" }, "variants": { "normal": true, "holo": true },
+              "variants_detailed": [{ "type": "\(type)", "variantId": "corrected" }] }
+            """
+            let client = TCGdexClient(httpClient: HTTPClientStub(responses: [
+                HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+            ]), retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero))
+            let snapshot = try await client.fetchCard(id: "future-001")
+            XCTAssertEqual(snapshot.variants, [try XCTUnwrap(CatalogVariantKind(rawValue: type))])
+        }
+    }
+
+    func testExactPrintingDoesNotBorrowMismatchedMarketplaceProduct() async throws {
+        let response = #"""
+        { "id": "future-001", "localId": "001", "name": "Example",
+          "set": { "id": "future" }, "variants": { "normal": true },
+          "variants_detailed": [{ "type": "normal", "variantId": "exact",
+            "thirdParty": { "tcgplayer": 123 },
+            "pricing": { "tcgplayer": { "updated": "2026-10-17T20:05:21Z",
+              "holofoil": { "productId": 999, "marketPrice": 10 } } } }] }
+        """#
+        let client = TCGdexClient(httpClient: HTTPClientStub(responses: [
+            HTTPResponse(data: Data(response.utf8), statusCode: 200, retryAfter: nil),
+        ]), retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero))
+        let snapshot = try await client.fetchCard(id: "future-001")
+        XCTAssertEqual(snapshot.variants, [.normal])
+        XCTAssertTrue(snapshot.prices.isEmpty)
+    }
+
     func testTCGdexCombinesLegacyAndDetailedVariantData() async throws {
         let response = #"""
         {
@@ -2525,7 +2670,7 @@ final class CatalogFoundationTests: XCTestCase {
         )
         try await repository.setMetadataDate(
             refreshDate,
-            forKey: "catalog.card.\(card.id).detailedPrintingsChecked"
+            forKey: "catalog.card.\(card.id).detailedPrintingsChecked.v2"
         )
         try await repository.setMetadataDate(
             refreshDate,

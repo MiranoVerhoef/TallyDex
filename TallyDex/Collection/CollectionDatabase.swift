@@ -290,7 +290,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
 
     func prepareExactOwnershipMigration(createdAt: Date) async throws {
         try await database.queue.write { database in
-            let key = "exact-printing-identity-v2-prepared"
+            let key = "exact-printing-identity-v3-prepared"
             guard try String.fetchOne(
                 database,
                 sql: "SELECT value FROM collectionMetadata WHERE key = ?",
@@ -337,6 +337,38 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         return try await database.queue.write { database in
             var changed = false
 
+            // A price-only phantom finish may have been checked before the
+            // catalogue was repaired. Keep that ownership on the sole known
+            // standard printing, rather than leaving an invisible broad check.
+            // Never fold stamps/jumbos into regular cards or guess among several
+            // exact options. MAX avoids counting the same old check twice.
+            let standardKinds: Set<CatalogVariantKind> = [.normal, .holo, .reverseHolo]
+            if printings.count == 1, let printing = knownPrintings.first,
+               printing.providerID != "generated", let kind = printing.kind,
+               standardKinds.contains(kind) {
+                let obsoleteRows = try Row.fetchAll(database, sql: """
+                    SELECT variant, quantity, updatedAt FROM collectionVariant
+                    WHERE cardID = ? AND variant != ? AND quantity > 0
+                    """, arguments: [cardID, kind.rawValue])
+                for row in obsoleteRows {
+                    guard let oldKind = CatalogVariantKind(rawValue: row["variant"]),
+                          standardKinds.contains(oldKind) else { continue }
+                    let quantity: Int = row["quantity"]
+                    let updatedAt: Date = row["updatedAt"]
+                    try database.execute(sql: """
+                        INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(cardID, printingID) DO UPDATE SET
+                            quantity = MAX(quantity, excluded.quantity),
+                            updatedAt = MAX(updatedAt, excluded.updatedAt),
+                            variant = excluded.variant
+                        """, arguments: [cardID, printing.providerID, kind.rawValue, quantity, updatedAt])
+                    try database.execute(sql: "DELETE FROM collectionVariant WHERE cardID = ? AND variant = ?",
+                        arguments: [cardID, oldKind.rawValue])
+                    changed = true
+                }
+            }
+
             // Provider printing IDs are not permanent while a set is being
             // assembled. Move ownership from superseded IDs to the corrected
             // printing when that mapping is unambiguous. If several corrected
@@ -355,8 +387,15 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             )
             for row in savedRows {
                 let printingID: String = row["printingID"]
-                guard !currentIDs.contains(printingID),
-                      let savedVariant = CatalogVariantKind(rawValue: row["variant"]) else { continue }
+                guard let savedVariant = CatalogVariantKind(rawValue: row["variant"]) else { continue }
+                if let currentKind = knownPrintings.first(where: { $0.providerID == printingID })?.kind,
+                   currentKind != savedVariant {
+                    try database.execute(sql: """
+                        UPDATE collectionPrinting SET variant = ? WHERE cardID = ? AND printingID = ?
+                        """, arguments: [currentKind.rawValue, cardID, printingID])
+                    changed = true
+                }
+                guard !currentIDs.contains(printingID) else { continue }
                 let quantity: Int = row["quantity"]
                 let updatedAt: Date = row["updatedAt"]
                 let sameVariant = exactByVariant[savedVariant] ?? []

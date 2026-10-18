@@ -587,6 +587,61 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(broad.map(\.quantity), [1])
     }
 
+    func testPhantomFinishOwnershipMovesToOnlyStandardPrintingWithRecoverableBackup() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let id = "30th-001"
+        try await repository.setQuantity(2, cardID: id, variant: .holo, updatedAt: .now)
+        try await repository.prepareExactOwnershipMigration(createdAt: .now)
+        let changed = try await repository.reconcileExactOwnership(cardID: id,
+            printings: [printing(cardID: id, id: "only-normal", kind: .normal)])
+        XCTAssertTrue(changed)
+        let exact = try await repository.fetchPrintingEntries(cardID: id)
+        let broad = try await repository.fetchEntries(cardID: id)
+        XCTAssertEqual(exact.map(\.quantity), [2])
+        XCTAssertEqual(exact.map(\.variant), [.normal])
+        XCTAssertTrue(broad.isEmpty)
+        let backups = try await repository.fetchBackups()
+        XCTAssertEqual(backups.count, 1)
+        try await repository.restoreBackup(id: try XCTUnwrap(backups.first?.id),
+            safetyBackupReason: "Before restore", restoredAt: .now)
+        let restored = try await repository.fetchEntries(cardID: id)
+        XCTAssertEqual(restored.map(\.variant), [.holo])
+        XCTAssertEqual(restored.map(\.quantity), [2])
+    }
+
+    func testPhantomFinishRepairDoesNotGuessAmongPrintingsOrFoldJumboOwnership() async throws {
+        let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let id = "future-001"
+        try await repository.setQuantity(1, cardID: id, variant: .holo, updatedAt: .now)
+        try await repository.setQuantity(3, cardID: id, variant: .jumbo, updatedAt: .now)
+        _ = try await repository.reconcileExactOwnership(cardID: id, printings: [
+            printing(cardID: id, id: "normal-a", kind: .normal),
+            printing(cardID: id, id: "normal-b", kind: .normal),
+        ])
+        let ambiguous = try await repository.fetchEntries(cardID: id)
+        XCTAssertEqual(ambiguous.count, 2)
+        _ = try await repository.reconcileExactOwnership(cardID: id,
+            printings: [printing(cardID: id, id: "normal-a", kind: .normal)])
+        let remaining = try await repository.fetchEntries(cardID: id)
+        XCTAssertEqual(remaining.map(\.variant), [.jumbo])
+        XCTAssertEqual(remaining.map(\.quantity), [3])
+    }
+
+    func testProviderFinishCorrectionPreservesExactOwnershipWithStableOrChangedIdentity() async throws {
+        for correctedID in ["original-id", "corrected-id"] {
+            let repository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+            let id = "future-001"
+            try await repository.setPrintingQuantity(3, cardID: id, printingID: "original-id",
+                variant: .normal, updatedAt: .now)
+            _ = try await repository.reconcileExactOwnership(cardID: id,
+                printings: [printing(cardID: id, id: correctedID, kind: .holo)])
+            let exact = try await repository.fetchPrintingEntries(cardID: id)
+            XCTAssertEqual(exact.map(\.quantity), [3])
+            XCTAssertEqual(exact.map(\.variant), [.holo])
+            XCTAssertEqual(exact.map(\.printingID), [correctedID])
+        }
+    }
+
     func testProgressStillCountsUnresolvedProviderIdentityAsOwned() {
         let card = card(id: "future-001", number: "001")
         let progress = CollectionProgressCalculator.progressByCardID(

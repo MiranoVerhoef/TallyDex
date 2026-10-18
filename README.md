@@ -59,6 +59,14 @@ https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.js
 
 ## Collection values
 
+Version 0.9.47 fixes false extra printings caused by marketplace price labels.
+Identified TCGdex printings determine the available variants; a uniquely matching
+marketplace product can supply its price even when the marketplace calls it by a
+different finish. Existing affected cached cards refresh when their set is opened.
+Ownership, backups and historical price observations are retained.
+Set search hides the large artwork, progress and value summary while active,
+keeping matching cards above the keyboard; cancelling search restores the header.
+
 TallyDex caches Cardmarket EUR and TCGplayer USD market prices supplied by
 TCGdex. You can display either source or both while choosing one source for
 collection totals in Settings. Values are calculated
@@ -405,10 +413,13 @@ Completed in v0.9.10:
    is to collect and review the real dataset, train and measure the model, integrate
    the accepted Core ML model into TallyDex, and validate automatic capture on a
    physical iPhone across glare, sleeves, top loaders, angles, and hard negatives.
-   Scanner correction reporting is not active: feedback.tallydex.nl has no
-   resolvable host or submission endpoint yet. First setup and Settings store
-   only a future preference; a later release must define the API, privacy
-   policy, and fresh opt-in before sending any scan images or corrections.
+   Automatic scanner correction uploads are not part of the first TestFlight
+   build. The inactive feedback setup/settings and server preference have been
+   removed; TCGdex catalogue and artwork fetching are unchanged. After the first
+   TestFlight build, plan bounded on-device history for confirmed scans and an
+   explicit, user-reviewed GitHub export, with a public-photo warning and no
+   automatic uploads. Short, optional feature polls are a later improvement,
+   with privacy disclosures reviewed before activation.
 3. Trial/lifetime gating and update-history activation are prepared, but inactive
    in development builds. Before TestFlight/public release, configure real products,
    choose whether existing beta users receive lifetime access, test
@@ -870,6 +881,29 @@ collection data, and browsing behavior are unchanged. Import, restore, purchase,
 and scanner-privacy warnings remain visible.
 
 ### Distribution controls
+
+App Store Connect app ID: `6822731014` (verified in the signed-in browser).
+Apple Developer team: `78N556TMDR` (Mirano Verhoef).
+Bundle identifier: `com.miranoverhoef.TallyDex`.
+
+Purchase metadata verified in App Store Connect on 2026-10-14:
+
+| Purchase | Product ID | Apple purchase ID | Type | Netherlands price |
+| --- | --- | --- | --- | --- |
+| Lifetime Access | `com.miranoverhoef.TallyDex.lifetime` | `6822731945` | Non-Consumable | €9.99 |
+| Espresso | `com.miranoverhoef.TallyDex.coffee.espresso` | `6822737589` | Consumable | €1.99 |
+| Coffee | `com.miranoverhoef.TallyDex.coffee.regular` | `6822739387` | Consumable | €2.99 |
+| Large coffee | `com.miranoverhoef.TallyDex.coffee.large` | `6822740610` | Consumable | €4.99 |
+| Coffee round | `com.miranoverhoef.TallyDex.coffee.round` | `6822741551` | Consumable | €9.99 |
+
+All five products are drafts (Prepare for Submission), with English (U.K.)
+localizations, saved review notes, worldwide availability, and Netherlands base
+pricing. The app tax category is App Store software; tips inherit it, and the
+lifetime purchase uses it explicitly. Review screenshots are saved; signed-device
+sandbox purchase/restore verification and agreement readiness remain to be completed.
+No purchases have been submitted for review. Version 0.9.46 (82) was successfully
+uploaded on 2026-10-15; Apple reported processing. Final processing status, export
+compliance and internal tester assignment await App Store Connect sign-in.
 
 Both Debug and Release builds default to `TALLYDEX_DISTRIBUTION_CHANNEL=development`:
 editing remains unlocked and the public update-history archive stays inactive.

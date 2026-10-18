@@ -1794,6 +1794,7 @@ private struct CatalogSetDetailView: View {
     @State private var updatingCardIDs: Set<String> = []
     @State private var selectedFilter = SetCardFilter.all
     @State private var searchText = ""
+    @State private var isSetSearchPresented = false
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var availablePrintingsByCardID: [String: [CatalogPrinting]] = [:]
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
@@ -1875,59 +1876,63 @@ private struct CatalogSetDetailView: View {
 
         ScrollView {
             LazyVStack(spacing: 20) {
-                CatalogSetArtwork(set: set)
-                .frame(maxWidth: 260, minHeight: 96, maxHeight: 140)
-                .padding(.top)
+                if !isSetSearchPresented && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    CatalogSetArtwork(set: set)
+                        .frame(maxWidth: 260, minHeight: 96, maxHeight: 140)
+                        .padding(.top)
+                        .accessibilityIdentifier("set.summary.artwork")
 
-                VStack(spacing: 6) {
-                    HStack(spacing: 10) {
-                        if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
-                            Text(abbreviation)
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                        } else if set.logoURL != nil, let symbolURL = set.symbolURL {
-                            CatalogSymbol(url: symbolURL)
-                                .frame(width: 42, height: 28)
-                                .accessibilityLabel("Expansion symbol")
+                    VStack(spacing: 6) {
+                        HStack(spacing: 10) {
+                            if set.usesPrintedExpansionCode, let abbreviation = set.abbreviation {
+                                Text(abbreviation)
+                                    .font(.headline)
+                                    .foregroundStyle(.secondary)
+                            } else if set.logoURL != nil, let symbolURL = set.symbolURL {
+                                CatalogSymbol(url: symbolURL)
+                                    .frame(width: 42, height: 28)
+                                    .accessibilityLabel("Expansion symbol")
+                            }
+
+                            Text("\(progress.percentage)% \(collectionGoal.displayName)")
+                                .accessibilityIdentifier("set.summary.progress")
+                                .font(.subheadline.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.tint)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.tint.opacity(0.12), in: Capsule())
+
+                            if artworkCacheStore.isPinned(setID: set.id) {
+                                Label("Offline", systemImage: "arrow.down.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.blue)
+                            }
                         }
 
-                        Text("\(progress.percentage)% \(collectionGoal.displayName)")
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(.tint.opacity(0.12), in: Capsule())
-
-                        if artworkCacheStore.isPinned(setID: set.id) {
-                            Label("Offline", systemImage: "arrow.down.circle.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.blue)
-                        }
-                    }
-
-                    if artworkCacheStore.isPreparing(setID: set.id) {
-                        ProgressView("Preparing card metadata…")
+                        if artworkCacheStore.isPreparing(setID: set.id) {
+                            ProgressView("Preparing card metadata…")
+                                .font(.caption)
+                        } else if let cacheProgress = artworkCacheStore.cacheWarmProgress[set.id] {
+                            ProgressView(value: cacheProgress) {
+                                Text("Downloading and caching images · \(Int(cacheProgress * 100))%")
+                            }
                             .font(.caption)
-                    } else if let cacheProgress = artworkCacheStore.cacheWarmProgress[set.id] {
-                        ProgressView(value: cacheProgress) {
-                            Text("Downloading and caching images · \(Int(cacheProgress * 100))%")
+                        } else if let offlineProgress = artworkCacheStore.downloadProgress[set.id] {
+                            ProgressView(value: offlineProgress) {
+                                Text("Downloading offline artwork · \(Int(offlineProgress * 100))%")
+                            }
+                            .font(.caption)
                         }
-                        .font(.caption)
-                    } else if let offlineProgress = artworkCacheStore.downloadProgress[set.id] {
-                        ProgressView(value: offlineProgress) {
-                            Text("Downloading offline artwork · \(Int(offlineProgress * 100))%")
-                        }
-                        .font(.caption)
                     }
-                }
-                .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity)
 
-                if hasOwnedSetCards {
-                    CollectionValueSummaryView(
-                        summary: valueSummary,
-                        title: "Owned value",
-                        secondarySummary: secondaryValueSummary
-                    )
+                    if hasOwnedSetCards {
+                        CollectionValueSummaryView(
+                            summary: valueSummary,
+                            title: "Owned value",
+                            secondarySummary: secondaryValueSummary
+                        )
+                    }
                 }
 
                 if let collectionMessage {
@@ -2029,6 +2034,7 @@ private struct CatalogSetDetailView: View {
         }
         .searchable(
             text: $searchText,
+            isPresented: $isSetSearchPresented,
             placement: .navigationBarDrawer(displayMode: .automatic),
             prompt: "Card name or number"
         )
@@ -6701,7 +6707,7 @@ struct SettingsView: View {
                 Section("Help & App") {
                     if accessStore.isEnforced {
                         NavigationLink { MembershipView() } label: {
-                            Label("Access & Purchase", systemImage: "checkmark.seal")
+                            Label("Lifetime Access", systemImage: "checkmark.seal")
                         }
                     }
                     NavigationLink { TipJarView() } label: {
@@ -6733,14 +6739,13 @@ struct SettingsView: View {
 }
 
 enum SettingsPreferencePage: String, CaseIterable, Identifiable {
-    case browsing, collection, prices, scanning
+    case browsing, collection, prices
     var id: String { rawValue }
     var title: String {
         switch self {
         case .browsing: "Appearance & Browsing"
         case .collection: "Collection Preferences"
         case .prices: "Prices & Currency"
-        case .scanning: "Scanner Feedback"
         }
     }
     var detail: String {
@@ -6748,7 +6753,6 @@ enum SettingsPreferencePage: String, CaseIterable, Identifiable {
         case .browsing: "Theme, set layout and card details"
         case .collection: "Default goals and copy tracking"
         case .prices: "Marketplace and currency preferences"
-        case .scanning: "Optional correction reports"
         }
     }
     var systemImage: String {
@@ -6756,7 +6760,6 @@ enum SettingsPreferencePage: String, CaseIterable, Identifiable {
         case .browsing: "paintpalette"
         case .collection: "checklist"
         case .prices: "eurosign.circle"
-        case .scanning: "camera.viewfinder"
         }
     }
 }
@@ -6802,8 +6805,6 @@ private struct SettingsPreferencesView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @AppStorage(PricingSettings.displayModeKey)
     private var priceDisplayMode = ""
-    @AppStorage(ScannerFeedbackPreference.storageKey)
-    private var scannerFeedbackPreference = ScannerFeedbackPreference.off.rawValue
     @State private var defaultCustomVariants = CollectionSettings.preferredDefaultCustomVariants
 
     var body: some View {
@@ -6900,23 +6901,6 @@ private struct SettingsPreferencesView: View {
                     .pickerStyle(.navigationLink)
                 } header: {
                     HelpSectionHeader(title: "Prices", message: "Show one marketplace or both on cards and sets. Collection totals and rankings use one marketplace: EUR for Cardmarket or USD for TCGplayer. Currencies are never mixed. Prices are supplied by TCGdex.")
-                }
-            }
-            if page == .scanning {
-                Section {
-                    Picker("Correction reports", selection: $scannerFeedbackPreference) {
-                        ForEach(ScannerFeedbackPreference.allCases) { preference in
-                            Text(preference.title).tag(preference.rawValue)
-                        }
-                    }
-                    .pickerStyle(.navigationLink)
-                    Text(ScannerFeedbackPreference(rawValue: scannerFeedbackPreference)?.detail
-                         ?? ScannerFeedbackPreference.off.detail)
-                        .font(.footnote).foregroundStyle(.secondary)
-                } header: {
-                    Text("Future feedback preference")
-                } footer: {
-                    Text("No images or corrections are uploaded. The feedback service is not available yet, and you'll confirm again before submissions become active.")
                 }
             }
         }

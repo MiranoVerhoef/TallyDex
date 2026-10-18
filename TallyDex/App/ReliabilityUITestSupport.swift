@@ -13,7 +13,7 @@ struct ReliabilityUITestFixture {
         guard process.arguments.contains("-ReliabilityUITesting"),
               let text = process.environment["TALLYDEX_UI_TEST_ID"], let id = UUID(uuidString: text),
               let scenario = process.environment["TALLYDEX_UI_TEST_SCENARIO"],
-              ["fresh", "update", "restore", "merge", "replace", "filters"].contains(scenario) else { return nil }
+              ["fresh", "update", "restore", "merge", "replace", "filters", "screenshots"].contains(scenario) else { return nil }
         return .init(id: id, scenario: scenario)
     }
 
@@ -26,6 +26,9 @@ struct ReliabilityUITestFixture {
             defaults.set(false, forKey: CardDisplaySettings.detailsExpandedByDefaultKey)
             defaults.set(false, forKey: CollectionSettings.allowsMultipleCopiesKey)
             defaults.set(PricingSettings.defaultSource.rawValue, forKey: PricingSettings.sourceKey)
+            if scenario == "screenshots" {
+                defaults.set(AppAppearance.light.rawValue, forKey: AppAppearance.storageKey)
+            }
             defaults.set(true, forKey: "fixture.preferences.initialized")
         }
         return defaults
@@ -47,16 +50,40 @@ struct ReliabilityUITestFixture {
     }
 
     func makeCatalogStore() -> CatalogStore {
-        CatalogStore(provider: ReliabilityCatalogProvider(includeFilterCards: scenario == "filters"),
+        if scenario == "screenshots" {
+            return CatalogStore(repository: try! GRDBCatalogRepository(database: CatalogDatabase.inMemory()))
+        }
+        return CatalogStore(provider: ReliabilityCatalogProvider(includeFilterCards: scenario == "filters"),
                      repository: try! GRDBCatalogRepository(database: CatalogDatabase.inMemory()))
     }
 
-    func prepare(_ store: CollectionStore) async {
+    func prepare(_ store: CollectionStore, catalogStore: CatalogStore? = nil) async {
         if defaults.bool(forKey: "fixture.collection.initialized") {
             await store.start()
             return
         }
         do {
+            if scenario == "screenshots" {
+                // Real catalogue details and artwork, sample ownership only.
+                // This UUID-isolated fixture is never compiled into Release.
+                await store.start()
+                let provider = ConfiguredCatalogProvider()
+                guard let catalogStore else { throw TCGdexError.invalidResponse }
+                for number in 1...9 {
+                    let snapshot = try await provider.fetchCard(id: "base1-\(number)")
+                    _ = try await catalogStore.details(for: snapshot.card)
+                    guard let printing = snapshot.printings.first else { throw TCGdexError.invalidResponse }
+                    try await store.setPrintingQuantity(1, cardID: snapshot.card.id, printing: printing)
+                }
+                try await store.saveCustomFolder(.init(id: id, name: "Pikachu", cardNameQuery: "Pikachu",
+                    pokemonRules: [.init(name: "Pikachu", dexID: 25)], displayMode: .allMatching,
+                    coverCardID: "base1-58", createdAt: Date(), updatedAt: Date()))
+                try await store.saveBinderPlan(.init(id: id, name: "Base Set Binder", sourceKind: .set,
+                    sourceID: "base1", sourceName: "Base Set", pocketLayout: .nine,
+                    includesMissingCards: true, backgroundColor: .blue, createdAt: Date(), updatedAt: Date()))
+                defaults.set(true, forKey: "fixture.collection.initialized")
+                return
+            }
             let repository = repository()
             let cardID = ReliabilityCatalogProvider.card.id
             let stamp = TrickOrTradeRelease.all[0].printing(cardID: cardID)!

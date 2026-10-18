@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.47",
+          "buildVersion": "83",
+          "date": "2026-10-18",
+          "localizedDescription": "Fixes duplicate Normal/Holo printings and preserves ownership when card data is corrected. Hides the large set header while searching so results remain visible above the keyboard.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.47/TallyDex-v0.9.47.ipa",
+          "size": 30254391,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.45",
           "buildVersion": "81",
           "date": "2026-10-06",

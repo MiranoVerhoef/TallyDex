@@ -350,9 +350,11 @@ struct TCGdexClient: CatalogProvider, Sendable {
     func fetchCard(id: String) async throws -> CatalogCardSnapshot {
         let response: CardDTO = try await request(path: "cards/\(id)")
         guard response.id == id else { throw TCGdexError.invalidResponse }
-        let providerVariants = (response.variants?.availableKinds ?? [])
-            .union(response.variantsDetailed?.availableKinds ?? [])
-            .union(response.pricing?.availableKinds ?? [])
+        let providerVariants = response.hasIdentifiedPrintings
+            ? response.variantsDetailed?.availableKinds ?? []
+            : (response.variants?.availableKinds ?? [])
+                .union(response.variantsDetailed?.availableKinds ?? [])
+                .union(response.pricing?.availableKinds ?? [])
         let variants = CatalogVariantOverrides.apply(to: providerVariants, cardID: response.id)
         return CatalogCardSnapshot(
             card: response.catalogCard,
@@ -623,7 +625,7 @@ private struct CardDTO: Decodable, Sendable {
 
         var fallbackQuotes = pricing?.tcgplayer?.quotes(cardID: id) ?? []
         fallbackQuotes.append(contentsOf: pricing?.cardmarket?.quotes(cardID: id, variants: variants) ?? [])
-        for quote in fallbackQuotes {
+        for quote in fallbackQuotes where variants.contains(quote.variant) {
             let key = "\(quote.variant.rawValue)|\(quote.source.rawValue)"
             if quotesByKey[key] == nil {
                 quotesByKey[key] = quote
@@ -634,6 +636,13 @@ private struct CardDTO: Decodable, Sendable {
                 return $0.variant.rawValue < $1.variant.rawValue
             }
             return $0.source.rawValue < $1.source.rawValue
+        }
+    }
+
+    var hasIdentifiedPrintings: Bool {
+        guard let variantsDetailed, !variantsDetailed.isEmpty else { return false }
+        return variantsDetailed.allSatisfy {
+            $0.variantId != "generated" && $0.catalogPrinting(cardID: id)?.kind != nil
         }
     }
 }
@@ -760,7 +769,9 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
 
     func exactQuote(cardID: String, variant: CatalogVariantKind) -> CatalogPriceQuote? {
         guard let updatedAt = tcgdexDate(updated),
-              let amount = firstPositive(trend, average, trendHolo, averageHolo) else { return nil }
+              let amount = variant == .reverseHolo
+                ? firstPositive(trendHolo, averageHolo)
+                : firstPositive(trend, average, trendHolo, averageHolo) else { return nil }
         return CatalogPriceQuote(
             cardID: cardID,
             variant: variant,
@@ -769,9 +780,9 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
             amount: amount,
             updatedAt: updatedAt,
             productID: idProduct,
-            average1Day: firstPositive(average1Day, average1DayHolo),
-            average7Days: firstPositive(average7Days, average7DaysHolo),
-            average30Days: firstPositive(average30Days, average30DaysHolo)
+            average1Day: variant == .reverseHolo ? positive(average1DayHolo) : firstPositive(average1Day, average1DayHolo),
+            average7Days: variant == .reverseHolo ? positive(average7DaysHolo) : firstPositive(average7Days, average7DaysHolo),
+            average30Days: variant == .reverseHolo ? positive(average30DaysHolo) : firstPositive(average30Days, average30DaysHolo)
         )
     }
 
@@ -810,12 +821,25 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
         }
     }
 
-    func exactQuote(cardID: String, variant: CatalogVariantKind) -> CatalogPriceQuote? {
-        let market: TCGplayerMarketDTO? = switch variant {
+    func exactQuote(
+        cardID: String,
+        variant: CatalogVariantKind,
+        productID: Int? = nil
+    ) -> CatalogPriceQuote? {
+        var market: TCGplayerMarketDTO? = switch variant {
         case .normal: normal
         case .reverseHolo: reverseHolofoil
         case .holo: holofoil
         case .firstEdition, .watermarkedPromo, .prerelease, .prereleaseStaff, .trickOrTrade, .jumbo: nil
+        }
+        // A marketplace can call a single stamped Normal printing "holofoil".
+        // Only bridge that naming difference with an exact, unique product match;
+        // never turn a price bucket into an additional collectible printing.
+        if let productID, market?.productId != productID {
+            market = nil
+            let matches = [normal, reverseHolofoil, holofoil].compactMap { $0 }
+                .filter { $0.productId == productID && ($0.marketPrice ?? 0) > 0 }
+            if matches.count == 1 { market = matches[0] }
         }
         guard let updatedAt = tcgdexDate(updated),
               let amount = market?.marketPrice,
@@ -903,7 +927,9 @@ private struct DetailedVariantDTO: Decodable, Sendable {
         if hasSpecialStamp || availableKinds.count == 1 {
             return [
                 pricing?.cardmarket?.exactQuote(cardID: cardID, variant: primaryKind),
-                pricing?.tcgplayer?.exactQuote(cardID: cardID, variant: primaryKind),
+                pricing?.tcgplayer?.exactQuote(
+                    cardID: cardID, variant: primaryKind, productID: thirdParty?.tcgplayer
+                ),
             ].compactMap { $0 }
         }
 
@@ -931,7 +957,7 @@ private struct DetailedVariantDTO: Decodable, Sendable {
         if stamp?.contains("w-promo") == true { kinds.insert(.watermarkedPromo) }
         if stamp?.contains("pre-release") == true { kinds.insert(.prerelease) }
         if stamp?.contains("staff") == true { kinds.insert(.prereleaseStaff) }
-        if stamp?.isEmpty != false {
+        if (variantId?.isEmpty ?? true), stamp?.isEmpty != false {
             kinds.formUnion(pricing?.availableKinds ?? [])
         }
         return kinds

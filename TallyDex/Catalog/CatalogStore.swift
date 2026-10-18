@@ -399,9 +399,14 @@ final class CatalogStore {
                 && !correctedPrintingKinds.isEmpty
                 && cached[card.id] != correctedPrintingKinds
             let needsInitialDetails = cached[card.id]?.isEmpty != false && lastPriceRefresh == nil
+            let lastPrintingPriceCheck = try? await repository.metadataDate(
+                forKey: detailedPrintingCheckKey(card.id)
+            )
+            let needsPrintingPriceRepair = !cachedPrintings.isEmpty && lastPrintingPriceCheck == nil
             if forcePriceRefresh
                 || needsInitialDetails
                 || needsProvisionalVariantRepair
+                || needsPrintingPriceRepair
                 || refreshCachedDetails && (
                     cachedPrices[card.id]?.isEmpty != false && lastPriceRefresh == nil
                         || needsPricingRefresh(lastPriceRefresh)
@@ -590,7 +595,7 @@ final class CatalogStore {
     }
 
     private func detailedPrintingCheckKey(_ cardID: String) -> String {
-        "catalog.card.\(cardID).detailedPrintingsChecked"
+        "catalog.card.\(cardID).detailedPrintingsChecked.v2"
     }
 
     private func richMetadataCheckKey(_ cardID: String) -> String {

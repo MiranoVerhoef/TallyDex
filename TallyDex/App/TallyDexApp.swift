@@ -57,7 +57,7 @@ struct TallyDexApp: App {
                     await catalogStore.start()
 #if DEBUG
                     if let fixture = ReliabilityUITestFixture.current {
-                        await fixture.prepare(collectionStore)
+                        await fixture.prepare(collectionStore, catalogStore: catalogStore)
                         collectionStore.installAccessStoreAfterFixtureSetup(accessStore)
                         return
                     }

@@ -53,6 +53,50 @@ final class ReliabilityUITests: XCTestCase {
     private func settings() { tap(app.tabBars.buttons["Settings"]) }
     private func back() { tap(app.navigationBars.buttons.firstMatch) }
 
+    private func capturePurchaseScreen(_ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testCaptureAppStoreScreenshots() throws {
+        guard ProcessInfo.processInfo.environment["TALLYDEX_CAPTURE_STORE_SCREENSHOTS"] == "1" else {
+            throw XCTSkip("Opt-in live catalogue capture, not a reliability test")
+        }
+        launch("screenshots")
+        let state = app.otherElements["reliability.state"].staticTexts.firstMatch
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            state.exists && state.label.contains("owned=9") && state.label.contains("error=none")
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 180), .completed)
+        capturePurchaseScreen("01-Browse-series")
+        tap(app.tabBars.buttons["Collection"])
+        XCTAssertTrue(button("Pikachu").waitForExistence(timeout: 30))
+        capturePurchaseScreen("02-Your-collection")
+        tap(button("Binder Planner"))
+        tap(button("Base Set Binder"))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Side 1 of")).firstMatch.waitForExistence(timeout: 60))
+        // Wait for on-demand artwork requests without changing the displayed UI.
+        let artwork = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            self.app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Charizard,")).firstMatch.exists
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [artwork], timeout: 30), .completed)
+        Thread.sleep(forTimeInterval: 3)
+        capturePurchaseScreen("03-Binder-planning")
+        tap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Charizard,")).firstMatch)
+        XCTAssertTrue(app.navigationBars["Charizard"].waitForExistence(timeout: 30))
+        Thread.sleep(forTimeInterval: 3)
+        capturePurchaseScreen("04-Card-artwork")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.51)))
+        capturePurchaseScreen("05-Track-printings")
+        tap(app.tabBars.buttons["Settings"])
+        tap(button("Export & Import"))
+        XCTAssertTrue(app.navigationBars["Export & Import"].waitForExistence(timeout: 10))
+        capturePurchaseScreen("06-Export-and-import")
+    }
+
     private func confirm(_ label: String, file: StaticString = #filePath, line: UInt = #line) {
         let buttons = app.buttons.matching(NSPredicate(format: "label == %@", label))
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
@@ -86,6 +130,41 @@ final class ReliabilityUITests: XCTestCase {
 
     private func expectVisible(_ count: Int, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(app.staticTexts["\(count) of 4 cards"].waitForExistence(timeout: 10), file: file, line: line)
+    }
+
+    func testSetSearchHidesSummaryAndRestoresItWhenCancelled() {
+        launch("filters")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Sets"])
+        tap(button("Sword & Shield"))
+        let expansion = button("Fusion Strike")
+        for _ in 0..<12 {
+            if expansion.exists { break }
+            app.swipeUp()
+        }
+        if !expansion.exists { print(app.debugDescription) }
+        tap(expansion)
+        let summary = app.staticTexts["set.summary.progress"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 15))
+        let search = app.searchFields.firstMatch
+        for _ in 0..<3 {
+            if search.exists { break }
+            app.swipeDown()
+        }
+        if !search.exists {
+            print(app.debugDescription)
+            capturePurchaseScreen("Set search control triage")
+        }
+        tap(search)
+        XCTAssertFalse(summary.exists)
+        search.typeText("16")
+        XCTAssertTrue(app.staticTexts["1 cards"].waitForExistence(timeout: 10))
+        XCTAssertFalse(summary.exists)
+        capturePurchaseScreen("Set search with compact results")
+        let cancel = app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Close"]
+        tap(cancel)
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        expectState(["owned=1", "error=none"])
     }
 
     func testSetsDashboardShowsCollectionWideCounts() {
@@ -252,14 +331,15 @@ final class ReliabilityUITests: XCTestCase {
     func testCompletingSetupDoesNotRepeatOrShowWhatsNew() {
         launch("fresh")
         XCTAssertTrue(app.buttons["Skip"].waitForExistence(timeout: 10))
-        for _ in 0..<4 { tap(app.buttons["Continue"]) }
+        for _ in 0..<3 { tap(app.buttons["Continue"]) }
+        XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.45"])
+        expectState(["intro=true", "seen=0.9.47"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.45"])
+        expectState(["intro=true", "seen=0.9.47"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -267,10 +347,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.45"])
+        expectState(["intro=true", "seen=0.9.47"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.45"])
+        expectState(["intro=true", "seen=0.9.47"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -280,10 +360,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.45"])
+        expectState(["intro=true", "seen=0.9.47"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.45"])
+        expectState(["intro=true", "seen=0.9.47"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -298,6 +378,7 @@ final class ReliabilityUITests: XCTestCase {
             XCTWaiter.wait(for: [enabled], timeout: 15), .completed,
             "The local StoreKit lifetime product should be available"
         )
+        capturePurchaseScreen("Lifetime-access-review")
         tap(startTrial)
         expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
         let dismissed = XCTNSPredicateExpectation(
@@ -306,10 +387,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed)
         settings()
         for _ in 0..<5 {
-            if button("Access & Purchase").exists { break }
+            if button("Lifetime Access").exists { break }
             app.swipeUp()
         }
-        tap(button("Access & Purchase"))
+        tap(button("Lifetime Access"))
         let trialStatus = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS[c] %@", "14 days left"))
             .firstMatch
@@ -328,6 +409,11 @@ final class ReliabilityUITests: XCTestCase {
         for tier in ["espresso", "regular", "large", "round"] {
             XCTAssertTrue(app.buttons["tip.\(tier)"].waitForExistence(timeout: 10))
         }
+        let loadedTips = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "enabled == true"), object: app.buttons["tip.round"]
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [loadedTips], timeout: 15), .completed)
+        capturePurchaseScreen("Coffee-tips-review")
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Tips are optional")
         ).firstMatch.exists)
@@ -336,6 +422,7 @@ final class ReliabilityUITests: XCTestCase {
     func testSettingsHelpAndActiveMarketplaceOptionsRemainAvailable() {
         launch("restore")
         settings()
+        XCTAssertFalse(button("Scanner Feedback").exists)
         tap(button("Prices & Currency"))
         XCTAssertFalse(app.buttons["Future Cardmarket Listings"].exists)
         XCTAssertFalse(app.staticTexts["Future Cardmarket Listings"].exists)

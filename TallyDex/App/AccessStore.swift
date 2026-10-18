@@ -468,7 +468,7 @@ struct MembershipView: View {
                     Section { Text(message).foregroundStyle(.secondary) }
                 }
             }
-            .navigationTitle("Access & Purchase")
+            .navigationTitle("Lifetime Access")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
