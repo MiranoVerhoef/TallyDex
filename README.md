@@ -66,6 +66,9 @@ different finish. Existing affected cached cards refresh when their set is opene
 Ownership, backups and historical price observations are retained.
 Set search hides the large artwork, progress and value summary while active,
 keeping matching cards above the keyboard; cancelling search restores the header.
+Version 0.9.48 keeps that summary in a stable layout and coordinates its collapse
+and expansion with the card results, avoiding jumps when search closes. The
+custom transition respects Reduce Motion.
 
 TallyDex caches Cardmarket EUR and TCGplayer USD market prices supplied by
 TCGdex. You can display either source or both while choosing one source for

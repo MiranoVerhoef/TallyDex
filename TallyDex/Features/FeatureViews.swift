@@ -1781,6 +1781,7 @@ private struct CatalogSetDetailView: View {
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(PricingSettings.sourceKey)
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @AppStorage(PricingSettings.displayModeKey)
@@ -1795,6 +1796,7 @@ private struct CatalogSetDetailView: View {
     @State private var selectedFilter = SetCardFilter.all
     @State private var searchText = ""
     @State private var isSetSearchPresented = false
+    @State private var setSummaryHeight: CGFloat = 0
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var availablePrintingsByCardID: [String: [CatalogPrinting]] = [:]
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
@@ -1805,6 +1807,10 @@ private struct CatalogSetDetailView: View {
         dynamicTypeSize.isAccessibilitySize
             ? [GridItem(.flexible())]
             : [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14)]
+    }
+
+    private var isSetSummaryCollapsed: Bool {
+        isSetSearchPresented || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var collectionGoal: CollectionGoal {
@@ -1875,8 +1881,11 @@ private struct CatalogSetDetailView: View {
         let visibleCards = visibleCards(progressByCardID: progressByCardID)
 
         ScrollView {
-            LazyVStack(spacing: 20) {
-                if !isSetSearchPresented && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(spacing: 0) {
+                // Keep the summary's identity and natural layout stable. Inserting
+                // several lazy children during UIKit search dismissal made their
+                // positions animate independently beneath the navigation bar.
+                VStack(spacing: 20) {
                     CatalogSetArtwork(set: set)
                         .frame(maxWidth: 260, minHeight: 96, maxHeight: 140)
                         .padding(.top)
@@ -1934,101 +1943,130 @@ private struct CatalogSetDetailView: View {
                         )
                     }
                 }
-
-                if let collectionMessage {
-                    Label(collectionMessage, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    setSummaryHeight = height
                 }
+                .geometryGroup()
+                .frame(
+                    height: isSetSummaryCollapsed ? 0 : (setSummaryHeight > 0 ? setSummaryHeight : nil),
+                    alignment: .top
+                )
+                .opacity(isSetSummaryCollapsed ? 0 : 1)
+                .clipped()
+                .padding(.bottom, isSetSummaryCollapsed ? 0 : 20)
+                .allowsHitTesting(!isSetSummaryCollapsed)
+                .accessibilityHidden(isSetSummaryCollapsed)
 
-                if isLoadingCards && cards.isEmpty {
-                    ProgressView("Updating card list…")
-                        .frame(maxWidth: .infinity, minHeight: 220)
-                } else if cards.isEmpty {
-                    ContentUnavailableView {
-                        Label(
-                            set.isUpcoming() ? "Cards Not Announced Yet" : "Card List Unavailable",
-                            systemImage: "rectangle.grid.3x2"
-                        )
-                    } description: {
-                        Text(cardMessage ?? "Check for this set’s cards again.")
-                    } actions: {
-                        Button(set.isUpcoming() ? "Check Again" : "Try Again") {
-                            Task { await loadCards(forceRefresh: true) }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isLoadingCards)
-                    }
-                } else {
-                    Picker("Cards", selection: $selectedFilter) {
-                        ForEach(SetCardFilter.allCases) { filter in
-                            Text(filter.title).tag(filter)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    HStack {
-                        Text("\(visibleCards.count) cards")
-                            .font(.headline)
-                        Spacer()
-                        Text("\(progress.completedSlots) of \(progress.requiredSlots) goal slots")
-                            .font(.caption.monospacedDigit())
+                LazyVStack(spacing: 20) {
+                    if let collectionMessage {
+                        Label(collectionMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
-                        if isLoadingCards || isPreparingGoalMetadata {
-                            ProgressView()
-                                .controlSize(.small)
-                                .accessibilityLabel(
-                                    isPreparingGoalMetadata ? "Loading printing rules" : "Loading cards"
-                                )
-                        }
                     }
 
-                    LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(visibleCards) { card in
-                            ZStack(alignment: .topTrailing) {
-                                NavigationLink {
-                                    CatalogCardDetailView(card: card)
-                                } label: {
-                                    CatalogCardTile(
-                                        card: card,
-                                        hasNotes: !(collectionStore.cardMetadataByID[card.id]?.notes
-                                            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                    if isLoadingCards && cards.isEmpty {
+                        ProgressView("Updating card list…")
+                            .frame(maxWidth: .infinity, minHeight: 220)
+                    } else if cards.isEmpty {
+                        ContentUnavailableView {
+                            Label(
+                                set.isUpcoming() ? "Cards Not Announced Yet" : "Card List Unavailable",
+                                systemImage: "rectangle.grid.3x2"
+                            )
+                        } description: {
+                            Text(cardMessage ?? "Check for this set’s cards again.")
+                        } actions: {
+                            Button(set.isUpcoming() ? "Check Again" : "Try Again") {
+                                Task { await loadCards(forceRefresh: true) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isLoadingCards)
+                        }
+                    } else {
+                        Picker("Cards", selection: $selectedFilter) {
+                            ForEach(SetCardFilter.allCases) { filter in
+                                Text(filter.title).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        HStack {
+                            Text("\(visibleCards.count) cards")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(progress.completedSlots) of \(progress.requiredSlots) goal slots")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            if isLoadingCards || isPreparingGoalMetadata {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .accessibilityLabel(
+                                        isPreparingGoalMetadata ? "Loading printing rules" : "Loading cards"
+                                    )
+                            }
+                        }
+
+                        LazyVGrid(columns: columns, spacing: 18) {
+                            ForEach(visibleCards) { card in
+                                ZStack(alignment: .topTrailing) {
+                                    NavigationLink {
+                                        CatalogCardDetailView(card: card)
+                                    } label: {
+                                        CatalogCardTile(
+                                            card: card,
+                                            hasNotes: !(collectionStore.cardMetadataByID[card.id]?.notes
+                                                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        handleCheckmarkTap(for: card)
+                                    } label: {
+                                        if updatingCardIDs.contains(card.id) {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .frame(width: 44, height: 44)
+                                        } else {
+                                            CardCompletionIndicator(
+                                                progress: progressByCardID[card.id]
+                                                    ?? CollectionProgress(completedSlots: 0, requiredSlots: 0)
+                                            )
+                                            .frame(width: 44, height: 44)
+                                        }
+                                    }
+                                    .background(.regularMaterial, in: Circle())
+                                    .contentShape(Circle())
+                                    .offset(x: 7, y: -7)
+                                    .disabled(updatingCardIDs.contains(card.id))
+                                    .accessibilityLabel(checkmarkAccessibilityLabel(for: card))
+                                    .accessibilityHint(
+                                        collectionGoal == .normal
+                                            ? "Double tap to toggle ownership"
+                                            : "Double tap to choose owned printings"
                                     )
                                 }
-                                .buttonStyle(.plain)
-
-                                Button {
-                                    handleCheckmarkTap(for: card)
-                                } label: {
-                                    if updatingCardIDs.contains(card.id) {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                            .frame(width: 44, height: 44)
-                                    } else {
-                                        CardCompletionIndicator(
-                                            progress: progressByCardID[card.id]
-                                                ?? CollectionProgress(completedSlots: 0, requiredSlots: 0)
-                                        )
-                                        .frame(width: 44, height: 44)
-                                    }
-                                }
-                                .background(.regularMaterial, in: Circle())
-                                .contentShape(Circle())
-                                .offset(x: 7, y: -7)
-                                .disabled(updatingCardIDs.contains(card.id))
-                                .accessibilityLabel(checkmarkAccessibilityLabel(for: card))
-                                .accessibilityHint(
-                                    collectionGoal == .normal
-                                        ? "Double tap to toggle ownership"
-                                        : "Double tap to choose owned printings"
-                                )
+                                .transition(.identity)
                             }
                         }
                     }
                 }
+                // Resolve filtering atomically inside the results group, while
+                // its outer position follows the header's shared animation.
+                .transaction { transaction in transaction.animation = nil }
+                .geometryGroup()
             }
             .padding()
+            // Animate the stable header and results as one layout. Keep UIKit's
+            // implicit search transaction from separately animating their children.
+            .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: isSetSummaryCollapsed)
+            .transaction { transaction in transaction.animation = nil }
         }
+        .defaultScrollAnchor(.top, for: .sizeChanges)
         .refreshable {
             await loadCards(forceRefresh: true)
         }

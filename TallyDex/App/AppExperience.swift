@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.47",
-        headline: "Printing accuracy",
+        version: "0.9.48",
+        headline: "Smoother set search",
         notes: [
             AppReleaseNote(
-                systemImage: "checkmark.seal",
-                title: "Correct printings",
-                detail: "Corrects duplicate printings while preserving ownership. Set search now hides the large header to show more results."
+                systemImage: "magnifyingglass",
+                title: "Smooth transitions",
+                detail: "Smooths the set header and card grid when opening or closing search."
             ),
         ]
     )
