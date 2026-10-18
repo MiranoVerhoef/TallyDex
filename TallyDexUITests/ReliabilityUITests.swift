@@ -146,31 +146,50 @@ final class ReliabilityUITests: XCTestCase {
         tap(expansion)
         let summary = app.staticTexts["set.summary.progress"]
         XCTAssertTrue(summary.waitForExistence(timeout: 15))
-        let search = app.searchFields.firstMatch
-        for _ in 0..<3 {
-            if search.exists { break }
-            app.swipeDown()
-        }
-        if !search.exists {
-            print(app.debugDescription)
-            capturePurchaseScreen("Set search control triage")
-        }
+        let search = app.textFields["set.search.field"]
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        let restingSearchFrame = search.frame
+        let restingNavigationFrame = app.navigationBars.firstMatch.frame
         let restingSummaryY = summary.frame.minY
         for query in ["16", "no-matching-card", "16"] {
             tap(search)
             XCTAssertFalse(summary.exists)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                "This regression must exercise the software keyboard, not hardware-keyboard-only input")
+            let keyboard = app.keyboards.firstMatch
+            XCTAssertGreaterThan(keyboard.frame.intersection(app.frame).height, 150,
+                "The keyboard must occupy the visible screen, not exist offscreen in accessibility")
+            XCTAssertTrue(keyboard.buttons["Search"].isHittable,
+                "The software keyboard Search key must be onscreen and tappable")
             search.typeText(query)
             XCTAssertTrue(app.staticTexts[query == "16" ? "1 cards" : "0 cards"].waitForExistence(timeout: 10))
             XCTAssertFalse(summary.exists)
             capturePurchaseScreen("Set search with compact results")
-            let cancel = app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Close"]
-            tap(cancel)
+            tap(app.buttons["set.search.close"])
             XCTAssertTrue(summary.waitForExistence(timeout: 10))
             XCTAssertTrue(app.staticTexts["3 cards"].waitForExistence(timeout: 10))
             XCTAssertEqual(summary.frame.minY, restingSummaryY, accuracy: 4,
                 "Cancelling search should restore the same header position")
+            XCTAssertEqual(search.frame.minY, restingSearchFrame.minY, accuracy: 1,
+                "The search row must not move when closing search")
+            XCTAssertEqual(app.navigationBars.firstMatch.frame.height, restingNavigationFrame.height, accuracy: 1,
+                "Closing search must not collapse or expand the navigation bar")
             capturePurchaseScreen("Set summary after cancelling search")
         }
+
+        // Clearing text and submitting are not the same as closing search.
+        tap(search)
+        search.typeText("16")
+        tap(app.buttons["set.search.clear"])
+        XCTAssertTrue(app.staticTexts["3 cards"].waitForExistence(timeout: 10))
+        XCTAssertFalse(summary.exists)
+        XCTAssertTrue(app.buttons["set.search.close"].exists)
+        search.typeText("16\n")
+        XCTAssertTrue(app.staticTexts["1 cards"].waitForExistence(timeout: 10))
+        XCTAssertFalse(summary.exists)
+        tap(app.buttons["set.search.close"])
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["3 cards"].exists)
         expectState(["owned=1", "error=none"])
     }
 
@@ -341,12 +360,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.48"])
+        expectState(["intro=true", "seen=0.9.49"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.48"])
+        expectState(["intro=true", "seen=0.9.49"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -354,10 +373,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.48"])
+        expectState(["intro=true", "seen=0.9.49"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.48"])
+        expectState(["intro=true", "seen=0.9.49"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -367,10 +386,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.48"])
+        expectState(["intro=true", "seen=0.9.49"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.48"])
+        expectState(["intro=true", "seen=0.9.49"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

@@ -1796,6 +1796,7 @@ private struct CatalogSetDetailView: View {
     @State private var selectedFilter = SetCardFilter.all
     @State private var searchText = ""
     @State private var isSetSearchPresented = false
+    @FocusState private var isSetSearchFocused: Bool
     @State private var setSummaryHeight: CGFloat = 0
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var availablePrintingsByCardID: [String: [CatalogPrinting]] = [:]
@@ -1811,6 +1812,63 @@ private struct CatalogSetDetailView: View {
 
     private var isSetSummaryCollapsed: Bool {
         isSetSearchPresented || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var setSearchBar: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField("Card name or number", text: $searchText)
+                    .focused($isSetSearchFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .onSubmit { isSetSearchFocused = false }
+                    .accessibilityIdentifier("set.search.field")
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        isSetSearchFocused = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Clear search")
+                    .accessibilityIdentifier("set.search.clear")
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, searchText.isEmpty ? 14 : 0)
+            .frame(minHeight: 44)
+            .background(.quaternary, in: Capsule())
+
+            if isSetSearchPresented {
+                Button {
+                    // One state change restores the unfiltered grid and summary.
+                    // The navigation/search toolbar no longer changes height too.
+                    isSetSearchFocused = false
+                    searchText = ""
+                    isSetSearchPresented = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                        .background(.quaternary, in: Circle())
+                }
+                .accessibilityLabel("Close search")
+                .accessibilityIdentifier("set.search.close")
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .onChange(of: isSetSearchFocused) { _, focused in
+            if focused { isSetSearchPresented = true }
+        }
     }
 
     private var collectionGoal: CollectionGoal {
@@ -1882,9 +1940,8 @@ private struct CatalogSetDetailView: View {
 
         ScrollView {
             VStack(spacing: 0) {
-                // Keep the summary's identity and natural layout stable. Inserting
-                // several lazy children during UIKit search dismissal made their
-                // positions animate independently beneath the navigation bar.
+                // Keep the summary and results in a single stable layout, below
+                // a fixed search row rather than a collapsing navigation drawer.
                 VStack(spacing: 20) {
                     CatalogSetArtwork(set: set)
                         .frame(maxWidth: 260, minHeight: 96, maxHeight: 140)
@@ -2061,21 +2118,15 @@ private struct CatalogSetDetailView: View {
                 .geometryGroup()
             }
             .padding()
-            // Animate the stable header and results as one layout. Keep UIKit's
-            // implicit search transaction from separately animating their children.
+            // Only this content transition changes the top of the card grid.
+            // Keyboard dismissal changes the bottom inset, not the navigation bar.
             .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: isSetSummaryCollapsed)
             .transaction { transaction in transaction.animation = nil }
         }
-        .defaultScrollAnchor(.top, for: .sizeChanges)
         .refreshable {
             await loadCards(forceRefresh: true)
         }
-        .searchable(
-            text: $searchText,
-            isPresented: $isSetSearchPresented,
-            placement: .navigationBarDrawer(displayMode: .automatic),
-            prompt: "Card name or number"
-        )
+        .safeAreaInset(edge: .top, spacing: 0) { setSearchBar }
         .navigationTitle(set.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

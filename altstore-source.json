@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.49",
+          "buildVersion": "85",
+          "date": "2026-10-18",
+          "localizedDescription": "Fixes the set layout jumping when closing search.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.49/TallyDex-v0.9.49.ipa",
+          "size": 30267411,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.48",
           "buildVersion": "84",
           "date": "2026-10-18",
