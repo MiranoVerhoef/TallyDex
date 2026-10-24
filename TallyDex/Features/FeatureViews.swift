@@ -1215,8 +1215,7 @@ private struct TrickOrTradeChecklistView: View {
 
     private var visibleCards: [CatalogCard] {
         cards.filter { card in
-            let matches = searchText.isEmpty || card.name.localizedCaseInsensitiveContains(searchText)
-                || card.localID.localizedCaseInsensitiveContains(searchText)
+            let matches = CatalogCardTextQuery.matches(searchText, card: card)
             return matches && (filter == .all || (filter == .owned ? owns(card.id) : !owns(card.id)))
         }
     }
@@ -1352,10 +1351,7 @@ private struct JumboPromoChecklistView: View {
     private var visibleEntries: [JumboPromoChecklistEntry] {
         entries.filter { entry in
             let card = entry.card
-            let matches = searchText.isEmpty
-                || card.name.localizedCaseInsensitiveContains(searchText)
-                || card.localID.localizedCaseInsensitiveContains(searchText)
-                || card.setID.localizedCaseInsensitiveContains(searchText)
+            let matches = CatalogCardTextQuery.matches(searchText, card: card)
             return matches && (filter == .all || (filter == .owned ? owns(entry) : !owns(entry)))
         }
     }
@@ -1804,6 +1800,8 @@ private struct CatalogSetDetailView: View {
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
     @State private var isPreparingGoalMetadata = false
     @State private var isConfirmingOfflineDownload = false
+    @State private var missingReport: MissingCardReport?
+    @State private var exportError: String?
 
     private var columns: [GridItem] {
         dynamicTypeSize.isAccessibilitySize
@@ -1919,9 +1917,7 @@ private struct CatalogSetDetailView: View {
             case .missing: cardProgress.requiredSlots > 0
                     && cardProgress.completedSlots < cardProgress.requiredSlots
             }
-            let searchMatches = query.isEmpty
-                || card.name.localizedCaseInsensitiveContains(query)
-                || card.localID.localizedCaseInsensitiveContains(query)
+            let searchMatches = CatalogCardTextQuery.matches(query, card: card, setName: set.name)
             return filterMatches && searchMatches
         }
     }
@@ -2135,26 +2131,42 @@ private struct CatalogSetDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if artworkCacheStore.isPinned(setID: set.id) {
-                    Button("Remove offline download", systemImage: "arrow.down.circle.fill") {
-                        Task {
-                            await artworkCacheStore.removeOfflineSet(
-                                setID: set.id,
-                                setName: set.name
-                            )
+                Menu {
+                    Button("Export Missing", systemImage: "checklist") {
+                        do {
+                            missingReport = try MissingCardReport.make(set: set, cards: cards,
+                                preference: collectionPreference, variants: availableVariantsByCardID,
+                                printings: availablePrintingsByCardID, broad: collectionStore.broadOwnedEntries,
+                                exact: collectionStore.exactOwnedEntries)
+                        } catch { exportError = error.localizedDescription }
+                    }
+                    .disabled(cards.isEmpty || isLoadingCards || isPreparingGoalMetadata)
+                    .accessibilityIdentifier("set.export.missing")
+                    Divider()
+                    if artworkCacheStore.isPinned(setID: set.id) {
+                        Button("Remove offline download", systemImage: "arrow.down.circle.fill") {
+                            Task {
+                                await artworkCacheStore.removeOfflineSet(
+                                    setID: set.id,
+                                    setName: set.name
+                                )
+                            }
                         }
+                    } else {
+                        Button("Keep offline", systemImage: "arrow.down.circle") {
+                            isConfirmingOfflineDownload = true
+                        }
+                        .disabled(
+                            set.isUpcoming()
+                                || artworkCacheStore.isPreparing(setID: set.id)
+                                || artworkCacheStore.cacheWarmProgress[set.id] != nil
+                                || artworkCacheStore.downloadProgress[set.id] != nil
+                        )
                     }
-                } else {
-                    Button("Keep offline", systemImage: "arrow.down.circle") {
-                        isConfirmingOfflineDownload = true
-                    }
-                    .disabled(
-                        set.isUpcoming()
-                            || artworkCacheStore.isPreparing(setID: set.id)
-                            || artworkCacheStore.cacheWarmProgress[set.id] != nil
-                            || artworkCacheStore.downloadProgress[set.id] != nil
-                    )
+                } label: {
+                    Label("Set actions", systemImage: "square.and.arrow.up")
                 }
+                .accessibilityIdentifier("set.actions")
 
                 Button("Set information", systemImage: "info.circle") {
                     isShowingInformation = true
@@ -2164,6 +2176,12 @@ private struct CatalogSetDetailView: View {
         .sheet(isPresented: $isShowingInformation) {
             CatalogSetInformationView(set: set)
         }
+        .sheet(item: $missingReport) { report in
+            MissingCardExportView(report: report)
+        }
+        .alert("Export Unavailable", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK") { exportError = nil }
+        } message: { Text(exportError ?? "") }
         .sheet(item: $selectedVariantCard) { card in
             CatalogVariantPickerView(card: card)
                 .presentationDetents([.medium, .large])
@@ -5991,6 +6009,22 @@ struct CollectionView: View {
                         }
                     }
                     .accessibilityIdentifier("collection.badges")
+
+                    NavigationLink {
+                        CollectionWishlistView()
+                    } label: {
+                        Label {
+                            HStack {
+                                Text("Wishlist")
+                                Spacer()
+                                Text("\(collectionStore.cardMetadataByID.values.filter(\.isWishlisted).count)")
+                                    .foregroundStyle(.secondary).monospacedDigit()
+                            }
+                        } icon: {
+                            Image(systemName: "heart.fill").foregroundStyle(.pink)
+                        }
+                    }
+                    .accessibilityIdentifier("collection.wishlist")
                 }
 
                 if !ownedCardIDs.isEmpty {
@@ -6806,10 +6840,7 @@ private struct CustomCollectionFolderDetailView: View {
                 for: result.card, variants: variantsByCardID[result.card.id] ?? [],
                 catalog: catalogStore, collection: collectionStore
             )
-            let searchMatches = trimmedSearch.isEmpty
-                || result.card.name.localizedCaseInsensitiveContains(trimmedSearch)
-                || result.setName.localizedCaseInsensitiveContains(trimmedSearch)
-                || result.card.localID.localizedCaseInsensitiveContains(trimmedSearch)
+            let searchMatches = CatalogCardTextQuery.matches(trimmedSearch, card: result.card, setName: result.setName)
             return searchMatches && filters.matches(result, seriesID: options.seriesBySetID[result.card.setID],
                                                      isOwned: isOwned, progress: progress)
         }.sorted(by: filters.sort.precedes)
@@ -6897,6 +6928,14 @@ private struct CustomCollectionFolderDetailView: View {
                         .padding(.top, 4)
                     }
                 }
+
+                Picker("Cards", selection: $filters.ownership) {
+                    ForEach(CollectionOwnershipFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("collection.ownership")
 
                 if let message {
                     Label(message, systemImage: "exclamationmark.triangle")
@@ -7004,7 +7043,7 @@ private struct CustomCollectionFolderDetailView: View {
         .navigationTitle(folder.name)
         .modifier(BulkCardEditor(cards: visibleMatches.map(\.card), selection: bulkSelection))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Card, set, or number")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Pokémon and number")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

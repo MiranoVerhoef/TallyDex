@@ -72,6 +72,14 @@ printing checklist with optional information. Search list selection uses leading
 checkmarks without navigation chevrons. Accessibility text sizes use stacked
 controls and availability counts; ownership, safety backups and Undo are unchanged.
 
+## Missing checklists and collection browsing
+
+Version 0.9.52 adds Set actions → Export Missing, with paginated share images
+and an A4 PDF checklist based on the whole selected set goal, not the current
+search. Exporting never edits ownership. Collections expose All/Owned/Missing
+segments and a Wishlist entry that includes unowned cards. Name and number can
+be combined in catalogue, set and collection searches.
+
 ## Collection values
 
 Version 0.9.47 fixes false extra printings caused by marketplace price labels.
@@ -140,9 +148,8 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 
 ### Before public release
 
-- [ ] Set-level Export Missing: a styled checklist following the selected set
-  goal and exact missing printings, with shareable-image and printable-PDF
-  examples to review before choosing the format. Planned after 0.9.51.
+- [x] Set-level Export Missing: share images and a printable PDF following the
+  selected set goal and exact missing printings (0.9.52).
 
 - [x] Prepare an in-app history of What’s New entries starting with TestFlight/public
   release. Settings → Help & Updates should let people browse past versions at

@@ -5,6 +5,40 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    func testCombinedNameAndNumberSearchDoesNotMistakePokemonForSetCode() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
+        let expansion = set(id: "sv-test", seriesID: "sv", name: "Test")
+        let cards = [
+            CatalogCard(id: "sv-test-64", setID: "sv-test", localID: "64", name: "Lucario GX", imageURL: nil, category: nil, illustrator: nil, rarity: nil),
+            CatalogCard(id: "sv-test-SV64", setID: "sv-test", localID: "SV64", name: "Lucario GX", imageURL: nil, category: nil, illustrator: nil, rarity: nil),
+            CatalogCard(id: "sv-test-2", setID: "sv-test", localID: "2", name: "Pikachu", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        ]
+        try await repository.replaceCatalog([.init(series: series, sets: [expansion])])
+        try await repository.replaceSearchIndex(cards)
+        for query in ["Lucario 64", "64 Lucario", "Lucario #64"] {
+            let matches = try await repository.searchCards(query: query)
+            XCTAssertEqual(Set(matches.map(\.id)), Set(cards.prefix(2).map(\.id)), query)
+        }
+        let prefixed = try await repository.searchCards(query: "Lucario SV64")
+        XCTAssertEqual(prefixed.map(\.id), ["sv-test-SV64"])
+        let padded = try await repository.searchCards(query: "Pikachu 002")
+        XCTAssertEqual(padded.map(\.id), ["sv-test-2"])
+        let wildcard = try await repository.searchCards(query: "%")
+        XCTAssertTrue(wildcard.isEmpty)
+        let hash = try await repository.searchCards(query: "#")
+        XCTAssertTrue(hash.isEmpty)
+    }
+
+    func testLocalSearchCombinesPokemonAndCollectorNumberAcrossFields() {
+        let card = CatalogCard(id: "sm-SV64", setID: "sm", localID: "SV64", name: "Lucario GX", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        XCTAssertTrue(CatalogCardTextQuery.matches("Lucario #SV64", card: card))
+        XCTAssertTrue(CatalogCardTextQuery.matches("SV64 Lucario", card: card))
+        XCTAssertFalse(CatalogCardTextQuery.matches("Lucario SV65", card: card))
+        XCTAssertFalse(CatalogCardTextQuery.matches("Pikachu SV64", card: card))
+        XCTAssertTrue(CatalogCardTextQuery.matches("  ", card: card))
+    }
+
     func testPriceDisplayPreservesExistingPreferenceAndKeepsSourcesSeparate() {
         XCTAssertEqual(PricingSettings.resolveDisplayMode(nil, preferredSource: .cardmarket), .cardmarket)
         XCTAssertEqual(PricingSettings.resolveDisplayMode(nil, preferredSource: .tcgplayer), .tcgplayer)

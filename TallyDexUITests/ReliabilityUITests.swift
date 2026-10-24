@@ -132,6 +132,81 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["\(count) of 4 cards"].waitForExistence(timeout: 10), file: file, line: line)
     }
 
+    func testCollectionOwnershipSegmentsAndCombinedNameNumberSearch() {
+        openFilterCollection()
+        let picker = app.segmentedControls["collection.ownership"]
+        tap(picker.buttons["Owned"])
+        expectVisible(1)
+        tap(picker.buttons["Missing"])
+        expectVisible(3)
+        tap(picker.buttons["All"])
+        expectVisible(4)
+        tap(app.searchFields.firstMatch)
+        app.searchFields.firstMatch.typeText("Phantump 16\n")
+        expectVisible(1)
+        capturePurchaseScreen("Collection ownership filters and combined search")
+        // Cancel search before leaving the collection.
+        if app.buttons["Cancel"].exists { tap(app.buttons["Cancel"]) }
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
+    }
+
+    func testWishlistIncludesUnownedCardsAndSupportsCombinedSearch() {
+        launch("wishlist")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Collection"])
+        tap(app.buttons["collection.wishlist"])
+        let card = app.buttons["wishlist.card.sv05-ui-3"]
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        tap(app.searchFields.firstMatch)
+        app.searchFields.firstMatch.typeText("Trevenant 3\n")
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        capturePurchaseScreen("Wishlist includes unowned cards")
+        tap(card)
+        XCTAssertTrue(app.navigationBars["Trevenant"].waitForExistence(timeout: 10))
+    }
+
+    func testSetMissingExportIgnoresSearchAndSupportsBothFormatsWithoutEditing() {
+        launch("filters")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Sets"])
+        tap(button("Sword & Shield"))
+        let expansion = button("Fusion Strike")
+        for _ in 0..<12 { if expansion.exists { break }; app.swipeUp() }
+        tap(expansion)
+        tap(app.textFields["set.search.field"])
+        app.textFields["set.search.field"].typeText("2\n")
+        XCTAssertTrue(app.staticTexts["1 cards"].waitForExistence(timeout: 10))
+        tap(app.buttons["set.actions"])
+        tap(button("Export Missing"))
+        let summary = app.staticTexts["missing.summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 15))
+        XCTAssertTrue(summary.label.contains("2 cards"))
+        XCTAssertTrue(app.images["missing.preview"].waitForExistence(timeout: 30))
+        capturePurchaseScreen("Missing-card image preview")
+        tap(app.segmentedControls["missing.format"].buttons["PDF"])
+        XCTAssertTrue(app.buttons["missing.share"].waitForExistence(timeout: 5))
+        capturePurchaseScreen("Missing-card printable PDF preview")
+        let share = app.buttons["missing.share"]
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in share.isEnabled }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 45), .completed)
+        tap(share)
+        let close = app.buttons["Close"]
+        if !close.waitForExistence(timeout: 10) { print(app.debugDescription) }
+        XCTAssertTrue(close.exists)
+        capturePurchaseScreen("Missing-card PDF system share sheet")
+        tap(close)
+        tap(app.segmentedControls["missing.format"].buttons["Images"])
+        tap(app.buttons["missing.share"])
+        XCTAssertTrue(close.waitForExistence(timeout: 10))
+        capturePurchaseScreen("Missing-card PNG system share sheet")
+        tap(close)
+        tap(app.buttons["Done"])
+        back()
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
+    }
+
     func testSetSearchHidesSummaryAndRestoresItWhenCancelled() {
         launch("filters")
         expectState(["owned=1", "error=none"])
@@ -216,6 +291,10 @@ final class ReliabilityUITests: XCTestCase {
         bulkSelectAllAndApply(expectedOwned: 4)
         expectState(["normal=7;stamp=2", "error=none"])
         // A regular tap still navigates after selection mode ends.
+        // The extra search/filter rows can leave this lower tile partly behind
+        // the result banner. Scroll its tap target fully into the content area.
+        app.swipeUp()
+        capturePurchaseScreen("Collection after bulk Undo")
         tap(app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch)
         XCTAssertTrue(app.navigationBars["Phantump"].waitForExistence(timeout: 10))
     }
@@ -250,6 +329,7 @@ final class ReliabilityUITests: XCTestCase {
         expectState(["normal=0;stamp=2", "owned=1", "error=none"])
         tap(app.buttons["bulk.undo"])
         expectState(["normal=7;stamp=2", "owned=1", "error=none"])
+        app.swipeUp() // Keep the lower card above the post-Undo result banner.
         let restored = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
         restored.press(forDuration: 0.8)
         tap(app.buttons["bulk.set"])
@@ -531,12 +611,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.51"])
+        expectState(["intro=true", "seen=0.9.52"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.51"])
+        expectState(["intro=true", "seen=0.9.52"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -544,10 +624,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.51"])
+        expectState(["intro=true", "seen=0.9.52"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.51"])
+        expectState(["intro=true", "seen=0.9.52"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -557,10 +637,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.51"])
+        expectState(["intro=true", "seen=0.9.52"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.51"])
+        expectState(["intro=true", "seen=0.9.52"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

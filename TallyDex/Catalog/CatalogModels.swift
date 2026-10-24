@@ -154,6 +154,23 @@ struct CatalogCard: Codable, Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Every search term may match a different card field (for example "Lucario SV64").
+enum CatalogCardTextQuery {
+    static func tokens(_ query: String) -> [String] {
+        query.split(whereSeparator: \.isWhitespace).map {
+            String($0).trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        }.filter { !$0.isEmpty }
+    }
+
+    static func matches(_ query: String, card: CatalogCard, setName: String = "") -> Bool {
+        let fields = [card.name, card.localID, card.id, card.setID, setName]
+        return tokens(query).allSatisfy { token in
+            fields.contains { $0.localizedCaseInsensitiveContains(token) }
+                || (Int(token) != nil && Int(card.localID) == Int(token))
+        }
+    }
+}
+
 enum CatalogVariantKind: String, Codable, CaseIterable, Sendable {
     case normal
     case reverseHolo

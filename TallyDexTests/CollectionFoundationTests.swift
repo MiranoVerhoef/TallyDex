@@ -1,8 +1,93 @@
 import Foundation
 import XCTest
+import UIKit
+import PDFKit
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    private var exportSet: CatalogSet {
+        .init(id: "sv-test", seriesID: "sv", name: "Missing Checklist", abbreviation: "MC",
+              logoURL: nil, symbolURL: nil, officialCardCount: 10, totalCardCount: 12, releaseDate: nil, rarityCounts: nil)
+    }
+
+    func testMissingExportNormalGoalCountsCardsNotPhysicalCopies() throws {
+        let cards = [card(id: "one", number: "1"), card(id: "two", number: "2")]
+        let owned = CollectionVariantEntry(cardID: "one", variant: .holo, quantity: 9, updatedAt: .now)
+        let report = try MissingCardReport.make(set: exportSet, cards: cards,
+            preference: preference(setID: exportSet.id, goal: .normal), variants: [:], printings: [:], broad: [owned], exact: [])
+        XCTAssertEqual(report.items.map(\.id), ["two"])
+        XCTAssertEqual(report.missingSlots, 1)
+        XCTAssertEqual(report.items[0].printings, "Any printing")
+    }
+
+    func testMissingExportMasterUsesExactPrintingsAndPreservesAmbiguity() throws {
+        let cards = [card(id: "one", number: "1")]
+        let options = [printing(cardID: "one", id: "holo-a", kind: .holo), printing(cardID: "one", id: "holo-b", kind: .holo)]
+        let broad = [CollectionVariantEntry(cardID: "one", variant: .holo, quantity: 8, updatedAt: .now)]
+        let report = try MissingCardReport.make(set: exportSet, cards: cards,
+            preference: preference(setID: exportSet.id, goal: .master), variants: ["one": [.holo]],
+            printings: ["one": options], broad: broad, exact: [])
+        XCTAssertEqual(report.missingSlots, 1)
+        XCTAssertTrue(report.items[0].printings.contains("printing unspecified"))
+        let stale = [CollectionPrintingEntry(cardID: "one", printingID: "old-id", variant: .normal, quantity: 3, updatedAt: .now)]
+        let corrected = try MissingCardReport.make(set: exportSet, cards: cards,
+            preference: preference(setID: exportSet.id, goal: .master), variants: ["one": [.holo]],
+            printings: ["one": options], broad: [], exact: stale)
+        XCTAssertEqual(corrected.missingSlots, 1)
+        XCTAssertTrue(corrected.items[0].printings.contains("needs review"))
+    }
+
+    func testMissingExportExactOwnedCustomGoalAndSecretExclusion() throws {
+        let cards = [card(id: "one", number: "1"), card(id: "secret", number: "12")]
+        let options = [printing(cardID: "one", id: "n", kind: .normal), printing(cardID: "one", id: "h", kind: .holo)]
+        let preference = SetCollectionPreference(setID: exportSet.id, status: .collecting, goal: .custom,
+            includedVariants: [.holo], includesSecretCards: false, updatedAt: .now)
+        let exact = [CollectionPrintingEntry(cardID: "one", printingID: "h", variant: .holo, quantity: 1, updatedAt: .now)]
+        let report = try MissingCardReport.make(set: exportSet, cards: cards, preference: preference,
+            variants: ["one": [.normal, .holo]], printings: ["one": options], broad: [], exact: exact)
+        XCTAssertTrue(report.items.isEmpty)
+        XCTAssertEqual(report.missingSlots, 0)
+    }
+
+    func testMissingExportRefusesUnknownPrintingMetadataInsteadOfInventingNormal() {
+        XCTAssertThrowsError(try MissingCardReport.make(set: exportSet, cards: [card(id: "one", number: "1")],
+            preference: preference(setID: exportSet.id, goal: .master), variants: [:], printings: [:], broad: [], exact: []))
+    }
+
+    @MainActor
+    func testMissingExportsRenderMultiplePagesAndKeepEveryIdentity() async throws {
+        let cards = (1...12).map { number in
+            CatalogCard(id: "export-\(number)", setID: exportSet.id, localID: String(number),
+                name: "Checklist card \(number)", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        }
+        let report = try MissingCardReport.make(set: exportSet, cards: cards,
+            preference: preference(setID: exportSet.id, goal: .normal), variants: [:], printings: [:], broad: [], exact: [])
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MissingExportTest-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let images = try await MissingCardRenderer.write(report: report, format: .images, artwork: [:], directory: directory)
+        XCTAssertEqual(images.count, 2)
+        for (index, url) in images.enumerated() {
+            let image = try XCTUnwrap(UIImage(contentsOfFile: url.path))
+            XCTAssertEqual(image.size.width, 1440)
+            XCTAssertEqual(image.size.height, index == 0 ? 2240 : 1224)
+            let attachment = XCTAttachment(contentsOfFile: url)
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        let urls = try await MissingCardRenderer.write(report: report, format: .pdf, artwork: [:], directory: directory)
+        let pdf = try XCTUnwrap(PDFDocument(url: urls[0]))
+        XCTAssertEqual(pdf.pageCount, 2)
+        let text = try XCTUnwrap(pdf.string)
+        XCTAssertTrue(text.contains("12 cards"))
+        XCTAssertTrue(text.contains("2 / 2"))
+        for card in cards { XCTAssertTrue(text.contains(card.name), card.name) }
+        XCTAssertFalse(text.contains("trade"))
+        let attachment = XCTAttachment(contentsOfFile: urls[0])
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testBulkOwnershipUsesExactPrintingsNotStaleMarketplaceVariants() {
         let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.normal, .holo],
             printings: [printing(cardID: "a", id: "normal-a", kind: .normal)])

@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.52",
+          "buildVersion": "88",
+          "date": "2026-10-24",
+          "localizedDescription": "Adds missing-card image and PDF checklists, a visible wishlist, collection ownership filters and combined name-and-number search.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.52/TallyDex-v0.9.52.ipa",
+          "size": 30463994,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.51",
           "buildVersion": "87",
           "date": "2026-10-24",

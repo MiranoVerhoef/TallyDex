@@ -13,7 +13,7 @@ struct ReliabilityUITestFixture {
         guard process.arguments.contains("-ReliabilityUITesting"),
               let text = process.environment["TALLYDEX_UI_TEST_ID"], let id = UUID(uuidString: text),
               let scenario = process.environment["TALLYDEX_UI_TEST_SCENARIO"],
-              ["fresh", "update", "restore", "merge", "replace", "filters", "screenshots"].contains(scenario) else { return nil }
+              ["fresh", "update", "restore", "merge", "replace", "filters", "wishlist", "screenshots"].contains(scenario) else { return nil }
         return .init(id: id, scenario: scenario)
     }
 
@@ -53,7 +53,7 @@ struct ReliabilityUITestFixture {
         if scenario == "screenshots" {
             return CatalogStore(repository: try! GRDBCatalogRepository(database: CatalogDatabase.inMemory()))
         }
-        return CatalogStore(provider: ReliabilityCatalogProvider(includeFilterCards: scenario == "filters"),
+        return CatalogStore(provider: ReliabilityCatalogProvider(includeFilterCards: scenario == "filters" || scenario == "wishlist"),
                      repository: try! GRDBCatalogRepository(database: CatalogDatabase.inMemory()))
     }
 
@@ -102,6 +102,9 @@ struct ReliabilityUITestFixture {
                     pokemonRules: [.init(name: "Phantump", dexID: 708), .init(name: "Trevenant", dexID: 709)],
                     displayMode: .allMatching, coverCardID: cardID,
                     createdAt: Date(timeIntervalSince1970: 300), updatedAt: Date(timeIntervalSince1970: 300)))
+            }
+            if scenario == "wishlist" {
+                try await store.saveCardMetadata(cardID: "sv05-ui-3", isWishlisted: true, notes: "")
             }
             if scenario == "merge" || scenario == "replace" {
                 let incoming = PortableCollectionDocument(

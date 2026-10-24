@@ -273,7 +273,9 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 ).map(Self.searchResult)
             }
 
-            if let setCardNumber = Self.setCodeCardNumberQuery(trimmed) {
+            if let setCardNumber = Self.setCodeCardNumberQuery(trimmed),
+               try Bool.fetchOne(database, sql: "SELECT EXISTS(SELECT 1 FROM catalogSet WHERE abbreviation = ? COLLATE NOCASE OR id = ? COLLATE NOCASE)",
+                                 arguments: [setCardNumber.code, setCardNumber.code]) == true {
                 let resolvedLimit = limit.map { max(1, $0) } ?? -1
                 return try Row.fetchAll(
                     database,
@@ -293,22 +295,27 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             }
 
             let expandedQuery = Self.searchAlias(for: trimmed) ?? trimmed
-            let tokens = expandedQuery.split(whereSeparator: \.isWhitespace).map(String.init)
+            let tokens = CatalogCardTextQuery.tokens(expandedQuery)
+            guard !tokens.isEmpty else { return [] }
             let tokenClause = """
-            (search.name LIKE ? COLLATE NOCASE
-             OR search.localID LIKE ? COLLATE NOCASE
-             OR search.id LIKE ? COLLATE NOCASE
-             OR search.setID LIKE ? COLLATE NOCASE
-             OR catalogSet.name LIKE ? COLLATE NOCASE
-             OR catalogSet.abbreviation LIKE ? COLLATE NOCASE
-             OR detail.illustrator LIKE ? COLLATE NOCASE
-             OR detail.rarity LIKE ? COLLATE NOCASE
-             OR detail.category LIKE ? COLLATE NOCASE)
+            (search.name LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR search.localID LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR search.id LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR search.setID LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR catalogSet.name LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR catalogSet.abbreviation LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR detail.illustrator LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR detail.rarity LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR detail.category LIKE ? ESCAPE '\\' COLLATE NOCASE
+             OR (search.localID NOT GLOB '*[^0-9]*' AND CAST(search.localID AS INTEGER) = CAST(? AS INTEGER)))
             """
             let whereClause = Array(repeating: tokenClause, count: tokens.count).joined(separator: " AND ")
             let arguments = tokens.flatMap { token in
-                let pattern = "%\(token)%"
-                return Array(repeating: pattern, count: 9)
+                let escaped = token.replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "%", with: "\\%")
+                    .replacingOccurrences(of: "_", with: "\\_")
+                let pattern = "%\(escaped)%"
+                return Array(repeating: pattern, count: 9) + [String(Int(token) ?? -1)]
             }
             let resolvedLimit = limit.map { max(1, $0) } ?? -1
             return try Row.fetchAll(
