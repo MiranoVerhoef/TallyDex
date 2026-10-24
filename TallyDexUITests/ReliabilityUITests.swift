@@ -134,6 +134,142 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["\(count) of 4 cards"].waitForExistence(timeout: 10), file: file, line: line)
     }
 
+    @discardableResult
+    private func detail(_ id: String, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
+        let page = app.scrollViews["card.detail.\(id)"]
+        let exists = page.waitForExistence(timeout: 15)
+        if !exists { print(app.debugDescription); capturePurchaseScreen("Unexpected card detail state") }
+        XCTAssertTrue(exists, file: file, line: line)
+        return page
+    }
+
+    private func swipeDetail(_ id: String, left: Bool) {
+        let page = detail(id)
+        let start = page.coordinate(withNormalizedOffset: CGVector(dx: left ? 0.8 : 0.2, dy: 0.3))
+        let end = page.coordinate(withNormalizedOffset: CGVector(dx: left ? 0.2 : 0.8, dy: 0.3))
+        start.press(forDuration: 0.03, thenDragTo: end)
+    }
+
+    private func cancelCardConfirmation() {
+        if app.buttons["Cancel"].exists {
+            tap(app.buttons["Cancel"])
+        } else {
+            // iOS 27 can use a popover without a visible Cancel row.
+            let dismiss = app.otherElements["PopoverDismissRegion"].firstMatch
+            XCTAssertTrue(dismiss.waitForExistence(timeout: 10))
+            dismiss.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.55)).tap()
+        }
+    }
+
+    private func openSwipeTestSet() {
+        launch("filters")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Sets"])
+        tap(button("Sword & Shield"))
+        let expansion = button("Fusion Strike")
+        for _ in 0..<12 { if expansion.exists { break }; app.swipeUp() }
+        tap(expansion)
+        tap(app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch)
+        detail("swsh8-16")
+    }
+
+    func testCardDetailSwipesFollowSetOrderRespectBoundsAndBackOnce() {
+        openSwipeTestSet()
+        swipeDetail("swsh8-16", left: false)
+        swipeDetail("swsh8-16", left: true)
+        swipeDetail("swsh8-ui-2", left: true)
+        swipeDetail("swsh8-ui-4", left: true)
+        swipeDetail("swsh8-ui-4", left: false)
+        detail("swsh8-ui-2").swipeUp()
+        detail("swsh8-ui-2")
+        capturePurchaseScreen("Card detail after horizontal paging and vertical scroll")
+        back()
+        XCTAssertTrue(app.navigationBars["Fusion Strike"].waitForExistence(timeout: 10))
+        back()
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
+    }
+
+    func testCardDetailSwipesUseFilteredSearchResultsOnly() {
+        launch("filters")
+        tap(app.tabBars.buttons["Search"])
+        tap(app.searchFields.firstMatch)
+        app.searchFields.firstMatch.typeText("Phantump\n")
+        tap(app.descendants(matching: .any)["bulk.target.swsh8-ui-2"].firstMatch)
+        swipeDetail("swsh8-ui-2", left: true)
+        swipeDetail("swsh8-ui-4", left: true)
+        swipeDetail("swsh8-16", left: true)
+        detail("swsh8-16")
+        back()
+        XCTAssertTrue(app.navigationBars["Search"].waitForExistence(timeout: 10))
+    }
+
+    func testCardDetailKeepsPullToRefreshAndSystemBackEdgeGesture() {
+        openSwipeTestSet()
+        swipeDetail("swsh8-16", left: true)
+        let page = detail("swsh8-ui-2")
+        let pullStart = page.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        let pullEnd = page.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+        pullStart.press(forDuration: 0.03, thenDragTo: pullEnd)
+        XCTAssertTrue(app.buttons["Refresh Card"].waitForExistence(timeout: 10))
+        cancelCardConfirmation()
+        detail("swsh8-ui-2")
+        let edge = page.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.35))
+        let destination = page.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.35))
+        edge.press(forDuration: 0.03, thenDragTo: destination)
+        XCTAssertTrue(app.navigationBars["Fusion Strike"].waitForExistence(timeout: 10))
+    }
+
+    func testCardDetailSwipesUseCollectionSortAndProtectUnsavedNotes() {
+        openFilterCollection()
+        tap(app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch)
+        let page = detail("swsh8-16")
+        let notes = app.textViews["card.notes"]
+        for _ in 0..<6 { if notes.exists && notes.isHittable { break }; page.swipeUp() }
+        tap(notes)
+        notes.typeText("Keep this note on Phantump 16")
+        tap(app.toolbars.buttons["Done"])
+        swipeDetail("swsh8-16", left: false)
+        XCTAssertTrue(app.buttons["Save and Continue"].waitForExistence(timeout: 10))
+        cancelCardConfirmation()
+        detail("swsh8-16")
+        XCTAssertEqual(notes.value as? String, "Keep this note on Phantump 16")
+        swipeDetail("swsh8-16", left: false)
+        tap(app.buttons["Save and Continue"])
+        swipeDetail("swsh8-ui-4", left: true)
+        let original = detail("swsh8-16")
+        for _ in 0..<6 { if notes.exists && notes.isHittable { break }; original.swipeUp() }
+        XCTAssertEqual(notes.value as? String, "Keep this note on Phantump 16")
+        tap(notes)
+        notes.typeText(" discard this addition")
+        tap(app.toolbars.buttons["Done"])
+        swipeDetail("swsh8-16", left: false)
+        tap(app.buttons["Discard Changes"])
+        let neighbour = detail("swsh8-ui-4")
+        for _ in 0..<6 { if notes.exists && notes.isHittable { break }; neighbour.swipeUp() }
+        XCTAssertEqual(notes.value as? String ?? "", "", "Notes must not leak into the adjacent card")
+        swipeDetail("swsh8-ui-4", left: true)
+        let restored = detail("swsh8-16")
+        for _ in 0..<6 { if notes.exists && notes.isHittable { break }; restored.swipeUp() }
+        XCTAssertEqual(notes.value as? String, "Keep this note on Phantump 16")
+        back()
+        XCTAssertTrue(app.navigationBars["Filter fixture"].waitForExistence(timeout: 10))
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
+    }
+
+    func testCardDetailSwipeInSingleCardWishlistStaysOnCard() {
+        launch("wishlist")
+        tap(app.tabBars.buttons["Collection"])
+        tap(app.buttons["collection.wishlist"])
+        tap(app.buttons["wishlist.card.sv05-ui-3"])
+        swipeDetail("sv05-ui-3", left: true)
+        swipeDetail("sv05-ui-3", left: false)
+        detail("sv05-ui-3")
+        back()
+        XCTAssertTrue(app.navigationBars["Wishlist"].waitForExistence(timeout: 10))
+    }
+
     func testCollectionHomeOrdersValueWishlistThenPlanner() {
         launch("wishlist")
         expectState(["owned=1", "error=none"])
@@ -660,12 +796,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.53"])
+        expectState(["intro=true", "seen=0.9.54"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.53"])
+        expectState(["intro=true", "seen=0.9.54"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -673,10 +809,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.53"])
+        expectState(["intro=true", "seen=0.9.54"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.53"])
+        expectState(["intro=true", "seen=0.9.54"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -686,10 +822,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.53"])
+        expectState(["intro=true", "seen=0.9.54"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.53"])
+        expectState(["intro=true", "seen=0.9.54"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.54",
+          "buildVersion": "90",
+          "date": "2026-10-24",
+          "localizedDescription": "Adds left/right swiping between card details, following the current list's order and filters while protecting unsaved notes.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.54/TallyDex-v0.9.54.ipa",
+          "size": 30494224,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.53",
           "buildVersion": "89",
           "date": "2026-10-24",

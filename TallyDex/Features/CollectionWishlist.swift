@@ -36,7 +36,7 @@ struct CollectionWishlistView: View {
                 }
                 ForEach(visibleCards) { result in
                     NavigationLink {
-                        CatalogCardDetailView(card: result.card)
+                        CatalogCardDetailView(card: result.card, cards: visibleCards.map(\.card))
                     } label: {
                         HStack(spacing: 12) {
                             // Reuse the same artwork pipeline as card details.

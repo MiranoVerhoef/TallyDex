@@ -66,16 +66,14 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.53",
-        headline: "A cleaner collection",
+        version: "0.9.54",
+        headline: "Swipe between cards",
         notes: [
             AppReleaseNote(
-                systemImage: "checklist",
-                title: "Export missing cards",
-                detail: "Export missing cards from Pokémon collections, with larger PDF images."
+                systemImage: "hand.draw",
+                title: "Browse without going back",
+                detail: "Swipe left or right in card details to browse your current list."
             ),
-            AppReleaseNote(systemImage: "heart", title: "Updated collection layout",
-                detail: "Value comes first, followed by a separate Wishlist card and collection tools."),
         ]
     )
 

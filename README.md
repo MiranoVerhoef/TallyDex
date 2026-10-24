@@ -85,6 +85,12 @@ source set's goal regardless of browsing filters. PDF thumbnails are larger and
 export headings are simplified. Collection now shows value first, then a separate
 Wishlist card, followed by Binder Planner, badges and Pokémon collections.
 
+## Card browsing
+
+Version 0.9.54 adds left/right swiping in card details, following the current
+list's filters and order. Paging stops at either end, protects unsaved notes and
+preserves vertical scrolling, pull-to-refresh and the native edge-Back gesture.
+
 ## Collection values
 
 Version 0.9.47 fixes false extra printings caused by marketplace price labels.

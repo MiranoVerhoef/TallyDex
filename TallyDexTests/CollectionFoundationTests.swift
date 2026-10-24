@@ -5,6 +5,53 @@ import PDFKit
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    func testCardDetailNavigationKeepsListOrderAndDoesNotWrap() {
+        let cards = [card(id: "last-number", number: "99"), card(id: "first-number", number: "1"), card(id: "middle", number: "2")]
+        var navigation = CardDetailNavigation(card: cards[1], cards: cards)
+        XCTAssertEqual(navigation.index, 1)
+        navigation.move(.previous)
+        XCTAssertEqual(navigation.card.id, "last-number", "Use the caller's order, not an invented number sort")
+        XCTAssertFalse(navigation.canMove(.previous))
+        navigation.move(.previous)
+        XCTAssertEqual(navigation.index, 0)
+        navigation.move(.next)
+        navigation.move(.next)
+        XCTAssertEqual(navigation.card.id, "middle")
+        XCTAssertFalse(navigation.canMove(.next))
+        navigation.move(.next)
+        XCTAssertEqual(navigation.index, 2)
+    }
+
+    func testCardDetailNavigationDeduplicatesPrintingSlotsAndFreezesSource() {
+        let first = card(id: "a", number: "1"), second = card(id: "b", number: "2")
+        var source = [first, first, second, first]
+        var navigation = CardDetailNavigation(card: first, cards: source)
+        source.removeAll()
+        XCTAssertEqual(navigation.cards.map(\.id), ["a", "b"])
+        navigation.move(.next)
+        XCTAssertEqual(navigation.card.id, "b")
+        XCTAssertFalse(navigation.canMove(.next))
+    }
+
+    func testStandaloneCardDetailDoesNotInventNeighbours() {
+        let first = card(id: "a", number: "1"), other = card(id: "b", number: "2")
+        for source in [[], [other]] {
+            var navigation = CardDetailNavigation(card: first, cards: source)
+            XCTAssertFalse(navigation.canMove(.previous))
+            XCTAssertFalse(navigation.canMove(.next))
+            navigation.move(.next)
+            XCTAssertEqual(navigation.card.id, first.id)
+        }
+    }
+
+    func testCardDetailSwipesIgnoreVerticalDiagonalShortAndBackEdgeDrags() {
+        XCTAssertEqual(CardDetailNavigation.swipe(horizontal: -150, vertical: 5, startX: 200), .next)
+        XCTAssertEqual(CardDetailNavigation.swipe(horizontal: 150, vertical: -5, startX: 100), .previous)
+        for values: (CGFloat, CGFloat, CGFloat) in [(20, 0, 200), (5, 200, 200), (100, 100, 200), (150, 0, 10), (-150, 0, 28)] {
+            XCTAssertNil(CardDetailNavigation.swipe(horizontal: values.0, vertical: values.1, startX: values.2))
+        }
+    }
+
     private var exportSet: CatalogSet {
         .init(id: "sv-test", seriesID: "sv", name: "Missing Checklist", abbreviation: "MC",
               logoURL: nil, symbolURL: nil, officialCardCount: 10, totalCardCount: 12, releaseDate: nil, rarityCounts: nil)

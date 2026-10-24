@@ -758,13 +758,17 @@ private struct TopPricedCardsView: View {
     let cards: [CatalogCardSearchResult]
     let source: CatalogPriceSource
 
+    private var browsingCards: [CatalogCard] {
+        items.prefix(10).compactMap { item in cards.first { $0.id == item.id }?.card }
+    }
+
     var body: some View {
         List {
             Section {
                 ForEach(Array(items.prefix(10).enumerated()), id: \.element.id) { index, item in
                     if let result = cards.first(where: { $0.id == item.id }) {
                         NavigationLink {
-                            CatalogCardDetailView(card: result.card)
+                            CatalogCardDetailView(card: result.card, cards: browsingCards)
                         } label: {
                             HStack(spacing: 12) {
                                 Text("\(index + 1)")
@@ -1245,7 +1249,7 @@ private struct TrickOrTradeChecklistView: View {
                 ForEach(visibleCards) { card in
                     HStack(spacing: 12) {
                         NavigationLink {
-                            CatalogCardDetailView(card: card)
+                            CatalogCardDetailView(card: card, cards: visibleCards)
                         } label: {
                             HStack(spacing: 12) {
                                 CachedCardImage(card: card).frame(width: 48, height: 67)
@@ -1388,7 +1392,7 @@ private struct JumboPromoChecklistView: View {
                 ForEach(visibleEntries) { entry in
                     HStack(spacing: 12) {
                         NavigationLink {
-                            CatalogCardDetailView(card: entry.card)
+                            CatalogCardDetailView(card: entry.card, cards: visibleEntries.map(\.card))
                         } label: {
                             HStack(spacing: 12) {
                                 CachedCardImage(card: entry.card).frame(width: 48, height: 67)
@@ -2068,7 +2072,7 @@ private struct CatalogSetDetailView: View {
                             ForEach(visibleCards) { card in
                                 ZStack(alignment: .topTrailing) {
                                     NavigationLink {
-                                        CatalogCardDetailView(card: card)
+                                        CatalogCardDetailView(card: card, cards: visibleCards)
                                     } label: {
                                         CatalogCardTile(
                                             card: card,
@@ -3212,8 +3216,142 @@ enum CardPhotoExport {
     }
 }
 
+/// A stable snapshot of the originating list. Ownership/filter changes while
+/// browsing must not move the current card or silently change its neighbours.
+struct CardDetailNavigation {
+    enum Direction: Equatable { case previous, next }
+    let cards: [CatalogCard]
+    private(set) var index: Int
+    var card: CatalogCard { cards[index] }
+
+    init(card: CatalogCard, cards: [CatalogCard]) {
+        var seen = Set<String>()
+        var ordered = cards.filter { seen.insert($0.id).inserted }
+        if let index = ordered.firstIndex(where: { $0.id == card.id }) {
+            ordered[index] = card
+            self.index = index
+            self.cards = ordered
+        } else {
+            self.cards = [card]
+            self.index = 0
+        }
+    }
+
+    func canMove(_ direction: Direction) -> Bool {
+        cards.indices.contains(index + (direction == .next ? 1 : -1))
+    }
+
+    mutating func move(_ direction: Direction) {
+        guard canMove(direction) else { return }
+        index += direction == .next ? 1 : -1
+    }
+
+    static func swipe(horizontal: CGFloat, vertical: CGFloat, startX: CGFloat) -> Direction? {
+        // Leave the system's left-edge back gesture and ordinary vertical
+        // scrolling alone. Short/diagonal drags are not card navigation.
+        guard startX > 28, abs(horizontal) >= 60,
+              abs(horizontal) > abs(vertical) * 1.75 else { return nil }
+        return horizontal < 0 ? .next : .previous
+    }
+}
+
+/// A directional native pan cancels button/link taps once a horizontal swipe
+/// begins, without claiming vertical scrolls or the system Back edge.
+private struct CardDetailSwipeGesture: UIGestureRecognizerRepresentable {
+    let isEnabled: Bool
+    let action: (CardDetailNavigation.Direction) -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let recognizer = UIPanGestureRecognizer()
+        recognizer.maximumNumberOfTouches = 1
+        recognizer.cancelsTouchesInView = true
+        recognizer.delegate = context.coordinator
+        recognizer.isEnabled = isEnabled
+        return recognizer
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        recognizer.isEnabled = isEnabled
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        guard recognizer.state == .ended else { return }
+        let translation = recognizer.translation(in: nil)
+        let startX = recognizer.location(in: nil).x - translation.x
+        if let direction = CardDetailNavigation.swipe(horizontal: translation.x,
+            vertical: translation.y, startX: startX) { action(direction) }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: nil)
+            let startX = pan.location(in: nil).x - pan.translation(in: nil).x
+            return startX > 28 && abs(velocity.x) > abs(velocity.y) * 1.75
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            other is UIPanGestureRecognizer && other.view is UIScrollView
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            // iOS 26+ also has a full-content Back pan. It must wait for our
+            // directional recognizer; the separate screen-edge Back stays native.
+            var responder: UIResponder? = gestureRecognizer.view
+            while let current = responder {
+                if let controller = current as? UIViewController,
+                   let navigation = controller as? UINavigationController ?? controller.navigationController {
+                    return other === navigation.interactiveContentPopGestureRecognizer
+                }
+                responder = current.next
+            }
+            return false
+        }
+    }
+}
+
 struct CatalogCardDetailView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var navigation: CardDetailNavigation
+    @State private var lastDirection = CardDetailNavigation.Direction.next
+
+    init(card: CatalogCard, cards: [CatalogCard] = []) {
+        _navigation = State(initialValue: CardDetailNavigation(card: card, cards: cards))
+    }
+
+    var body: some View {
+        ZStack {
+            CatalogCardDetailPage(card: navigation.card,
+                canMovePrevious: navigation.canMove(.previous),
+                canMoveNext: navigation.canMove(.next), navigate: move)
+                .id(navigation.card.id)
+                .background(Color(.systemBackground))
+                .transition(reduceMotion ? .opacity : .push(from: lastDirection == .next ? .trailing : .leading))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .navigationTitle(navigation.card.name)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func move(_ direction: CardDetailNavigation.Direction) {
+        guard navigation.canMove(direction) else { return }
+        lastDirection = direction
+        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.24)) {
+            navigation.move(direction)
+        }
+    }
+}
+
+private struct CatalogCardDetailPage: View {
     let card: CatalogCard
+    let canMovePrevious: Bool
+    let canMoveNext: Bool
+    let navigate: (CardDetailNavigation.Direction) -> Void
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @AppStorage(CollectionSettings.allowsMultipleCopiesKey)
@@ -3237,6 +3375,8 @@ struct CatalogCardDetailView: View {
     @State private var isSavingMetadata = false
     @State private var isConfirmingRefresh = false
     @State private var isRichMetadataExpanded = CardDisplaySettings.detailsExpandedByDefault
+    @State private var pendingNavigation: CardDetailNavigation.Direction?
+    @FocusState private var isEditingNotes: Bool
 
     private var displayedCard: CatalogCard { snapshot?.card ?? card }
     private var availableVariants: [CatalogVariantKind] {
@@ -3339,26 +3479,47 @@ struct CatalogCardDetailView: View {
             .padding()
             .safeAreaPadding(.bottom, 86)
         }
+        .accessibilityIdentifier("card.detail.\(card.id)")
+        .gesture(CardDetailSwipeGesture(isEnabled: !isEditingNotes && !isSavingMetadata && updatingVariants.isEmpty,
+            action: requestNavigation))
+        .accessibilityActions {
+            if canMovePrevious { Button("Previous card") { requestNavigation(.previous) } }
+            if canMoveNext { Button("Next card") { requestNavigation(.next) } }
+        }
         .refreshable {
             isConfirmingRefresh = true
         }
         .confirmationDialog(
-            "Refresh \(card.name)?",
-            isPresented: $isConfirmingRefresh,
+            pendingNavigation == nil ? "Refresh \(card.name)?" : "Save your notes before changing cards?",
+            isPresented: Binding(get: { isConfirmingRefresh || pendingNavigation != nil }, set: {
+                if !$0 { isConfirmingRefresh = false; pendingNavigation = nil }
+            }),
             titleVisibility: .visible
         ) {
-            Button("Refresh Card") {
-                Task { await loadDetails(forceRefresh: true) }
+            if let direction = pendingNavigation {
+                Button("Save and Continue") { saveMetadata(then: { navigate(direction) }) }
+                Button("Discard Changes", role: .destructive) { navigate(direction) }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("Refresh Card") {
+                    Task { await loadDetails(forceRefresh: true) }
+                }
+                Button("Cancel", role: .cancel) {}
             }
-            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("TallyDex will download the latest TCGdex details, variants, prices, and market averages for this card. Your ownership, wishlist, and personal notes will not change.")
+            if pendingNavigation == nil {
+                Text("TallyDex will download the latest TCGdex details, variants, prices, and market averages for this card. Your ownership, wishlist, and personal notes will not change.")
+            }
         }
-        .navigationTitle(card.name)
-        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 CardShareToolbarButton(card: displayedCard)
+            }
+            ToolbarItemGroup(placement: .keyboard) {
+                if isEditingNotes {
+                    Spacer()
+                    Button("Done") { isEditingNotes = false }
+                }
             }
         }
         .task(id: card.id) {
@@ -3373,14 +3534,27 @@ struct CatalogCardDetailView: View {
             do {
                 async let savedQuantities = collectionStore.quantities(for: card.id)
                 async let savedMetadata = collectionStore.cardMetadata(for: card.id)
-                quantities = try await savedQuantities
+                let loadedQuantities = try await savedQuantities
                 let metadata = try await savedMetadata
+                try Task.checkCancellation()
+                quantities = loadedQuantities
                 isWishlisted = metadata.isWishlisted
                 notes = metadata.notes
                 savedNotes = metadata.notes
-            } catch {
+            } catch is CancellationError { return }
+            catch {
                 collectionMessage = "Your saved collection details couldn’t be loaded."
             }
+        }
+    }
+
+    private func requestNavigation(_ direction: CardDetailNavigation.Direction) {
+        guard (direction == .next ? canMoveNext : canMovePrevious),
+              updatingVariants.isEmpty, !isSavingMetadata else { return }
+        if notes != savedNotes {
+            pendingNavigation = direction
+        } else {
+            navigate(direction)
         }
     }
 
@@ -3393,10 +3567,13 @@ struct CatalogCardDetailView: View {
                 for: card,
                 forceRefresh: forceRefresh
             )
+            try Task.checkCancellation()
             try await collectionStore.reconcileExactOwnership(cardID: card.id, printings: details.printings)
+            try Task.checkCancellation()
             snapshot = details
             quantities = try await collectionStore.quantities(for: card.id, forceReload: true)
-        } catch {
+        } catch is CancellationError { return }
+        catch {
             message = forceRefresh
                 ? "The card couldn’t be refreshed. Cached details remain available."
                 : "Detailed card data will be retried the next time you open this card."
@@ -3622,6 +3799,8 @@ struct CatalogCardDetailView: View {
             Text("Notes")
                 .font(.subheadline.weight(.semibold))
             TextEditor(text: $notes)
+                .focused($isEditingNotes)
+                .accessibilityIdentifier("card.notes")
                 .frame(minHeight: 90)
                 .padding(8)
                 .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
@@ -3916,7 +4095,7 @@ struct CatalogCardDetailView: View {
         }
     }
 
-    private func saveMetadata() {
+    private func saveMetadata(then completion: (() -> Void)? = nil) {
         guard !isSavingMetadata else { return }
         isSavingMetadata = true
         collectionMessage = nil
@@ -3931,6 +4110,7 @@ struct CatalogCardDetailView: View {
                     notes: notesValue
                 )
                 savedNotes = notesValue
+                completion?()
             } catch {
                 collectionMessage = "Your wishlist or notes couldn’t be saved. Please try again."
             }
@@ -5084,7 +5264,7 @@ struct SearchView: View {
                 LazyVGrid(columns: columns, spacing: 18) {
                     ForEach(visibleResults) { result in
                         NavigationLink {
-                            CatalogCardDetailView(card: result.card)
+                            CatalogCardDetailView(card: result.card, cards: visibleResults.map(\.card))
                         } label: {
                             VStack(alignment: .leading, spacing: 5) {
                                 CatalogCardTile(
@@ -5134,7 +5314,7 @@ struct SearchView: View {
                     .accessibilityIdentifier("bulk.card.\(result.id)")
                 } else {
                     NavigationLink {
-                        CatalogCardDetailView(card: result.card)
+                        CatalogCardDetailView(card: result.card, cards: visibleResults.map(\.card))
                     } label: { searchResultRow(result) }
                     .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
                 }
@@ -5766,7 +5946,7 @@ private struct BinderPlanDetailView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    BinderPageView(items: currentPage, layout: plan.pocketLayout,
+                    BinderPageView(items: currentPage, browsingCards: visibleItems.map { $0.result.card }, layout: plan.pocketLayout,
                                    backgroundColor: plan.effectiveBackgroundColor)
                 }
             }
@@ -5863,6 +6043,7 @@ private struct BinderPlanDetailView: View {
 
 private struct BinderPageView: View {
     let items: [BinderPocketItem]
+    let browsingCards: [CatalogCard]
     let layout: BinderPocketLayout
     var backgroundColor: BinderBackgroundColor = .graphite
 
@@ -5874,7 +6055,7 @@ private struct BinderPageView: View {
         LazyVGrid(columns: columns, spacing: 10) {
             ForEach(0..<layout.pocketsPerSide, id: \.self) { index in
                 if items.indices.contains(index) {
-                    BinderPocketView(item: items[index])
+                    BinderPocketView(item: items[index], browsingCards: browsingCards)
                 } else {
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(.secondary.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [5]))
@@ -5889,10 +6070,11 @@ private struct BinderPageView: View {
 
 private struct BinderPocketView: View {
     let item: BinderPocketItem
+    let browsingCards: [CatalogCard]
 
     var body: some View {
         NavigationLink {
-            CatalogCardDetailView(card: item.result.card)
+            CatalogCardDetailView(card: item.result.card, cards: browsingCards)
         } label: {
             VStack(spacing: 5) {
                 CachedCardImage(card: item.result.card)
@@ -6089,7 +6271,7 @@ struct CollectionView: View {
                         } else {
                             ForEach(cards) { result in
                                 NavigationLink {
-                                    CatalogCardDetailView(card: result.card)
+                                    CatalogCardDetailView(card: result.card, cards: cards.map(\.card))
                                 } label: {
                                     HStack(spacing: 12) {
                                         CachedCardImage(card: result.card)
@@ -6989,7 +7171,7 @@ private struct CustomCollectionFolderDetailView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 ZStack(alignment: .topTrailing) {
                                     NavigationLink {
-                                        CatalogCardDetailView(card: result.card)
+                                        CatalogCardDetailView(card: result.card, cards: visibleMatches.map(\.card))
                                     } label: {
                                         CatalogCardTile(
                                             card: result.card,
@@ -9614,7 +9796,7 @@ struct CardScannerView: View {
                         ForEach(results) { result in
                             HStack(spacing: 10) {
                                 NavigationLink {
-                                    CatalogCardDetailView(card: result.card)
+                                    CatalogCardDetailView(card: result.card, cards: results.map(\.card))
                                 } label: {
                                     HStack(spacing: 14) {
                                         CachedCardImage(card: result.card)
