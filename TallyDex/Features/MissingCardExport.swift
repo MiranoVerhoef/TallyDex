@@ -2,20 +2,23 @@ import SwiftUI
 import UIKit
 import ImageIO
 
-/// A read-only snapshot of the whole set, independent of the current search/filter.
+/// A read-only snapshot of a whole set or Pokémon collection, independent of browsing filters.
 struct MissingCardReport: Identifiable, Sendable {
     struct Item: Identifiable, Sendable {
         let card: CatalogCard
         let missingSlots: Int
         let printings: String
+        var setName: String? = nil
+        var setCode: String? = nil
         var id: String { card.id }
     }
     let id = UUID()
-    let set: CatalogSet
-    let goal: CollectionGoal
+    let title: String
+    let goal: CollectionGoal?
     let createdAt: Date
     let items: [Item]
     var missingSlots: Int { items.reduce(0) { $0 + $1.missingSlots } }
+    var goalDescription: String { goal?.displayName ?? "Set goals" }
 
     static func make(set: CatalogSet, cards: [CatalogCard], preference: SetCollectionPreference,
                      variants: [String: Set<CatalogVariantKind>], printings: [String: [CatalogPrinting]],
@@ -59,14 +62,43 @@ struct MissingCardReport: Identifiable, Sendable {
             }
             return Item(card: card, missingSlots: missing, printings: labels.joined(separator: "; "))
         }
-        return Self(set: set, goal: preference.goal, createdAt: date, items: rows)
+        return Self(title: set.name, goal: preference.goal, createdAt: date, items: rows)
+    }
+
+    static func makeCollection(name: String, matches: [CatalogCardSearchResult], sets: [CatalogSet],
+                               preferences: [String: SetCollectionPreference],
+                               variants: [String: Set<CatalogVariantKind>], printings: [String: [CatalogPrinting]],
+                               broad: [CollectionVariantEntry], exact: [CollectionPrintingEntry], date: Date = .now) throws -> Self {
+        let unique = Dictionary(matches.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }).values
+        let grouped = Dictionary(grouping: unique, by: { $0.card.setID })
+        let byID = Dictionary(sets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var rows: [Item] = []
+        for setID in grouped.keys.sorted() {
+            guard let set = byID[setID], let preference = preferences[setID] else { throw ExportError.setUnavailable }
+            let report = try make(set: set, cards: grouped[setID, default: []].map(\.card), preference: preference,
+                variants: variants, printings: printings, broad: broad, exact: exact, date: date)
+            rows.append(contentsOf: report.items.map { item in
+                var row = item
+                row.setName = set.name
+                row.setCode = set.abbreviation ?? set.id.uppercased()
+                return row
+            })
+        }
+        rows.sort { left, right in
+            let setOrder = (left.setName ?? "").localizedStandardCompare(right.setName ?? "")
+            return setOrder == .orderedSame
+                ? left.card.localID.localizedStandardCompare(right.card.localID) == .orderedAscending
+                : setOrder == .orderedAscending
+        }
+        return Self(title: name, goal: nil, createdAt: date, items: rows)
     }
 
     enum ExportError: LocalizedError {
-        case printingsUnavailable, imageEncoding
+        case printingsUnavailable, setUnavailable, imageEncoding
         var errorDescription: String? {
             switch self {
             case .printingsUnavailable: "Printing information is still unavailable for some cards. Finish loading the set or refresh it before exporting."
+            case .setUnavailable: "Set information is unavailable for some collection cards. Let the catalog finish loading, then try again."
             case .imageEncoding: "The checklist image couldn’t be created. Please try again."
             }
         }
@@ -98,13 +130,13 @@ struct MissingCardExportView: View {
             Group {
                 if report.items.isEmpty {
                     ContentUnavailableView("Nothing Missing", systemImage: "checkmark.seal",
-                        description: Text("Your selected set goal is complete."))
+                        description: Text("There are no missing cards for these collection goals."))
                 } else {
                     ScrollView {
                         VStack(spacing: 18) {
                             VStack(spacing: 4) {
-                                Text(report.set.name).font(.headline)
-                                Text("\(report.items.count) cards · \(report.missingSlots) missing goal slots · \(report.goal.displayName)")
+                                Text(report.title).font(.headline)
+                                Text("\(report.items.count) cards · \(report.missingSlots) missing goal slots · \(report.goalDescription)")
                                     .font(.subheadline).foregroundStyle(.secondary)
                                     .accessibilityIdentifier("missing.summary")
                             }
@@ -210,10 +242,13 @@ struct MissingCardExportView: View {
 
 @MainActor
 enum MissingCardRenderer {
+    static let pdfThumbnailSize = CGSize(width: 44, height: 61)
     private struct PDFRow {
         let item: MissingCardReport.Item
         let printing: String
         let height: CGFloat
+        let nameHeight: CGFloat
+        let setHeight: CGFloat
     }
     private static let navy = UIColor(red: 0.043, green: 0.082, blue: 0.153, alpha: 1)
     private static let tile = UIColor(red: 0.078, green: 0.129, blue: 0.216, alpha: 1)
@@ -239,14 +274,14 @@ enum MissingCardRenderer {
     }
 
     static func pageCount(items: Int, format: MissingCardExportFormat) -> Int {
-        let perPage = format == .images ? 9 : 10
+        let perPage = format == .images ? 9 : 7
         return max(1, (items + perPage - 1) / perPage)
     }
 
     private static func imageSize(_ report: MissingCardReport, page: Int) -> CGSize {
         let count = min(9, max(0, report.items.count - page * 9))
         let rows = max(1, (count + 2) / 3)
-        return CGSize(width: 720, height: 250 + CGFloat(rows) * 254 + 108)
+        return CGSize(width: 720, height: 224 + CGFloat(rows) * 254 + 88)
     }
 
     private static func pdfPages(_ report: MissingCardReport) -> [[PDFRow]] {
@@ -256,15 +291,21 @@ enum MissingCardRenderer {
             // Each missing printing gets its own row, so a long variant list is
             // never silently truncated into an incomplete printable checklist.
             for label in item.printings.components(separatedBy: "; ") {
-                let labelHeight = (label as NSString).boundingRect(with: CGSize(width: 209, height: 10000),
+                let labelHeight = (label as NSString).boundingRect(with: CGSize(width: 194, height: 10000),
                     options: [.usesLineFragmentOrigin, .usesFontLeading],
                     attributes: [.font: UIFont.systemFont(ofSize: 10)], context: nil).height
-                let nameHeight = (item.card.name as NSString).boundingRect(with: CGSize(width: 193, height: 10000),
+                let nameHeight = (item.card.name as NSString).boundingRect(with: CGSize(width: 175, height: 10000),
                     options: [.usesLineFragmentOrigin, .usesFontLeading],
                     attributes: [.font: UIFont.systemFont(ofSize: 12, weight: .semibold)], context: nil).height
-                let height = max(49, ceil(max(labelHeight, nameHeight)) + 14)
-                if used + height > 490 && !pages[pages.count - 1].isEmpty { pages.append([]); used = 0 }
-                pages[pages.count - 1].append(PDFRow(item: item, printing: label, height: height))
+                let setHeight = item.setName.map { name in
+                    (name as NSString).boundingRect(with: CGSize(width: 175, height: 10000),
+                        options: [.usesLineFragmentOrigin, .usesFontLeading],
+                        attributes: [.font: UIFont.systemFont(ofSize: 9)], context: nil).height
+                } ?? 0
+                let height = max(76, ceil(max(labelHeight, nameHeight + setHeight + 4)) + 18)
+                if used + height > 535 && !pages[pages.count - 1].isEmpty { pages.append([]); used = 0 }
+                pages[pages.count - 1].append(PDFRow(item: item, printing: label, height: height,
+                    nameHeight: ceil(nameHeight), setHeight: ceil(setHeight)))
                 used += height
             }
         }
@@ -282,7 +323,7 @@ enum MissingCardRenderer {
     }
 
     static func write(report: MissingCardReport, format: MissingCardExportFormat, artwork: [String: Data], directory: URL) async throws -> [URL] {
-        let stem = report.set.name.components(separatedBy: CharacterSet.alphanumerics.inverted)
+        let stem = report.title.components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }.joined(separator: "-").prefix(80)
         let count = format == .pdf ? pdfPages(report).count : pageCount(items: report.items.count, format: format)
         if format == .pdf {
@@ -355,43 +396,47 @@ enum MissingCardRenderer {
         if let logo {
             image(logo, in: CGRect(x: 36, y: 20, width: isImage ? 160 : 120, height: 48))
         }
-        text("\(report.goal.displayName.uppercased()) GOAL", CGRect(x: width - 205, y: 34, width: 169, height: 20),
+        let goalLabel = report.goal.map { "\($0.displayName.uppercased()) GOAL" } ?? "SET GOALS"
+        text(goalLabel, CGRect(x: width - 205, y: 34, width: 169, height: 20),
              size: 11, color: isImage ? muted : blue, bold: true, alignment: .right)
-        text(isImage ? "MISSING FROM MY COLLECTION" : "MISSING-CARD CHECKLIST",
-             CGRect(x: 36, y: isImage ? 88 : 80, width: width - 72, height: 20), size: 11, color: blue, bold: true)
-        text(report.set.name, CGRect(x: 36, y: isImage ? 117 : 105, width: width - 72, height: 82),
+        text(report.title, CGRect(x: 36, y: isImage ? 91 : 84, width: width - 72, height: 82),
              size: isImage ? 36 : 28, color: ink, bold: true)
         text("\(report.items.count) cards · \(report.missingSlots) missing goal slots",
-             CGRect(x: 36, y: isImage ? 196 : 180, width: width - 72, height: 26), size: isImage ? 16 : 11, color: secondary)
-        let perPage = isImage ? 9 : 10
+             CGRect(x: 36, y: isImage ? 170 : 160, width: width - 72, height: 26), size: isImage ? 16 : 11, color: secondary)
+        let perPage = isImage ? 9 : 7
         let start = page * perPage
         let slice = Array(report.items.dropFirst(start).prefix(perPage))
         if isImage {
             let tileWidth: CGFloat = 206.66
             for (index, item) in slice.enumerated() {
                 let x = 36 + CGFloat(index % 3) * (tileWidth + 14)
-                let y = 250 + CGFloat(index / 3) * 254
+                let y = 224 + CGFloat(index / 3) * 254
                 tile.setFill()
                 UIBezierPath(roundedRect: CGRect(x: x, y: y, width: tileWidth, height: 240), cornerRadius: 16).fill()
                 art(item, in: CGRect(x: x + 36, y: y + 10, width: 134, height: 170), artwork: artwork)
                 text(item.card.name, CGRect(x: x + 12, y: y + 183, width: tileWidth - 24, height: 23), size: 16, color: ink, bold: true)
                 let printingSummary = item.printings.count > 65 ? "\(item.missingSlots) missing printings · see PDF" : item.printings
-                text("#\(item.card.localID) · \(printingSummary)", CGRect(x: x + 12, y: y + 207, width: tileWidth - 24, height: 30),
+                let number = item.setCode.map { "\($0) #\(item.card.localID)" } ?? "#\(item.card.localID)"
+                text("\(number) · \(printingSummary)", CGRect(x: x + 12, y: y + 207, width: tileWidth - 24, height: 30),
                      size: 10, color: secondary)
             }
         } else {
-            for (label, x) in [("Got it", CGFloat(36)), ("No.", 106), ("Card", 145), ("Printing", 350)] {
-                text(label, CGRect(x: x, y: 219, width: 150, height: 16), size: 9, color: secondary, bold: true)
+            for (label, x) in [("Got it", CGFloat(36)), ("No.", 126), ("Card", 177), ("Printing", 365)] {
+                text(label, CGRect(x: x, y: 203, width: 150, height: 16), size: 9, color: secondary, bold: true)
             }
-            var y: CGFloat = 245
+            var y: CGFloat = 225
             for row in pdfPages(report)[page] {
                 let item = row.item
                 UIColor.lightGray.setStroke()
-                UIBezierPath(roundedRect: CGRect(x: 38, y: y + 13, width: 12, height: 12), cornerRadius: 2).stroke()
-                art(item, in: CGRect(x: 69, y: y + 2, width: 26, height: 36), artwork: artwork, light: true)
-                text(item.card.localID, CGRect(x: 106, y: y + 13, width: 35, height: 18), size: 10, color: secondary)
-                text(item.card.name, CGRect(x: 145, y: y + 5, width: 193, height: row.height - 10), size: 12, color: ink, bold: true, wrap: true)
-                text(row.printing, CGRect(x: 350, y: y + 5, width: 209, height: row.height - 10), size: 10, color: ink, wrap: true)
+                UIBezierPath(roundedRect: CGRect(x: 38, y: y + row.height / 2 - 6, width: 12, height: 12), cornerRadius: 2).stroke()
+                art(item, in: CGRect(x: 69, y: y + (row.height - pdfThumbnailSize.height) / 2,
+                    width: pdfThumbnailSize.width, height: pdfThumbnailSize.height), artwork: artwork, light: true)
+                text(item.card.localID, CGRect(x: 126, y: y + row.height / 2 - 8, width: 45, height: 18), size: 10, color: secondary)
+                text(item.card.name, CGRect(x: 177, y: y + 8, width: 175, height: row.nameHeight + 2), size: 12, color: ink, bold: true, wrap: true)
+                if let setName = item.setName {
+                    text(setName, CGRect(x: 177, y: y + row.nameHeight + 12, width: 175, height: row.setHeight + 2), size: 9, color: secondary, wrap: true)
+                }
+                text(row.printing, CGRect(x: 365, y: y + 8, width: 194, height: row.height - 16), size: 10, color: ink, wrap: true)
                 UIColor(white: 0.9, alpha: 1).setStroke()
                 let rule = UIBezierPath()
                 rule.move(to: CGPoint(x: 36, y: y + row.height - 5)); rule.addLine(to: CGPoint(x: 559, y: y + row.height - 5))
@@ -399,17 +444,16 @@ enum MissingCardRenderer {
                 y += row.height
             }
         }
-        let footerY: CGFloat = isImage ? height - 80 : 780
+        let footerY: CGFloat = isImage ? height - 66 : 780
         (isImage ? tile : UIColor.lightGray).setStroke()
         let line = UIBezierPath()
         line.move(to: CGPoint(x: 36, y: footerY)); line.addLine(to: CGPoint(x: width - 36, y: footerY))
         line.lineWidth = 0.6; line.stroke()
-        text("MISSING-CARD CHECKLIST", CGRect(x: 36, y: footerY + 16, width: 300, height: 18), size: 10, color: secondary, bold: true)
         let count = isImage ? pageCount(items: report.items.count, format: format) : pdfPages(report).count
         text("\(page + 1) / \(count)",
              CGRect(x: width - 110, y: footerY + 16, width: 74, height: 18), size: 10, color: secondary, alignment: .right)
         text(report.createdAt.formatted(date: .abbreviated, time: .omitted),
-             CGRect(x: 36, y: footerY + 37, width: width - 72, height: 18), size: 9, color: secondary)
+             CGRect(x: 36, y: footerY + 16, width: width - 150, height: 18), size: 9, color: secondary)
     }
 }
 

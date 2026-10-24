@@ -5971,6 +5971,38 @@ struct CollectionView: View {
     var body: some View {
         NavigationStack {
             List {
+                if !ownedCardIDs.isEmpty {
+                    Section {
+                        CollectionValueSummaryView(
+                            summary: valueSummary,
+                            secondarySummary: secondaryValueSummary
+                        )
+                        .accessibilityIdentifier("collection.value")
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                    }
+                }
+
+                Section {
+                    NavigationLink {
+                        CollectionWishlistView()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "heart.fill")
+                                .font(.title2).foregroundStyle(.pink)
+                                .frame(width: 44, height: 50)
+                                .background(.pink.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                            Text("Wishlist").font(.body.weight(.semibold))
+                            Spacer()
+                            Text("\(collectionStore.cardMetadataByID.values.filter(\.isWishlisted).count)")
+                                .font(.title3.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .accessibilityIdentifier("collection.wishlist")
+                }
+
                 Section {
                     NavigationLink {
                         BinderPlannerView()
@@ -5990,6 +6022,7 @@ struct CollectionView: View {
                         }
                         .padding(.vertical, 2)
                     }
+                    .accessibilityIdentifier("collection.planner")
                     NavigationLink {
                         CollectorBadgesView()
                     } label: {
@@ -6009,33 +6042,6 @@ struct CollectionView: View {
                         }
                     }
                     .accessibilityIdentifier("collection.badges")
-
-                    NavigationLink {
-                        CollectionWishlistView()
-                    } label: {
-                        Label {
-                            HStack {
-                                Text("Wishlist")
-                                Spacer()
-                                Text("\(collectionStore.cardMetadataByID.values.filter(\.isWishlisted).count)")
-                                    .foregroundStyle(.secondary).monospacedDigit()
-                            }
-                        } icon: {
-                            Image(systemName: "heart.fill").foregroundStyle(.pink)
-                        }
-                    }
-                    .accessibilityIdentifier("collection.wishlist")
-                }
-
-                if !ownedCardIDs.isEmpty {
-                    Section {
-                        CollectionValueSummaryView(
-                            summary: valueSummary,
-                            secondarySummary: secondaryValueSummary
-                        )
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                    }
                 }
 
                 Section {
@@ -6805,6 +6811,9 @@ private struct CustomCollectionFolderDetailView: View {
     @State private var filters: CollectionCardFilters
     @State private var bulkSelection = BulkCardSelection()
     @State private var isShowingFilters = false
+    @State private var missingReport: MissingCardReport?
+    @State private var isPreparingExport = false
+    @State private var exportError: String?
 
     private var defaultOwnership: CollectionOwnershipFilter {
         folder.displayMode == .ownedOnly ? .owned : .all
@@ -7047,6 +7056,17 @@ private struct CustomCollectionFolderDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    Task { await prepareMissingExport() }
+                } label: {
+                    if isPreparingExport { ProgressView() }
+                    else { Label("Export Missing", systemImage: "square.and.arrow.up") }
+                }
+                .accessibilityLabel("Export Missing")
+                .accessibilityIdentifier("collection.export.missing")
+                .disabled(matches.isEmpty || isLoading || isPreparingExport || catalogStore.isPreparingSearchIndex)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     isShowingFilters = true
                 } label: {
                     Label(
@@ -7059,6 +7079,10 @@ private struct CustomCollectionFolderDetailView: View {
                 .disabled(matches.isEmpty)
             }
         }
+        .sheet(item: $missingReport) { MissingCardExportView(report: $0) }
+        .alert("Export Unavailable", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("OK") { exportError = nil }
+        } message: { Text(exportError ?? "") }
         .sheet(isPresented: $isShowingFilters) {
             CollectionCardFilterSheet(
                 filters: filters, defaultOwnership: defaultOwnership,
@@ -7076,6 +7100,23 @@ private struct CustomCollectionFolderDetailView: View {
         .task(id: ownedMatchIDsKey) {
             await loadPricesForOwnedMatches()
         }
+    }
+
+    private func prepareMissingExport() async {
+        isPreparingExport = true
+        defer { isPreparingExport = false }
+        let allMatches = matches
+        let printings = await catalogStore.cachedPrintings(for: allMatches.map(\.card))
+        let preferences = Dictionary(uniqueKeysWithValues: Set(allMatches.map { $0.card.setID }).map {
+            ($0, collectionStore.preference(for: $0))
+        })
+        do {
+            let knownVariants = try await catalogStore.variants(cardIDs: allMatches.map(\.id))
+            missingReport = try MissingCardReport.makeCollection(name: folder.name, matches: allMatches,
+                sets: catalogStore.groups.flatMap(\.sets), preferences: preferences,
+                variants: knownVariants, printings: printings,
+                broad: collectionStore.broadOwnedEntries, exact: collectionStore.exactOwnedEntries)
+        } catch { exportError = error.localizedDescription }
     }
 
     private func handleCheckmarkTap(for card: CatalogCard) {

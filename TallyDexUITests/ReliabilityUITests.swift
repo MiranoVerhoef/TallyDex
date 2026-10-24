@@ -124,12 +124,61 @@ final class ReliabilityUITests: XCTestCase {
         launch("filters")
         expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
         tap(app.tabBars.buttons["Collection"])
-        tap(button("Filter fixture"))
+        let folder = button("Filter fixture")
+        for _ in 0..<8 { if folder.exists && folder.isHittable { break }; app.swipeUp() }
+        tap(folder)
         expectVisible(4)
     }
 
     private func expectVisible(_ count: Int, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(app.staticTexts["\(count) of 4 cards"].waitForExistence(timeout: 10), file: file, line: line)
+    }
+
+    func testCollectionHomeOrdersValueWishlistThenPlanner() {
+        launch("wishlist")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Collection"])
+        let value = app.descendants(matching: .any)["collection.value"].firstMatch
+        let wishlist = app.buttons["collection.wishlist"]
+        let planner = app.buttons["collection.planner"]
+        XCTAssertTrue(value.waitForExistence(timeout: 10))
+        XCTAssertTrue(wishlist.exists)
+        XCTAssertTrue(planner.exists)
+        XCTAssertLessThan(value.frame.maxY, wishlist.frame.minY)
+        XCTAssertLessThan(wishlist.frame.maxY, planner.frame.minY)
+        capturePurchaseScreen("Collection value then standalone wishlist then tools")
+        tap(wishlist)
+        XCTAssertTrue(app.navigationBars["Wishlist"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["wishlist.card.sv05-ui-3"].waitForExistence(timeout: 15))
+    }
+
+    func testPokemonCollectionMissingExportIncludesOtherSetsAndIgnoresOwnedFilter() {
+        openFilterCollection()
+        tap(app.segmentedControls["collection.ownership"].buttons["Owned"])
+        expectVisible(1)
+        let export = app.buttons["collection.export.missing"]
+        XCTAssertTrue(export.waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in export.isEnabled }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 45), .completed)
+        tap(export)
+        let summary = app.staticTexts["missing.summary"]
+        XCTAssertTrue(summary.waitForExistence(timeout: 15))
+        XCTAssertTrue(summary.label.contains("3 cards"))
+        XCTAssertTrue(app.staticTexts["Filter fixture"].exists)
+        XCTAssertTrue(app.images["missing.preview"].waitForExistence(timeout: 30))
+        capturePurchaseScreen("Pokemon collection missing image export")
+        tap(app.segmentedControls["missing.format"].buttons["PDF"])
+        capturePurchaseScreen("Pokemon collection missing PDF with larger images")
+        let share = app.buttons["missing.share"]
+        let shareReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in share.isEnabled }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [shareReady], timeout: 45), .completed)
+        tap(share)
+        XCTAssertTrue(app.buttons["Close"].waitForExistence(timeout: 15))
+        capturePurchaseScreen("Pokemon collection PDF system share sheet")
+        tap(app.buttons["Close"])
+        tap(app.buttons["Done"])
+        back()
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
     }
 
     func testCollectionOwnershipSegmentsAndCombinedNameNumberSearch() {
@@ -611,12 +660,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.52"])
+        expectState(["intro=true", "seen=0.9.53"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.52"])
+        expectState(["intro=true", "seen=0.9.53"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -624,10 +673,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.52"])
+        expectState(["intro=true", "seen=0.9.53"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.52"])
+        expectState(["intro=true", "seen=0.9.53"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -637,10 +686,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.52"])
+        expectState(["intro=true", "seen=0.9.53"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.52"])
+        expectState(["intro=true", "seen=0.9.53"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

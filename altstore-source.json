@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.53",
+          "buildVersion": "89",
+          "date": "2026-10-24",
+          "localizedDescription": "Refines the Collection layout, adds missing-card exports for Pokémon collections and improves PDF readability with larger card images.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.53/TallyDex-v0.9.53.ipa",
+          "size": 30476815,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.52",
           "buildVersion": "88",
           "date": "2026-10-24",

@@ -54,6 +54,82 @@ final class CollectionFoundationTests: XCTestCase {
             preference: preference(setID: exportSet.id, goal: .master), variants: [:], printings: [:], broad: [], exact: []))
     }
 
+    func testPokemonCollectionExportUsesEverySetGoalAndLabelsTheSourceSet() throws {
+        let other = CatalogSet(id: "other", seriesID: "sv", name: "Other Set", abbreviation: "OS",
+            logoURL: nil, symbolURL: nil, officialCardCount: 10, totalCardCount: 10, releaseDate: nil, rarityCounts: nil)
+        let owned = card(id: "owned", number: "1")
+        let missing = card(id: "missing", number: "2")
+        let partial = CatalogCard(id: "partial", setID: other.id, localID: "2", name: "Test Card ex",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        let matches = [owned, missing, partial, missing].map {
+            CatalogCardSearchResult(card: $0, setName: $0.setID == other.id ? other.name : exportSet.name)
+        }
+        let report = try MissingCardReport.makeCollection(name: "My Pokémon", matches: matches, sets: [exportSet, other],
+            preferences: [exportSet.id: preference(setID: exportSet.id, goal: .normal),
+                          other.id: preference(setID: other.id, goal: .master)],
+            variants: [partial.id: [.holo, .reverseHolo]],
+            printings: [partial.id: [printing(cardID: partial.id, id: "h", kind: .holo), printing(cardID: partial.id, id: "r", kind: .reverseHolo)]],
+            broad: [.init(cardID: owned.id, variant: .normal, quantity: 9, updatedAt: .now)],
+            exact: [.init(cardID: partial.id, printingID: "h", variant: .holo, quantity: 4, updatedAt: .now)])
+        XCTAssertEqual(report.title, "My Pokémon")
+        XCTAssertNil(report.goal)
+        XCTAssertEqual(report.missingSlots, 2)
+        XCTAssertEqual(report.items.count, 2, "A duplicated catalogue match must not duplicate the export")
+        XCTAssertEqual(report.items.first { $0.id == partial.id }?.printings, "Reverse holo")
+        XCTAssertEqual(report.items.first { $0.id == partial.id }?.setName, other.name)
+        XCTAssertEqual(report.items.first { $0.id == partial.id }?.setCode, "OS")
+    }
+
+    func testPokemonCollectionExportRefusesMissingSetMetadataWithoutDroppingCards() {
+        let result = CatalogCardSearchResult(card: card(id: "a", number: "1"), setName: "Unknown")
+        XCTAssertThrowsError(try MissingCardReport.makeCollection(name: "My Pokémon", matches: [result], sets: [],
+            preferences: [:], variants: [:], printings: [:], broad: [], exact: []))
+    }
+
+    @MainActor
+    func testLargerPDFArtworkAndCleanHeadingsWithRealBundledCards() async throws {
+        let root = try XCTUnwrap(Bundle.main.resourceURL?.appendingPathComponent("BundledCardThumbnails"))
+        let data = try Data(contentsOf: root.appendingPathComponent("manifest.json"))
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let records = try XCTUnwrap(manifest["cards"] as? [[String: Any]]).filter {
+            ($0["setID"] as? String) == "ecard2" && ((($0["localId"] as? String).flatMap { Int($0.dropFirst()) }).map { (1...9).contains($0) } ?? false)
+                && ($0["localId"] as? String)?.hasPrefix("H") == true
+        }
+        XCTAssertEqual(records.count, 9)
+        var artwork: [String: Data] = [:]
+        let cards = try records.map { record in
+            let id = try XCTUnwrap(record["id"] as? String)
+            let file = try XCTUnwrap(record["file"] as? String)
+            artwork[id] = MissingCardRenderer.thumbnail(try Data(contentsOf: root.appendingPathComponent(file)))
+            return CatalogCard(id: id, setID: "ecard2", localID: try XCTUnwrap(record["localId"] as? String),
+                name: try XCTUnwrap(record["name"] as? String), imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        }
+        let set = CatalogSet(id: "ecard2", seriesID: "ecard", name: "Aquapolis", abbreviation: "AQ",
+            logoURL: nil, symbolURL: nil, officialCardCount: 147, totalCardCount: 182, releaseDate: nil, rarityCounts: nil)
+        let report = try MissingCardReport.make(set: set, cards: cards,
+            preference: preference(setID: set.id, goal: .master),
+            variants: Dictionary(uniqueKeysWithValues: cards.map { ($0.id, Set([CatalogVariantKind.holo])) }),
+            printings: [:], broad: [], exact: [])
+        XCTAssertEqual(MissingCardRenderer.pdfThumbnailSize, CGSize(width: 44, height: 61))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("MissingLayoutTest-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let urls = try await MissingCardRenderer.write(report: report, format: .pdf, artwork: artwork, directory: directory)
+        let pdf = try XCTUnwrap(PDFDocument(url: urls[0]))
+        XCTAssertEqual(pdf.pageCount, 2)
+        let text = try XCTUnwrap(pdf.string).uppercased()
+        XCTAssertFalse(text.contains("MISSING FROM MY COLLECTION"))
+        XCTAssertFalse(text.contains("MISSING-CARD CHECKLIST"))
+        for card in cards { XCTAssertTrue(text.contains(card.name.uppercased())) }
+        let attachment = XCTAttachment(contentsOfFile: urls[0])
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let preview = XCTAttachment(image: MissingCardRenderer.preview(report: report, format: .images, artwork: artwork))
+        preview.name = "Clean image export without repeated headings"
+        preview.lifetime = .keepAlways
+        add(preview)
+    }
+
     @MainActor
     func testMissingExportsRenderMultiplePagesAndKeepEveryIdentity() async throws {
         let cards = (1...12).map { number in
@@ -70,7 +146,7 @@ final class CollectionFoundationTests: XCTestCase {
         for (index, url) in images.enumerated() {
             let image = try XCTUnwrap(UIImage(contentsOfFile: url.path))
             XCTAssertEqual(image.size.width, 1440)
-            XCTAssertEqual(image.size.height, index == 0 ? 2240 : 1224)
+            XCTAssertEqual(image.size.height, index == 0 ? 2148 : 1132)
             let attachment = XCTAttachment(contentsOfFile: url)
             attachment.lifetime = .keepAlways
             add(attachment)
@@ -83,6 +159,7 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertTrue(text.contains("2 / 2"))
         for card in cards { XCTAssertTrue(text.contains(card.name), card.name) }
         XCTAssertFalse(text.contains("trade"))
+        XCTAssertFalse(text.uppercased().contains("MISSING-CARD CHECKLIST"))
         let attachment = XCTAttachment(contentsOfFile: urls[0])
         attachment.lifetime = .keepAlways
         add(attachment)

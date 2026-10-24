@@ -80,6 +80,11 @@ search. Exporting never edits ownership. Collections expose All/Owned/Missing
 segments and a Wishlist entry that includes unowned cards. Name and number can
 be combined in catalogue, set and collection searches.
 
+Version 0.9.53 adds missing-card exports for Pokémon collections, using each
+source set's goal regardless of browsing filters. PDF thumbnails are larger and
+export headings are simplified. Collection now shows value first, then a separate
+Wishlist card, followed by Binder Planner, badges and Pokémon collections.
+
 ## Collection values
 
 Version 0.9.47 fixes false extra printings caused by marketplace price labels.
