@@ -945,6 +945,79 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func applyBulkOwnership(snapshots: [CatalogCardSnapshot], variants: Set<CatalogVariantKind>, allPrintings: Bool,
+                            owned: Bool, updatedAt: Date) async throws -> BulkOwnershipEdit {
+        try await database.queue.write { database in
+            let broad = try Row.fetchAll(database, sql: "SELECT * FROM collectionVariant").compactMap(Self.entry)
+            let exact = try Row.fetchAll(database, sql: "SELECT * FROM collectionPrinting").compactMap(Self.printingEntry)
+            let changes = BulkOwnershipPlanner.changes(snapshots: snapshots, variants: variants,
+                allPrintings: allPrintings, owned: owned, broad: broad, exact: exact, date: updatedAt)
+            if !changes.isEmpty {
+                try Self.insertBackup(.init(id: UUID(), createdAt: updatedAt, reason: "Before bulk ownership edit"),
+                    payload: Self.captureSnapshot(in: database), in: database)
+                for change in changes {
+                    try Self.writeBulkQuantity(change, quantity: change.quantity, variant: change.variant,
+                                               date: updatedAt, in: database)
+                }
+                try Self.pruneBackups(in: database)
+            }
+            return BulkOwnershipEdit(changes: changes)
+        }
+    }
+
+    func undoBulkOwnership(_ edit: BulkOwnershipEdit, updatedAt: Date) async throws {
+        guard !edit.changes.isEmpty else { return }
+        try await database.queue.write { database in
+            // Check every affected identity before writing anything. Unrelated edits remain untouched.
+            for change in edit.changes {
+                let table = change.printingID == nil ? "collectionVariant" : "collectionPrinting"
+                let column = change.printingID == nil ? "variant" : "printingID"
+                let row = try Row.fetchOne(database, sql: "SELECT * FROM \(table) WHERE cardID = ? AND \(column) = ?",
+                    arguments: [change.cardID, change.printingID ?? change.variant.rawValue])
+                if change.quantity == 0 {
+                    guard row == nil else { throw BulkOwnershipError.changedSinceEdit }
+                } else {
+                    guard let row, (row["quantity"] as Int) == change.quantity,
+                          (row["variant"] as String) == change.variant.rawValue,
+                          // Compare using SQLite's own date representation, including its precision.
+                          try Bool.fetchOne(database,
+                            sql: "SELECT updatedAt = ? FROM \(table) WHERE cardID = ? AND \(column) = ?",
+                            arguments: [change.updatedAt, change.cardID, change.printingID ?? change.variant.rawValue]) == true
+                    else { throw BulkOwnershipError.changedSinceEdit }
+                }
+            }
+            try Self.insertBackup(.init(id: UUID(), createdAt: updatedAt, reason: "Before undoing bulk ownership edit"),
+                payload: Self.captureSnapshot(in: database), in: database)
+            for change in edit.changes {
+                try Self.writeBulkQuantity(change, quantity: change.previousQuantity, variant: change.previousVariant,
+                    date: change.previousDate ?? updatedAt, in: database)
+            }
+            try Self.pruneBackups(in: database)
+        }
+    }
+
+    private static func writeBulkQuantity(_ change: BulkOwnershipChange, quantity: Int,
+                                         variant: CatalogVariantKind, date: Date, in database: Database) throws {
+        let table = change.printingID == nil ? "collectionVariant" : "collectionPrinting"
+        let column = change.printingID == nil ? "variant" : "printingID"
+        let identity = change.printingID ?? change.variant.rawValue
+        if quantity == 0 {
+            try database.execute(sql: "DELETE FROM \(table) WHERE cardID = ? AND \(column) = ?",
+                                 arguments: [change.cardID, identity])
+        } else if let printingID = change.printingID {
+            try database.execute(sql: """
+                INSERT INTO collectionPrinting (cardID, printingID, variant, quantity, updatedAt) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(cardID, printingID) DO UPDATE SET variant=excluded.variant,
+                quantity=excluded.quantity, updatedAt=excluded.updatedAt
+                """, arguments: [change.cardID, printingID, variant.rawValue, quantity, date])
+        } else {
+            try database.execute(sql: """
+                INSERT INTO collectionVariant (cardID, variant, quantity, updatedAt) VALUES (?, ?, ?, ?)
+                ON CONFLICT(cardID,variant) DO UPDATE SET quantity=excluded.quantity, updatedAt=excluded.updatedAt
+                """, arguments: [change.cardID, variant.rawValue, quantity, date])
+        }
+    }
+
     func setQuantity(
         _ quantity: Int,
         cardID: String,

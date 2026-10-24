@@ -1796,6 +1796,7 @@ private struct CatalogSetDetailView: View {
     @State private var selectedFilter = SetCardFilter.all
     @State private var searchText = ""
     @State private var isSetSearchPresented = false
+    @State private var bulkSelection = BulkCardSelection()
     @FocusState private var isSetSearchFocused: Bool
     @State private var setSummaryHeight: CGFloat = 0
     @State private var availableVariantsByCardID: [String: Set<CatalogVariantKind>] = [:]
@@ -2100,6 +2101,7 @@ private struct CatalogSetDetailView: View {
                                     .contentShape(Circle())
                                     .offset(x: 7, y: -7)
                                     .disabled(updatingCardIDs.contains(card.id))
+                                    .opacity(bulkSelection.active ? 0 : 1)
                                     .accessibilityLabel(checkmarkAccessibilityLabel(for: card))
                                     .accessibilityHint(
                                         collectionGoal == .normal
@@ -2108,6 +2110,7 @@ private struct CatalogSetDetailView: View {
                                     )
                                 }
                                 .transition(.identity)
+                                .modifier(BulkSelectableCard(card: card, selection: bulkSelection))
                             }
                         }
                     }
@@ -2127,6 +2130,7 @@ private struct CatalogSetDetailView: View {
             await loadCards(forceRefresh: true)
         }
         .safeAreaInset(edge: .top, spacing: 0) { setSearchBar }
+        .modifier(BulkCardEditor(cards: visibleCards, selection: bulkSelection))
         .navigationTitle(set.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -2617,6 +2621,259 @@ private struct CatalogVariantPickerView: View {
                 message = "That quantity couldn’t be saved. Please try again."
             }
         }
+    }
+}
+
+@MainActor @Observable
+private final class BulkCardSelection {
+    var active = false
+    var selected: [String: CatalogCard] = [:]
+    var showEditor = false
+    var editorCards: [CatalogCard] = []
+    var working = false
+    var undo: BulkOwnershipEdit?
+    var message: String?
+
+    func begin(_ card: CatalogCard) {
+        guard !working else { return }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        active = true
+        selected[card.id] = card
+    }
+    func toggle(_ card: CatalogCard) {
+        if selected.removeValue(forKey: card.id) == nil { selected[card.id] = card }
+    }
+    func end() { active = false; selected = [:] }
+}
+
+private struct BulkSelectableCard: ViewModifier {
+    let card: CatalogCard
+    let selection: BulkCardSelection
+
+    func body(content: Content) -> some View {
+        if selection.active {
+            content
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay {
+                    Button { selection.toggle(card) } label: {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(selection.selected[card.id] != nil ? Color.accentColor.opacity(0.1) : .clear)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(selection.selected[card.id] != nil ? Color.accentColor : .clear, lineWidth: 3)
+                            }
+                            .overlay(alignment: .topTrailing) {
+                                Image(systemName: selection.selected[card.id] != nil ? "checkmark.circle.fill" : "circle")
+                                    .font(.title2)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(6)
+                                    .background(.regularMaterial, in: Circle())
+                            }
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(card.name), #\(card.localID)")
+                    .accessibilityValue(selection.selected[card.id] != nil ? "Selected" : "Not selected")
+                    .accessibilityIdentifier("bulk.card.\(card.id)")
+                }
+        } else {
+            content
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in selection.begin(card) })
+                .accessibilityAction(named: "Select multiple cards") { selection.begin(card) }
+                .accessibilityIdentifier("bulk.target.\(card.id)")
+        }
+    }
+}
+
+private struct BulkCardEditor: ViewModifier {
+    let cards: [CatalogCard]
+    @Bindable var selection: BulkCardSelection
+    @Environment(CollectionStore.self) private var collectionStore
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .bottom) {
+                if selection.active {
+                    HStack(spacing: 12) {
+                        Text("\(selection.selected.count) selected").font(.subheadline.monospacedDigit())
+                        Spacer(minLength: 0)
+                        Menu {
+                            Button("Select all") { selection.selected = Dictionary(cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
+                                .accessibilityIdentifier("bulk.selectAll")
+                            Button("Deselect all") { selection.selected = [:] }
+                        } label: { Image(systemName: "checklist").frame(minWidth: 44, minHeight: 44) }
+                        .accessibilityLabel("Selection options")
+                        .accessibilityIdentifier("bulk.options")
+                        Button("Set") {
+                            selection.editorCards = selection.selected.values.sorted { $0.id < $1.id }
+                            selection.showEditor = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(selection.selected.isEmpty)
+                        .accessibilityLabel("Set ownership")
+                        .accessibilityIdentifier("bulk.set")
+                        Button { selection.end() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
+                            .accessibilityLabel("Cancel selection")
+                            .accessibilityIdentifier("bulk.cancel")
+                    }
+                    .padding(.horizontal).background(.bar)
+                } else if let message = selection.message {
+                    HStack {
+                        Text(message).font(.subheadline)
+                        Spacer()
+                        if let undo = selection.undo {
+                            Button("Undo") {
+                                selection.working = true
+                                Task {
+                                    defer { selection.working = false }
+                                    do {
+                                        try await collectionStore.undoBulkOwnership(undo)
+                                        selection.undo = nil
+                                        selection.message = "Bulk edit undone"
+                                    } catch { selection.message = error.localizedDescription }
+                                }
+                            }
+                            .disabled(selection.working)
+                            .accessibilityIdentifier("bulk.undo")
+                        }
+                        Button { selection.message = nil; selection.undo = nil } label: {
+                            Image(systemName: "xmark").frame(width: 44, height: 44)
+                        }.accessibilityLabel("Dismiss bulk result")
+                    }.padding(.horizontal).background(.bar)
+                }
+            }
+            .sheet(isPresented: $selection.showEditor) {
+                BulkOwnershipSheet(cards: selection.editorCards) { edit in
+                    selection.undo = edit.changes.isEmpty ? nil : edit
+                    selection.message = edit.changes.isEmpty ? "No printings changed" : "Updated \(edit.cardCount) \(edit.cardCount == 1 ? "card" : "cards")"
+                    selection.end()
+                    selection.showEditor = false
+                }
+            }
+            .onChange(of: cards.map(\.id)) { _, ids in
+                guard !selection.showEditor, !selection.working else { return }
+                let visible = Set(ids)
+                selection.selected = selection.selected.filter { visible.contains($0.key) }
+            }
+            .onDisappear { if !selection.showEditor { selection.end() } }
+    }
+}
+
+private struct BulkOwnershipSheet: View {
+    let cards: [CatalogCard]
+    let onFinish: (BulkOwnershipEdit) -> Void
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var snapshots: [CatalogCardSnapshot] = []
+    @State private var variants: Set<CatalogVariantKind> = []
+    @State private var allPrintings = false
+    @State private var loaded = false
+    @State private var working = false
+    @State private var errorMessage: String?
+    @State private var attempt = 0
+    @State private var confirmMissing = false
+
+    private var available: [CatalogVariantKind] {
+        let union = snapshots.reduce(into: Set<CatalogVariantKind>()) { $0.formUnion(BulkOwnershipPlanner.availableKinds($1)) }
+        return CatalogVariantKind.allCases.filter(union.contains)
+    }
+    private func changes(owned: Bool) -> [BulkOwnershipChange] {
+        BulkOwnershipPlanner.changes(snapshots: snapshots, variants: variants, allPrintings: allPrintings,
+            owned: owned, broad: collectionStore.broadOwnedEntries, exact: collectionStore.exactOwnedEntries, date: Date())
+    }
+    private func eligible(_ kind: CatalogVariantKind) -> Int {
+        snapshots.filter { BulkOwnershipPlanner.availableKinds($0).contains(kind)
+            && (allPrintings || $0.printings.filter { $0.kind == kind }.count <= 1) }.count
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("\(cards.count) selected \(cards.count == 1 ? "card" : "cards")").font(.headline)
+                    if !loaded {
+                        ProgressView("Loading printings · \(snapshots.count) of \(cards.count)")
+                    } else {
+                        Toggle("All available printings", isOn: $allPrintings)
+                            .accessibilityIdentifier("bulk.allPrintings")
+                        ForEach(available, id: \.self) { kind in
+                            Toggle(isOn: Binding(get: { allPrintings || variants.contains(kind) }, set: { value in
+                                if value { variants.insert(kind) } else { variants.remove(kind) }
+                            })) {
+                                LabeledContent(kind.displayName, value: "\(eligible(kind)) of \(cards.count)")
+                            }
+                            .disabled(allPrintings)
+                            .accessibilityIdentifier("bulk.variant.\(kind.rawValue)")
+                        }
+                        if available.isEmpty {
+                            Text("No verified printing information is available for these cards.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } footer: {
+                    Text(allPrintings ? "Includes every available printing, including special printings. Existing quantities are preserved when marking owned."
+                        : "Only available, unambiguous printings are changed. Existing quantities are preserved when marking owned.")
+                }
+                if loaded {
+                    Section {
+                        Button(actionTitle(owned: true)) { apply(owned: true) }
+                            .accessibilityIdentifier("bulk.markOwned")
+                        Button(actionTitle(owned: false), role: .destructive) {
+                            confirmMissing = true
+                        }.accessibilityIdentifier("bulk.markMissing")
+                    }
+                    .disabled(working || (!allPrintings && variants.isEmpty) || available.isEmpty)
+                }
+                if working { ProgressView("Saving changes…") }
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage).foregroundStyle(.secondary)
+                        if !loaded { Button("Retry") { attempt += 1 } }
+                    }
+                }
+            }
+            .navigationTitle("Set ownership")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(working) } }
+            .interactiveDismissDisabled(working)
+            .confirmationDialog("Mark selected printings as missing?", isPresented: $confirmMissing) {
+                Button("Mark missing", role: .destructive) { apply(owned: false) }
+            } message: { Text("Removes quantities only for the chosen available printings. A safety backup is saved first.") }
+            .task(id: attempt) {
+                snapshots = []; loaded = false; errorMessage = nil
+                do {
+                    for card in cards {
+                        try Task.checkCancellation()
+                        let snapshot = try await catalogStore.details(for: card)
+                        try Task.checkCancellation()
+                        snapshots.append(snapshot)
+                    }
+                    variants = available.contains(.normal) ? [.normal] : Set(available.prefix(1))
+                    loaded = true
+                } catch is CancellationError { return }
+                  catch { errorMessage = "Printing information couldn’t be loaded. No ownership was changed. Please retry." }
+            }
+        }
+    }
+
+    private func apply(owned: Bool) {
+        guard !working, loaded else { return }
+        working = true; errorMessage = nil
+        Task {
+            defer { working = false }
+            do {
+                let edit = try await collectionStore.applyBulkOwnership(snapshots: snapshots, variants: variants,
+                    allPrintings: allPrintings, owned: owned)
+                onFinish(edit)
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func actionTitle(owned: Bool) -> String {
+        let count = Set(changes(owned: owned).map(\.cardID)).count
+        return "\(owned ? "Mark owned" : "Mark missing") · \(count) \(count == 1 ? "card" : "cards")"
     }
 }
 
@@ -4553,6 +4810,7 @@ struct SearchView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("search.resultLayout") private var resultLayout = SearchResultLayout.list.rawValue
     @State private var query = ""
+    @State private var bulkSelection = BulkCardSelection()
     @State private var results: [CatalogCardSearchResult] = []
     @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var isSearching = false
@@ -4655,6 +4913,7 @@ struct SearchView: View {
                 }
             }
             .navigationTitle("Search")
+            .modifier(BulkCardEditor(cards: visibleResults.map(\.card), selection: bulkSelection))
             .searchable(text: $query, prompt: "Card, set, number, prerelease, or staff")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -4706,7 +4965,7 @@ struct SearchView: View {
                                         .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
                                 )
                                 .overlay(alignment: .topTrailing) {
-                                    if collectionStore.owns(cardID: result.card.id) {
+                                    if collectionStore.owns(cardID: result.card.id), !bulkSelection.active {
                                         OwnedCardProgressBadge(card: result.card)
                                             .padding(5)
                                             .background(.regularMaterial, in: Circle())
@@ -4724,6 +4983,7 @@ struct SearchView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
                     }
                 }
                 .padding()
@@ -4759,11 +5019,12 @@ struct SearchView: View {
                             }
                         }
                         Spacer()
-                        if collectionStore.owns(cardID: result.card.id) {
+                        if collectionStore.owns(cardID: result.card.id), !bulkSelection.active {
                             OwnedCardProgressBadge(card: result.card)
                         }
                     }
                 }
+                .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
             }
             .listStyle(.plain)
         }
@@ -6381,6 +6642,7 @@ private struct CustomCollectionFolderDetailView: View {
     @State private var updatingCardIDs: Set<String> = []
     @State private var searchText = ""
     @State private var filters: CollectionCardFilters
+    @State private var bulkSelection = BulkCardSelection()
     @State private var isShowingFilters = false
 
     private var defaultOwnership: CollectionOwnershipFilter {
@@ -6584,6 +6846,7 @@ private struct CustomCollectionFolderDetailView: View {
                                     .contentShape(Circle())
                                     .offset(x: 7, y: -7)
                                     .disabled(updatingCardIDs.contains(result.card.id))
+                                    .opacity(bulkSelection.active ? 0 : 1)
                                     .contextMenu {
                                         Button("Choose printings", systemImage: "square.stack.3d.up") {
                                             selectedVariantCard = result.card
@@ -6597,11 +6860,14 @@ private struct CustomCollectionFolderDetailView: View {
                                     .accessibilityHint("Touch and hold to choose printings")
                                 }
 
+                                // Selection owns taps across the whole tile, including the completion circle.
+
                                 Text(result.setName)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                             }
+                            .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
                         }
                     }
                 }
@@ -6609,6 +6875,7 @@ private struct CustomCollectionFolderDetailView: View {
             .padding()
         }
         .navigationTitle(folder.name)
+        .modifier(BulkCardEditor(cards: visibleMatches.map(\.card), selection: bulkSelection))
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Card, set, or number")
         .toolbar {

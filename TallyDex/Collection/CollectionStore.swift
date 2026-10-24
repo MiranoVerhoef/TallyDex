@@ -1,6 +1,107 @@
 import Foundation
 import Observation
 
+enum BulkOwnershipError: LocalizedError {
+    case changedSinceEdit
+    var errorDescription: String? {
+        "Some of these printings changed after the bulk edit. Undo was not applied; your later changes are safe."
+    }
+}
+
+struct BulkOwnershipChange: Sendable {
+    let cardID: String
+    let printingID: String?
+    let variant: CatalogVariantKind
+    let previousVariant: CatalogVariantKind
+    let previousQuantity: Int
+    let previousDate: Date?
+    let quantity: Int
+    let updatedAt: Date
+}
+
+struct BulkOwnershipEdit: Sendable {
+    let changes: [BulkOwnershipChange]
+    var cardCount: Int { Set(changes.map(\.cardID)).count }
+}
+
+/// Resolves actual catalogue printings, never marketplace finish labels.
+enum BulkOwnershipPlanner {
+    static func availableKinds(_ snapshot: CatalogCardSnapshot) -> Set<CatalogVariantKind> {
+        let identified = snapshot.printings.filter { $0.cardID == snapshot.card.id && !$0.providerID.isEmpty }
+        return identified.isEmpty ? snapshot.variants : Set(identified.compactMap(\.kind))
+    }
+    static func changes(snapshots: [CatalogCardSnapshot], variants: Set<CatalogVariantKind>, allPrintings: Bool,
+                        owned: Bool, broad: [CollectionVariantEntry], exact: [CollectionPrintingEntry],
+                        date: Date) -> [BulkOwnershipChange] {
+        var changes: [BulkOwnershipChange] = []
+        var visited = Set<String>()
+        let broadByCard = Dictionary(grouping: broad, by: \.cardID)
+        let exactByCard = Dictionary(grouping: exact, by: \.cardID)
+        let standardKinds: Set<CatalogVariantKind> = [.normal, .holo, .reverseHolo]
+        for snapshot in snapshots where visited.insert(snapshot.card.id).inserted {
+            let cardID = snapshot.card.id
+            let cardBroad = broadByCard[cardID] ?? []
+            let cardExact = exactByCard[cardID] ?? []
+            let available = availableKinds(snapshot)
+            let currentIDs = Set(snapshot.printings.map(\.providerID))
+            for kind in CatalogVariantKind.allCases where available.contains(kind)
+                && (allPrintings || variants.contains(kind)) {
+                let candidates = snapshot.printings.filter { $0.cardID == cardID && $0.kind == kind && !$0.providerID.isEmpty }
+                // A finish alone is insufficient to choose between stamped/alternate printings.
+                if candidates.count > 1 && !allPrintings { continue }
+                let oldBroad = cardBroad.first { $0.variant == kind }
+                let oldExact = cardExact.filter { $0.variant == kind }
+                if owned && (oldBroad?.quantity ?? 0) > 0 { continue }
+                if owned && !candidates.isEmpty {
+                    // An obsolete ID/finish may already represent this physical card.
+                    // Leave reconciliation to the existing individual-card workflow;
+                    // never add a second copy merely because the upstream label changed.
+                    let unresolvedExact = cardExact.contains {
+                        $0.quantity > 0 && !currentIDs.contains($0.printingID)
+                            && ($0.variant == kind || (standardKinds.contains($0.variant) && standardKinds.contains(kind)))
+                    }
+                    let unresolvedBroad = standardKinds.contains(kind) && cardBroad.contains {
+                        $0.quantity > 0 && standardKinds.contains($0.variant) && !available.contains($0.variant)
+                    }
+                    if unresolvedExact || unresolvedBroad { continue }
+                }
+                if candidates.isEmpty {
+                    if owned && oldExact.contains(where: { $0.quantity > 0 }) { continue }
+                    let quantity = owned ? max(1, oldBroad?.quantity ?? 0) : 0
+                    if quantity != (oldBroad?.quantity ?? 0) {
+                        changes.append(.init(cardID: cardID, printingID: nil, variant: kind, previousVariant: kind,
+                            previousQuantity: oldBroad?.quantity ?? 0, previousDate: oldBroad?.updatedAt,
+                            quantity: quantity, updatedAt: date))
+                    }
+                } else {
+                    for printing in candidates {
+                        let old = cardExact.first { $0.printingID == printing.providerID }
+                        let quantity = owned ? max(1, old?.quantity ?? 0) : 0
+                        if quantity != (old?.quantity ?? 0) {
+                            changes.append(.init(cardID: cardID, printingID: printing.providerID, variant: kind,
+                                previousVariant: old?.variant ?? kind, previousQuantity: old?.quantity ?? 0,
+                                previousDate: old?.updatedAt, quantity: quantity, updatedAt: date))
+                        }
+                    }
+                    if !owned, let oldBroad, oldBroad.quantity > 0 {
+                        changes.append(.init(cardID: cardID, printingID: nil, variant: kind, previousVariant: kind,
+                            previousQuantity: oldBroad.quantity, previousDate: oldBroad.updatedAt,
+                            quantity: 0, updatedAt: date))
+                    }
+                }
+                if !owned && candidates.isEmpty {
+                    for old in oldExact where old.quantity > 0 {
+                        changes.append(.init(cardID: cardID, printingID: old.printingID, variant: kind,
+                            previousVariant: old.variant, previousQuantity: old.quantity, previousDate: old.updatedAt,
+                            quantity: 0, updatedAt: date))
+                    }
+                }
+            }
+        }
+        return changes
+    }
+}
+
 @MainActor
 @Observable
 final class CollectionStore {
@@ -424,6 +525,21 @@ final class CollectionStore {
         }
         rebuildAggregatedOwnership()
         await refreshCollectorBadges()
+    }
+
+    func applyBulkOwnership(snapshots: [CatalogCardSnapshot], variants: Set<CatalogVariantKind>,
+                            allPrintings: Bool, owned: Bool) async throws -> BulkOwnershipEdit {
+        try accessStore?.requireEditing()
+        let edit = try await resolveRepository().applyBulkOwnership(snapshots: snapshots, variants: variants,
+            allPrintings: allPrintings, owned: owned, updatedAt: now())
+        try await reloadCollectionState()
+        return edit
+    }
+
+    func undoBulkOwnership(_ edit: BulkOwnershipEdit) async throws {
+        try accessStore?.requireEditing()
+        try await resolveRepository().undoBulkOwnership(edit, updatedAt: now())
+        try await reloadCollectionState()
     }
 
     func setPrintingQuantity(

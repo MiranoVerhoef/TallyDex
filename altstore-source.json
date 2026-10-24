@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.50",
+          "buildVersion": "86",
+          "date": "2026-10-24",
+          "localizedDescription": "Adds bulk ownership editing in sets, Search and Pokémon collections. Long-press cards to select multiple, choose printings and update ownership, with Undo.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.50/TallyDex-v0.9.50.ipa",
+          "size": 30329114,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.49",
           "buildVersion": "85",
           "date": "2026-10-18",

@@ -57,6 +57,15 @@ apps can use this source URL:
 https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.json
 ```
 
+## Bulk collection editing
+
+Version 0.9.50 adds bulk ownership editing in sets, Search (list and grid), and
+Pokémon collections. Long-press a card, select more or all visible results, then
+tap **Set**. Choose available printing types and mark owned or missing. Quantities
+already owned are preserved; removing ownership requires confirmation. Changes
+are atomic, with a safety backup and targeted Undo that refuses to overwrite
+later changes to the same printings. Ordinary card taps still open card details.
+
 ## Collection values
 
 Version 0.9.47 fixes false extra printings caused by marketplace price labels.

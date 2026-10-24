@@ -3,6 +3,161 @@ import XCTest
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    func testBulkOwnershipUsesExactPrintingsNotStaleMarketplaceVariants() {
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.normal, .holo],
+            printings: [printing(cardID: "a", id: "normal-a", kind: .normal)])
+        let changes = BulkOwnershipPlanner.changes(snapshots: [snapshot, snapshot], variants: [.normal, .holo],
+            allPrintings: false, owned: true, broad: [], exact: [], date: .now)
+        XCTAssertEqual(changes.count, 1)
+        XCTAssertEqual(changes.first?.variant, .normal)
+        XCTAssertEqual(changes.first?.printingID, "normal-a")
+    }
+
+    func testBulkOwnershipPreservesQuantitiesAndDoesNotDuplicateBroadOwnership() {
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.normal],
+            printings: [printing(cardID: "a", id: "normal-a", kind: .normal)])
+        let broad = CollectionVariantEntry(cardID: "a", variant: .normal, quantity: 4, updatedAt: .now)
+        let exact = CollectionPrintingEntry(cardID: "a", printingID: "normal-a", variant: .normal, quantity: 7, updatedAt: .now)
+        for entries in [[], [exact]] {
+            XCTAssertTrue(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [.normal], allPrintings: false,
+                owned: true, broad: [broad], exact: entries, date: .now).isEmpty)
+        }
+        XCTAssertTrue(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [.normal], allPrintings: false,
+            owned: true, broad: [], exact: [exact], date: .now).isEmpty)
+    }
+
+    func testBulkOwnershipDoesNotDuplicateSavedCardsAfterUpstreamPrintingCorrections() {
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.holo],
+            printings: [printing(cardID: "a", id: "corrected-holo", kind: .holo)])
+        let oldBroad = CollectionVariantEntry(cardID: "a", variant: .normal, quantity: 4, updatedAt: .now)
+        XCTAssertTrue(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [.holo], allPrintings: false,
+            owned: true, broad: [oldBroad], exact: [], date: .now).isEmpty)
+        for oldKind in [CatalogVariantKind.normal, .holo] {
+            let old = CollectionPrintingEntry(cardID: "a", printingID: "superseded", variant: oldKind,
+                quantity: 4, updatedAt: .now)
+            XCTAssertTrue(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [], allPrintings: true,
+                owned: true, broad: [], exact: [old], date: .now).isEmpty)
+        }
+        let both = CatalogCardSnapshot(card: snapshot.card, variants: [.normal, .holo], printings: [
+            printing(cardID: "a", id: "known-normal", kind: .normal), snapshot.printings[0]])
+        let known = CollectionPrintingEntry(cardID: "a", printingID: "known-normal", variant: .normal,
+            quantity: 4, updatedAt: .now)
+        XCTAssertEqual(BulkOwnershipPlanner.changes(snapshots: [both], variants: [.holo], allPrintings: false,
+            owned: true, broad: [], exact: [known], date: .now).count, 1)
+    }
+
+    func testBulkOwnershipSkipsAmbiguousPrintingsUnlessAllExplicitlyChosen() {
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.holo], printings: [
+            printing(cardID: "a", id: "holo-a", kind: .holo), printing(cardID: "a", id: "holo-b", kind: .holo)])
+        XCTAssertTrue(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [.holo], allPrintings: false,
+            owned: true, broad: [], exact: [], date: .now).isEmpty)
+        XCTAssertEqual(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [], allPrintings: true,
+            owned: true, broad: [], exact: [], date: .now).count, 2)
+    }
+
+    func testBulkOwnershipLegacyFallbackDoesNotCreateBroadDuplicateOfExactOwnership() {
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.normal])
+        let exact = CollectionPrintingEntry(cardID: "a", printingID: "old-a", variant: .normal, quantity: 3, updatedAt: .now)
+        XCTAssertTrue(BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [.normal], allPrintings: false,
+            owned: true, broad: [], exact: [exact], date: .now).isEmpty)
+        let remove = BulkOwnershipPlanner.changes(snapshots: [snapshot], variants: [.normal], allPrintings: false,
+            owned: false, broad: [], exact: [exact], date: .now)
+        XCTAssertEqual(remove.first?.previousQuantity, 3)
+        XCTAssertEqual(remove.first?.quantity, 0)
+    }
+
+    func testBulkOwnershipAtomicEditBackupAndTargetedUndoPreserveUnrelatedChanges() async throws {
+        let repo = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let date = Date(timeIntervalSince1970: 500)
+        let snapshots = ["a", "b"].map { CatalogCardSnapshot(card: card(id: $0, number: "1"), variants: [.normal],
+            printings: [printing(cardID: $0, id: "normal-\($0)", kind: .normal)]) }
+        let edit = try await repo.applyBulkOwnership(snapshots: snapshots, variants: [.normal], allPrintings: false,
+            owned: true, updatedAt: date)
+        XCTAssertEqual(edit.cardCount, 2)
+        let backups = try await repo.fetchBackups()
+        XCTAssertEqual(backups.count, 1)
+        try await repo.setQuantity(4, cardID: "unrelated", variant: .holo, updatedAt: date)
+        try await repo.undoBulkOwnership(edit, updatedAt: date.addingTimeInterval(1))
+        let exact = try await repo.fetchOwnedPrintingEntries()
+        let unrelated = try await repo.fetchEntries(cardID: "unrelated")
+        XCTAssertTrue(exact.isEmpty)
+        XCTAssertEqual(unrelated.first?.quantity, 4)
+    }
+
+    func testBulkOwnershipUndoRefusesConflictWithoutPartialChanges() async throws {
+        let repo = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let date = Date(timeIntervalSince1970: 500)
+        let snapshots = ["a", "b"].map { CatalogCardSnapshot(card: card(id: $0, number: "1"), variants: [.normal],
+            printings: [printing(cardID: $0, id: "normal-\($0)", kind: .normal)]) }
+        let edit = try await repo.applyBulkOwnership(snapshots: snapshots, variants: [.normal], allPrintings: false,
+            owned: true, updatedAt: date)
+        try await repo.setPrintingQuantity(9, cardID: "b", printingID: "normal-b", variant: .normal,
+                                          updatedAt: date.addingTimeInterval(1))
+        do { try await repo.undoBulkOwnership(edit, updatedAt: date.addingTimeInterval(2)); XCTFail("Undo must reject later edits") }
+        catch is BulkOwnershipError { }
+        let a = try await repo.fetchPrintingEntries(cardID: "a")
+        let b = try await repo.fetchPrintingEntries(cardID: "b")
+        XCTAssertEqual(a.first?.quantity, 1)
+        XCTAssertEqual(b.first?.quantity, 9)
+    }
+
+    func testBulkUndoRejectsLaterWriteEvenWhenQuantityIsTheSame() async throws {
+        let repo = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let date = Date(timeIntervalSince1970: 500.123456)
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.normal],
+            printings: [printing(cardID: "a", id: "normal-a", kind: .normal)])
+        let edit = try await repo.applyBulkOwnership(snapshots: [snapshot], variants: [.normal], allPrintings: false,
+            owned: true, updatedAt: date)
+        try await repo.setPrintingQuantity(1, cardID: "a", printingID: "normal-a", variant: .normal,
+            updatedAt: date.addingTimeInterval(2))
+        do { try await repo.undoBulkOwnership(edit, updatedAt: date.addingTimeInterval(3)); XCTFail("Later writes must be protected") }
+        catch is BulkOwnershipError { }
+        let entries = try await repo.fetchPrintingEntries(cardID: "a")
+        XCTAssertEqual(entries.first?.quantity, 1)
+    }
+
+    func testBulkMarkMissingRestoresExactAndBroadQuantitiesOnUndo() async throws {
+        let repo = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let date = Date(timeIntervalSince1970: 500)
+        try await repo.setQuantity(3, cardID: "a", variant: .normal, updatedAt: date)
+        try await repo.setPrintingQuantity(5, cardID: "a", printingID: "normal-a", variant: .normal, updatedAt: date)
+        try await repo.setQuantity(8, cardID: "a", variant: .reverseHolo, updatedAt: date)
+        let snapshot = CatalogCardSnapshot(card: card(id: "a", number: "1"), variants: [.normal, .reverseHolo],
+            printings: [printing(cardID: "a", id: "normal-a", kind: .normal)])
+        let edit = try await repo.applyBulkOwnership(snapshots: [snapshot], variants: [.normal], allPrintings: false,
+            owned: false, updatedAt: date.addingTimeInterval(1))
+        let remaining = try await repo.fetchEntries(cardID: "a")
+        XCTAssertEqual(remaining.map(\.variant), [.reverseHolo])
+        try await repo.undoBulkOwnership(edit, updatedAt: date.addingTimeInterval(2))
+        let exact = try await repo.fetchPrintingEntries(cardID: "a")
+        let broad = try await repo.fetchEntries(cardID: "a")
+        XCTAssertEqual(exact.first?.quantity, 5)
+        XCTAssertEqual(broad.first(where: { $0.variant == .normal })?.quantity, 3)
+        XCTAssertEqual(broad.first(where: { $0.variant == .reverseHolo })?.quantity, 8)
+    }
+
+    func testBulkOwnershipRollsBackAllCardsAndBackupOnWriteFailure() async throws {
+        let database = try CollectionDatabase.inMemory()
+        let repo = GRDBCollectionRepository(database: database)
+        try await database.queue.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER rejectBulkTest BEFORE INSERT ON collectionPrinting WHEN NEW.cardID = 'b'
+                BEGIN SELECT RAISE(ABORT, 'Injected bulk write failure'); END
+                """)
+        }
+        let snapshots = ["a", "b"].map { CatalogCardSnapshot(card: card(id: $0, number: "1"), variants: [.normal],
+            printings: [printing(cardID: $0, id: "normal-\($0)", kind: .normal)]) }
+        do {
+            _ = try await repo.applyBulkOwnership(snapshots: snapshots, variants: [.normal], allPrintings: false,
+                owned: true, updatedAt: .now)
+            XCTFail("The injected failure must abort the entire edit")
+        } catch { }
+        let exact = try await repo.fetchOwnedPrintingEntries()
+        let backups = try await repo.fetchBackups()
+        XCTAssertTrue(exact.isEmpty)
+        XCTAssertTrue(backups.isEmpty)
+    }
+
     func testCollectionFiltersDoNotHideUnknownMetadataByDefault() {
         let unknown = filterResult(id: "unknown", setID: "unknown-set", types: nil, rarity: nil, date: nil)
         let all = CollectionCardFilters()

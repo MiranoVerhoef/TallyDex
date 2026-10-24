@@ -193,6 +193,95 @@ final class ReliabilityUITests: XCTestCase {
         expectState(["owned=1", "error=none"])
     }
 
+    private func bulkSelectAllAndApply(expectedOwned: Int) {
+        tap(app.buttons["bulk.options"])
+        tap(app.buttons["bulk.selectAll"])
+        capturePurchaseScreen("Bulk selection")
+        tap(app.buttons["bulk.set"])
+        XCTAssertTrue(app.buttons["bulk.markOwned"].waitForExistence(timeout: 30))
+        capturePurchaseScreen("Bulk printing options")
+        tap(app.buttons["bulk.markOwned"])
+        expectState(["owned=\(expectedOwned)", "error=none"])
+        XCTAssertTrue(app.buttons["bulk.undo"].waitForExistence(timeout: 10))
+        tap(app.buttons["bulk.undo"])
+        expectState(["owned=1", "error=none"])
+    }
+
+    func testBulkOwnershipInPokemonCollectionCanUndoWithoutChangingExistingQuantities() {
+        openFilterCollection()
+        let card = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        card.press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["bulk.cancel"].waitForExistence(timeout: 5))
+        bulkSelectAllAndApply(expectedOwned: 4)
+        expectState(["normal=7;stamp=2", "error=none"])
+        // A regular tap still navigates after selection mode ends.
+        tap(app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch)
+        XCTAssertTrue(app.navigationBars["Phantump"].waitForExistence(timeout: 10))
+    }
+
+    func testBulkOwnershipInSetUsesOnlyFilteredCards() {
+        launch("filters")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Sets"])
+        tap(button("Sword & Shield"))
+        let expansion = button("Fusion Strike")
+        for _ in 0..<12 { if expansion.exists { break }; app.swipeUp() }
+        tap(expansion)
+        let search = app.textFields["set.search.field"]
+        tap(search)
+        search.typeText("2\n")
+        XCTAssertTrue(app.staticTexts["1 cards"].waitForExistence(timeout: 10))
+        let card = app.descendants(matching: .any)["bulk.target.swsh8-ui-2"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        card.press(forDuration: 0.8)
+        bulkSelectAllAndApply(expectedOwned: 2)
+    }
+
+    func testBulkRemovalNeedsConfirmationAndCanBeUndone() {
+        openFilterCollection()
+        let target = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 10))
+        target.press(forDuration: 0.8)
+        tap(app.buttons["bulk.set"])
+        tap(app.buttons["bulk.markMissing"])
+        expectState(["normal=7;stamp=2", "error=none"])
+        tap(app.buttons["Mark missing"])
+        expectState(["normal=0;stamp=2", "owned=1", "error=none"])
+        tap(app.buttons["bulk.undo"])
+        expectState(["normal=7;stamp=2", "owned=1", "error=none"])
+        let restored = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        restored.press(forDuration: 0.8)
+        tap(app.buttons["bulk.set"])
+        tap(app.buttons["Cancel"])
+        tap(app.buttons["bulk.cancel"])
+        expectState(["normal=7;stamp=2", "owned=1", "error=none"])
+    }
+
+    func testBulkOwnershipInSearchListAndGrid() {
+        launch("filters")
+        expectState(["owned=1", "error=none"])
+        tap(app.tabBars.buttons["Search"])
+        let search = app.searchFields.firstMatch
+        tap(search)
+        search.typeText("Phantump\n")
+        let card = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 20))
+        card.press(forDuration: 0.8)
+        bulkSelectAllAndApply(expectedOwned: 3)
+        // iOS hides the search toolbar while search is presented; close it before changing layout.
+        tap(app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Close"])
+        tap(app.buttons["Filter, sort, and layout"])
+        tap(button("Layout:"))
+        tap(app.buttons["Grid"])
+        tap(search)
+        search.typeText("Phantump\n")
+        let gridCard = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        XCTAssertTrue(gridCard.waitForExistence(timeout: 10))
+        gridCard.press(forDuration: 0.8)
+        bulkSelectAllAndApply(expectedOwned: 3)
+    }
+
     func testSetsDashboardShowsCollectionWideCounts() {
         launch("filters")
         expectState(["owned=1", "error=none"])
@@ -360,12 +449,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.49"])
+        expectState(["intro=true", "seen=0.9.50"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.49"])
+        expectState(["intro=true", "seen=0.9.50"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -373,10 +462,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.49"])
+        expectState(["intro=true", "seen=0.9.50"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.49"])
+        expectState(["intro=true", "seen=0.9.50"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -386,10 +475,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.49"])
+        expectState(["intro=true", "seen=0.9.50"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.49"])
+        expectState(["intro=true", "seen=0.9.50"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

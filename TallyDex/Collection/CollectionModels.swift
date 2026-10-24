@@ -1199,6 +1199,9 @@ struct CollectionBackup: Equatable, Identifiable, Sendable {
 }
 
 protocol CollectionRepository: Sendable {
+    func applyBulkOwnership(snapshots: [CatalogCardSnapshot], variants: Set<CatalogVariantKind>, allPrintings: Bool,
+                            owned: Bool, updatedAt: Date) async throws -> BulkOwnershipEdit
+    func undoBulkOwnership(_ edit: BulkOwnershipEdit, updatedAt: Date) async throws
     func fetchEntries(cardID: String) async throws -> [CollectionVariantEntry]
     func fetchOwnedEntries() async throws -> [CollectionVariantEntry]
     func fetchPrintingEntries(cardID: String) async throws -> [CollectionPrintingEntry]
