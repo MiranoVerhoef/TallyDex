@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.51",
+          "buildVersion": "87",
+          "date": "2026-10-24",
+          "localizedDescription": "Refines bulk editing with native selection controls, a cleaner printing picker and improved accessibility.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.51/TallyDex-v0.9.51.ipa",
+          "size": 30345773,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.50",
           "buildVersion": "86",
           "date": "2026-10-24",

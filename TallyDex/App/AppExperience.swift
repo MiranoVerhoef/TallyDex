@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.50",
-        headline: "Faster collection editing",
+        version: "0.9.51",
+        headline: "Refined collection editing",
         notes: [
             AppReleaseNote(
                 systemImage: "checklist",
-                title: "Bulk ownership editor",
-                detail: "Long-press cards in sets, Search or Pokémon collections to update multiple cards, with Undo."
+                title: "Cleaner bulk editor",
+                detail: "Native selection controls, a simpler printing picker and improved accessibility."
             ),
         ]
     )

@@ -258,6 +258,82 @@ final class ReliabilityUITests: XCTestCase {
         expectState(["normal=7;stamp=2", "owned=1", "error=none"])
     }
 
+    func testBulkPrintingPickerUsesCheckmarksAndOptionalHelp() {
+        openFilterCollection()
+        app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch.press(forDuration: 0.8)
+        let selectedCard = app.buttons["bulk.card.swsh8-16"]
+        XCTAssertEqual(selectedCard.value as? String, "Selected")
+        XCTAssertFalse(app.tabBars.buttons["Collection"].isHittable)
+        tap(app.buttons["bulk.set"])
+        let normal = app.buttons["bulk.variant.normal"]
+        XCTAssertTrue(normal.waitForExistence(timeout: 30))
+        XCTAssertEqual(normal.value as? String, "Selected")
+        tap(normal)
+        XCTAssertEqual(normal.value as? String, "Not selected")
+        XCTAssertFalse(app.buttons["bulk.markOwned"].isEnabled)
+        XCTAssertFalse(app.buttons["bulk.markMissing"].isEnabled)
+        let all = app.buttons["bulk.allPrintings"]
+        tap(all)
+        XCTAssertEqual(all.value as? String, "Selected")
+        XCTAssertFalse(normal.isEnabled)
+        XCTAssertTrue(app.buttons["bulk.markOwned"].isEnabled)
+        tap(all)
+        XCTAssertTrue(normal.isEnabled)
+        tap(normal)
+        XCTAssertEqual(normal.value as? String, "Selected")
+        capturePurchaseScreen("Native printing checkmarks")
+        tap(app.buttons["About 1 card selected"])
+        XCTAssertTrue(app.navigationBars["1 card selected"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "preserves existing quantities")).firstMatch.exists)
+        tap(app.buttons["Done"])
+        tap(app.buttons["Cancel"])
+        tap(app.buttons["bulk.cancel"])
+        XCTAssertTrue(app.tabBars.buttons["Collection"].isHittable)
+        expectState(["normal=7;stamp=2", "owned=1", "error=none"])
+    }
+
+    func testBulkEditorSupportsDarkModeAndAccessibilityText() {
+        app.launchArguments += ["-AppleInterfaceStyle", "Dark", "-app.appearance", "dark",
+                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        launch("filters")
+        expectState(["normal=7;stamp=2", "owned=1", "backups=2"])
+        tap(app.tabBars.buttons["Collection"])
+        let folder = button("Filter fixture")
+        for _ in 0..<12 { if folder.exists { break }; app.swipeUp() }
+        tap(folder)
+        let card = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        for _ in 0..<12 { if card.exists && card.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(card.exists)
+        card.press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["bulk.set"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["bulk.set"].isHittable)
+        XCTAssertTrue(app.buttons["bulk.cancel"].isHittable)
+        capturePurchaseScreen("Native selection with accessibility text")
+        tap(app.buttons["bulk.set"])
+        XCTAssertTrue(app.buttons["bulk.variant.normal"].waitForExistence(timeout: 30))
+        capturePurchaseScreen("Native printing picker with accessibility text")
+        let missing = app.buttons["bulk.markMissing"]
+        for _ in 0..<12 { if missing.exists { break }; app.swipeUp() }
+        tap(missing)
+        expectState(["normal=7;stamp=2", "owned=1", "error=none"])
+        XCTAssertTrue(app.buttons["Mark missing"].waitForExistence(timeout: 5))
+        if let cancel = app.buttons.matching(NSPredicate(format: "label == 'Cancel'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable }) {
+            cancel.tap()
+        } else {
+            // iOS 27 can present this as a popover, where cancellation is an outside tap.
+            let popover = app.popovers.firstMatch
+            XCTAssertTrue(popover.exists)
+            XCTAssertGreaterThan(popover.frame.minX, 16)
+            XCTAssertTrue(app.otherElements["PopoverDismissRegion"].exists)
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5)).tap()
+        }
+        tap(app.navigationBars.buttons["Cancel"])
+        tap(app.buttons["bulk.cancel"])
+        XCTAssertTrue(app.tabBars.buttons["Collection"].isHittable)
+        expectState(["normal=7;stamp=2", "owned=1", "error=none"])
+    }
+
     func testBulkOwnershipInSearchListAndGrid() {
         launch("filters")
         expectState(["owned=1", "error=none"])
@@ -268,6 +344,12 @@ final class ReliabilityUITests: XCTestCase {
         let card = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 20))
         card.press(forDuration: 0.8)
+        let selectedRow = app.buttons["bulk.card.swsh8-16"]
+        XCTAssertEqual(selectedRow.value as? String, "Selected")
+        tap(selectedRow)
+        XCTAssertEqual(selectedRow.value as? String, "Not selected")
+        tap(selectedRow)
+        XCTAssertEqual(selectedRow.value as? String, "Selected")
         bulkSelectAllAndApply(expectedOwned: 3)
         // iOS hides the search toolbar while search is presented; close it before changing layout.
         tap(app.buttons["Cancel"].exists ? app.buttons["Cancel"] : app.buttons["Close"])
@@ -449,12 +531,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.50"])
+        expectState(["intro=true", "seen=0.9.51"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.50"])
+        expectState(["intro=true", "seen=0.9.51"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -462,10 +544,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.50"])
+        expectState(["intro=true", "seen=0.9.51"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.50"])
+        expectState(["intro=true", "seen=0.9.51"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -475,10 +557,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.50"])
+        expectState(["intro=true", "seen=0.9.51"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.50"])
+        expectState(["intro=true", "seen=0.9.51"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

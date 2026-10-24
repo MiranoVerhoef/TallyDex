@@ -2646,35 +2646,45 @@ private final class BulkCardSelection {
     func end() { active = false; selected = [:] }
 }
 
+private struct BulkSelectionMark: View {
+    let selected: Bool
+
+    var body: some View {
+        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 26, weight: .medium))
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(selected ? Color.white : .secondary,
+                             selected ? Color.accentColor : Color(.systemBackground))
+            .background(Color(.systemBackground), in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
 private struct BulkSelectableCard: ViewModifier {
     let card: CatalogCard
     let selection: BulkCardSelection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     func body(content: Content) -> some View {
         if selection.active {
             content
+                .padding(.trailing, dynamicTypeSize.isAccessibilitySize ? 44 : 0)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
                 .overlay {
                     Button { selection.toggle(card) } label: {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(selection.selected[card.id] != nil ? Color.accentColor.opacity(0.1) : .clear)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(selection.selected[card.id] != nil ? Color.accentColor : .clear, lineWidth: 3)
-                            }
-                            .overlay(alignment: .topTrailing) {
-                                Image(systemName: selection.selected[card.id] != nil ? "checkmark.circle.fill" : "circle")
-                                    .font(.title2)
-                                    .foregroundStyle(Color.accentColor)
-                                    .padding(6)
-                                    .background(.regularMaterial, in: Circle())
+                        Color.clear
+                            .overlay(alignment: dynamicTypeSize.isAccessibilitySize ? .trailing : .topTrailing) {
+                                BulkSelectionMark(selected: selection.selected[card.id] != nil)
+                                    .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                                    .padding(7)
                             }
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(card.name), #\(card.localID)")
                     .accessibilityValue(selection.selected[card.id] != nil ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(selection.selected[card.id] != nil ? .isSelected : [])
                     .accessibilityIdentifier("bulk.card.\(card.id)")
                 }
         } else {
@@ -2690,59 +2700,61 @@ private struct BulkCardEditor: ViewModifier {
     let cards: [CatalogCard]
     @Bindable var selection: BulkCardSelection
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     func body(content: Content) -> some View {
         content
-            .safeAreaInset(edge: .bottom) {
-                if selection.active {
+            .safeAreaInset(edge: .bottom, spacing: 8) {
+                if selection.active || selection.message != nil {
                     HStack(spacing: 12) {
-                        Text("\(selection.selected.count) selected").font(.subheadline.monospacedDigit())
-                        Spacer(minLength: 0)
-                        Menu {
-                            Button("Select all") { selection.selected = Dictionary(cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
-                                .accessibilityIdentifier("bulk.selectAll")
-                            Button("Deselect all") { selection.selected = [:] }
-                        } label: { Image(systemName: "checklist").frame(minWidth: 44, minHeight: 44) }
-                        .accessibilityLabel("Selection options")
-                        .accessibilityIdentifier("bulk.options")
-                        Button("Set") {
-                            selection.editorCards = selection.selected.values.sorted { $0.id < $1.id }
-                            selection.showEditor = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(selection.selected.isEmpty)
-                        .accessibilityLabel("Set ownership")
-                        .accessibilityIdentifier("bulk.set")
-                        Button { selection.end() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
-                            .accessibilityLabel("Cancel selection")
-                            .accessibilityIdentifier("bulk.cancel")
-                    }
-                    .padding(.horizontal).background(.bar)
-                } else if let message = selection.message {
-                    HStack {
-                        Text(message).font(.subheadline)
-                        Spacer()
-                        if let undo = selection.undo {
-                            Button("Undo") {
-                                selection.working = true
-                                Task {
-                                    defer { selection.working = false }
-                                    do {
-                                        try await collectionStore.undoBulkOwnership(undo)
-                                        selection.undo = nil
-                                        selection.message = "Bulk edit undone"
-                                    } catch { selection.message = error.localizedDescription }
+                        if selection.active {
+                            if dynamicTypeSize.isAccessibilitySize {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    selectionMenu.frame(maxWidth: .infinity, alignment: .leading)
+                                    HStack { setButton; Spacer(minLength: 0); doneButton }
                                 }
+                            } else {
+                                selectionMenu
+                                Spacer(minLength: 0)
+                                setButton
+                                doneButton
                             }
-                            .disabled(selection.working)
-                            .accessibilityIdentifier("bulk.undo")
+                        } else if let message = selection.message {
+                            Text(message).font(.subheadline)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                            if let undo = selection.undo {
+                                Button("Undo") {
+                                    selection.working = true
+                                    Task {
+                                        defer { selection.working = false }
+                                        do {
+                                            try await collectionStore.undoBulkOwnership(undo)
+                                            selection.undo = nil
+                                            selection.message = "Bulk edit undone"
+                                        } catch { selection.message = error.localizedDescription }
+                                    }
+                                }
+                                .frame(minHeight: 44)
+                                .disabled(selection.working)
+                                .accessibilityIdentifier("bulk.undo")
+                            }
+                            Button { selection.message = nil; selection.undo = nil } label: {
+                                Image(systemName: "xmark").font(.subheadline.weight(.semibold))
+                                    .frame(width: 44, height: 44)
+                            }.accessibilityLabel("Dismiss bulk result")
                         }
-                        Button { selection.message = nil; selection.undo = nil } label: {
-                            Image(systemName: "xmark").frame(width: 44, height: 44)
-                        }.accessibilityLabel("Dismiss bulk result")
-                    }.padding(.horizontal).background(.bar)
+                    }
+                    .padding(.leading, 16)
+                    .padding(.trailing, 8)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
                 }
             }
+            .sensoryFeedback(.selection, trigger: selection.selected.count)
+            .toolbar(selection.active ? .hidden : .automatic, for: .tabBar)
             .sheet(isPresented: $selection.showEditor) {
                 BulkOwnershipSheet(cards: selection.editorCards) { edit in
                     selection.undo = edit.changes.isEmpty ? nil : edit
@@ -2758,6 +2770,48 @@ private struct BulkCardEditor: ViewModifier {
             }
             .onDisappear { if !selection.showEditor { selection.end() } }
     }
+
+    private var selectionMenu: some View {
+        Menu {
+            Button("Select all", systemImage: "checkmark.circle") {
+                selection.selected = Dictionary(cards.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            }
+            .accessibilityIdentifier("bulk.selectAll")
+            Button("Deselect all", systemImage: "circle") { selection.selected = [:] }
+        } label: {
+            HStack(spacing: 6) {
+                Text("\(selection.selected.count) selected")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .foregroundStyle(.primary)
+        .accessibilityLabel("Selection options")
+        .accessibilityValue("\(selection.selected.count) selected")
+        .accessibilityIdentifier("bulk.options")
+    }
+
+    private var setButton: some View {
+        Button("Set") {
+            selection.editorCards = selection.selected.values.sorted { $0.id < $1.id }
+            selection.showEditor = true
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .disabled(selection.selected.isEmpty)
+        .accessibilityLabel("Set ownership")
+        .accessibilityIdentifier("bulk.set")
+    }
+
+    private var doneButton: some View {
+        Button("Done") { selection.end() }
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityLabel("Cancel selection")
+            .accessibilityIdentifier("bulk.cancel")
+    }
 }
 
 private struct BulkOwnershipSheet: View {
@@ -2766,6 +2820,7 @@ private struct BulkOwnershipSheet: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var snapshots: [CatalogCardSnapshot] = []
     @State private var variants: Set<CatalogVariantKind> = []
     @State private var allPrintings = false
@@ -2792,19 +2847,27 @@ private struct BulkOwnershipSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("\(cards.count) selected \(cards.count == 1 ? "card" : "cards")").font(.headline)
                     if !loaded {
-                        ProgressView("Loading printings · \(snapshots.count) of \(cards.count)")
+                        if errorMessage == nil {
+                            ProgressView("Loading printings · \(snapshots.count) of \(cards.count)")
+                        }
                     } else {
-                        Toggle("All available printings", isOn: $allPrintings)
-                            .accessibilityIdentifier("bulk.allPrintings")
+                        Button { allPrintings.toggle() } label: {
+                            printingRow("All available printings", selected: allPrintings)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityValue(allPrintings ? "Selected" : "Not selected")
+                        .accessibilityIdentifier("bulk.allPrintings")
                         ForEach(available, id: \.self) { kind in
-                            Toggle(isOn: Binding(get: { allPrintings || variants.contains(kind) }, set: { value in
-                                if value { variants.insert(kind) } else { variants.remove(kind) }
-                            })) {
-                                LabeledContent(kind.displayName, value: "\(eligible(kind)) of \(cards.count)")
+                            Button {
+                                if variants.contains(kind) { variants.remove(kind) } else { variants.insert(kind) }
+                            } label: {
+                                printingRow(kind.displayName, selected: allPrintings || variants.contains(kind),
+                                            detail: "\(eligible(kind)) of \(cards.count)")
                             }
+                            .buttonStyle(.plain)
                             .disabled(allPrintings)
+                            .accessibilityValue(allPrintings || variants.contains(kind) ? "Selected" : "Not selected")
                             .accessibilityIdentifier("bulk.variant.\(kind.rawValue)")
                         }
                         if available.isEmpty {
@@ -2812,17 +2875,22 @@ private struct BulkOwnershipSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                } footer: {
-                    Text(allPrintings ? "Includes every available printing, including special printings. Existing quantities are preserved when marking owned."
-                        : "Only available, unambiguous printings are changed. Existing quantities are preserved when marking owned.")
+                } header: {
+                    HelpSectionHeader(title: "\(cards.count) \(cards.count == 1 ? "card" : "cards") selected",
+                        message: "Choose the printings to update. Counts show how many selected cards have each printing available. Only verified, unambiguous printings are changed. All available printings also includes special printings. Marking owned preserves existing quantities. A safety backup is saved before changes, and you can undo the edit afterwards.")
                 }
                 if loaded {
                     Section {
-                        Button(actionTitle(owned: true)) { apply(owned: true) }
+                        Button { apply(owned: true) } label: {
+                            actionRow(owned: true)
+                        }
+                            .accessibilityLabel(actionTitle(owned: true))
                             .accessibilityIdentifier("bulk.markOwned")
-                        Button(actionTitle(owned: false), role: .destructive) {
+                        Button(role: .destructive) {
                             confirmMissing = true
-                        }.accessibilityIdentifier("bulk.markMissing")
+                        } label: { actionRow(owned: false) }
+                            .accessibilityLabel(actionTitle(owned: false))
+                            .accessibilityIdentifier("bulk.markMissing")
                     }
                     .disabled(working || (!allPrintings && variants.isEmpty) || available.isEmpty)
                 }
@@ -2834,6 +2902,7 @@ private struct BulkOwnershipSheet: View {
                     }
                 }
             }
+            .disabled(working)
             .navigationTitle("Set ownership")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(working) } }
@@ -2856,6 +2925,47 @@ private struct BulkOwnershipSheet: View {
                   catch { errorMessage = "Printing information couldn’t be loaded. No ownership was changed. Please retry." }
             }
         }
+        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func printingRow(_ title: String, selected: Bool, detail: String? = nil) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return HStack(spacing: 12) {
+            layout {
+                Text(title).foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                if let detail { Text(detail).font(.subheadline.monospacedDigit()).foregroundStyle(.secondary) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "checkmark")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .opacity(selected ? 1 : 0)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    private func actionRow(owned: Bool) -> some View {
+        let count = Set(changes(owned: owned).map(\.cardID)).count
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
+            Label(owned ? "Mark owned" : "Mark missing", systemImage: owned ? "checkmark.circle" : "minus.circle")
+                .foregroundStyle(owned ? Color.accentColor : .red)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+            Text("\(count) \(count == 1 ? "card" : "cards")")
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(Color.secondary)
+        }
+        .padding(.vertical, 3)
     }
 
     private func apply(owned: Bool) {
@@ -4991,42 +5101,59 @@ struct SearchView: View {
             }
         } else {
             List(visibleResults) { result in
-                NavigationLink {
-                    CatalogCardDetailView(card: result.card)
-                } label: {
-                    HStack(spacing: 12) {
-                        CachedCardImage(card: result.card)
-                            .frame(width: 52, height: 72)
-                            .overlay(alignment: .topLeading) {
-                                if !(collectionStore.cardMetadataByID[result.card.id]?.notes
-                                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
-                                    Circle()
-                                        .fill(.orange)
-                                        .frame(width: 10, height: 10)
-                                        .overlay(Circle().stroke(.white, lineWidth: 2))
-                                }
-                            }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(result.card.name)
-                                .font(.body.weight(.semibold))
-                            Text("\(result.setName) · #\(result.card.localID)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            if let requirement = variantSearch.requirement {
-                                Label(requirement.displayName, systemImage: "seal.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                if bulkSelection.active {
+                    Button { bulkSelection.toggle(result.card) } label: {
+                        HStack(spacing: 12) {
+                            BulkSelectionMark(selected: bulkSelection.selected[result.id] != nil)
+                            searchResultRow(result)
                         }
-                        Spacer()
-                        if collectionStore.owns(cardID: result.card.id), !bulkSelection.active {
-                            OwnedCardProgressBadge(card: result.card)
-                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(result.card.name), #\(result.card.localID)")
+                    .accessibilityValue(bulkSelection.selected[result.id] != nil ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(bulkSelection.selected[result.id] != nil ? .isSelected : [])
+                    .accessibilityIdentifier("bulk.card.\(result.id)")
+                } else {
+                    NavigationLink {
+                        CatalogCardDetailView(card: result.card)
+                    } label: { searchResultRow(result) }
+                    .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
                 }
-                .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
             }
             .listStyle(.plain)
+        }
+    }
+
+    private func searchResultRow(_ result: CatalogCardSearchResult) -> some View {
+        HStack(spacing: 12) {
+            CachedCardImage(card: result.card)
+                .frame(width: 52, height: 72)
+                .overlay(alignment: .topLeading) {
+                    if !(collectionStore.cardMetadataByID[result.card.id]?.notes
+                        .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
+                        Circle()
+                            .fill(.orange)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                    }
+                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(result.card.name)
+                    .font(.body.weight(.semibold))
+                Text("\(result.setName) · #\(result.card.localID)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                if let requirement = variantSearch.requirement {
+                    Label(requirement.displayName, systemImage: "seal.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if collectionStore.owns(cardID: result.card.id), !bulkSelection.active {
+                OwnedCardProgressBadge(card: result.card)
+            }
         }
     }
 

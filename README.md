@@ -66,6 +66,12 @@ already owned are preserved; removing ownership requires confirmation. Changes
 are atomic, with a safety backup and targeted Undo that refuses to overwrite
 later changes to the same printings. Ordinary card taps still open card details.
 
+Version 0.9.51 refines this editor with lightweight selection checkmarks, a
+floating glass action bar that replaces the tabs during selection, and a native
+printing checklist with optional information. Search list selection uses leading
+checkmarks without navigation chevrons. Accessibility text sizes use stacked
+controls and availability counts; ownership, safety backups and Undo are unchanged.
+
 ## Collection values
 
 Version 0.9.47 fixes false extra printings caused by marketplace price labels.
@@ -133,6 +139,10 @@ these are thumbnail-sized fallbacks, not new high-resolution scans.
 ## Roadmap order
 
 ### Before public release
+
+- [ ] Set-level Export Missing: a styled checklist following the selected set
+  goal and exact missing printings, with shareable-image and printable-PDF
+  examples to review before choosing the format. Planned after 0.9.51.
 
 - [x] Prepare an in-app history of What’s New entries starting with TestFlight/public
   release. Settings → Help & Updates should let people browse past versions at
