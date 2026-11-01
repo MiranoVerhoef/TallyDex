@@ -5,6 +5,244 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    func testAutomaticPricePolicyPrioritizesOwnedThenOldestAndHonorsDailyChecksAndRetryDelay() {
+        let now = ISO8601DateFormatter().date(from: "2026-11-01T12:00:00Z")!
+        let yesterday = now.addingTimeInterval(-86_400)
+        let targets: [AutomaticPriceTarget] = [
+            .init(cardID: "set-unchecked", isOwned: false, lastAttempt: nil, lastSuccess: nil),
+            .init(cardID: "owned-new", isOwned: true, lastAttempt: yesterday, lastSuccess: yesterday),
+            .init(cardID: "owned-old", isOwned: true, lastAttempt: nil, lastSuccess: nil),
+            .init(cardID: "done-today", isOwned: true, lastAttempt: now, lastSuccess: now),
+            .init(cardID: "retry-later", isOwned: true, lastAttempt: now.addingTimeInterval(-60), lastSuccess: yesterday),
+            .init(cardID: "retry-due", isOwned: true, lastAttempt: now.addingTimeInterval(-7 * 3600), lastSuccess: nil)
+        ]
+        XCTAssertEqual(AutomaticPriceUpdatePolicy.dueTargets(targets, now: now, limit: 10).map(\.cardID),
+                       ["owned-old", "owned-new", "retry-due", "set-unchecked"])
+        XCTAssertEqual(AutomaticPriceUpdatePolicy.dueTargets(targets, now: now, limit: 2).map(\.cardID),
+                       ["owned-old", "owned-new"])
+        XCTAssertTrue(AutomaticPriceUpdatePolicy.dueTargets(targets, now: now, limit: 0).isEmpty)
+    }
+
+    func testAutomaticPricePolicyContinuesPastCheckedCardsAndAcceptsNextUTCDay() {
+        let beforeMidnight = ISO8601DateFormatter().date(from: "2026-11-01T23:59:00Z")!
+        let afterMidnight = beforeMidnight.addingTimeInterval(120)
+        let done = AutomaticPriceTarget(cardID: "first", isOwned: true, lastAttempt: beforeMidnight, lastSuccess: beforeMidnight)
+        let pending = AutomaticPriceTarget(cardID: "second", isOwned: true, lastAttempt: nil, lastSuccess: nil)
+        XCTAssertEqual(AutomaticPriceUpdatePolicy.dueTargets([done, pending], now: beforeMidnight, limit: 1), [pending])
+        XCTAssertEqual(Set(AutomaticPriceUpdatePolicy.dueTargets([done, pending], now: afterMidnight, limit: 10).map(\.cardID)), ["first", "second"])
+    }
+
+    func testAutomaticPriceTargetsIncludeOwnedIndexedCollectingAndSupplementalButNotOtherSets() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.replaceCatalog([.init(series: .init(id: "sv", name: "SV", logoURL: nil), sets: [
+            set(id: "sv01", seriesID: "sv", name: "Collecting"), set(id: "sv02", seriesID: "sv", name: "Other")
+        ])])
+        try await repository.replaceSearchIndex([
+            .init(id: "sv01-001", setID: "sv01", localID: "001", name: "One", imageURL: nil, category: nil, illustrator: nil, rarity: nil),
+            .init(id: "sv02-002", setID: "sv02", localID: "002", name: "Two", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        ])
+        let date = Date(timeIntervalSince1970: 100)
+        try await repository.setMetadataDate(date, forKey: AutomaticPriceUpdatePolicy.attemptKey("sv01-001"))
+        let targets = try await repository.automaticPriceTargets(
+            ownedIDs: ["sv01-001", "not-cached"], collectingSetIDs: ["sv01"], additionalIDs: ["supplemental"]
+        )
+        XCTAssertEqual(Set(targets.map(\.cardID)), ["sv01-001", "not-cached", "supplemental"])
+        XCTAssertEqual(targets.first { $0.cardID == "sv01-001" }?.lastAttempt, date)
+        XCTAssertEqual(targets.filter(\.isOwned).count, 2)
+    }
+
+    func testAutomaticPriceObservationsUseFetchDayWithoutInventingMissedDaysAndKeepBothSourcesSeparate() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let card = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "One", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        let sourceDate = ISO8601DateFormatter().date(from: "2026-10-20T08:00:00Z")!
+        let first = ISO8601DateFormatter().date(from: "2026-11-01T08:00:00Z")!
+        let third = first.addingTimeInterval(2 * 86_400)
+        func snapshot(_ amount: Double) -> CatalogCardSnapshot {
+            .init(card: card, variants: [.normal], prices: [
+                .init(cardID: card.id, variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: amount, updatedAt: sourceDate),
+                .init(cardID: card.id, variant: .normal, source: .tcgplayer, currencyCode: "USD", amount: 7, updatedAt: sourceDate)
+            ])
+        }
+        // A search-index-only card must not get a partial downloaded set or new printings.
+        try await repository.recordAutomaticPriceObservation(snapshot(1), observedAt: first)
+        try await repository.recordAutomaticPriceObservation(snapshot(2), observedAt: first.addingTimeInterval(60))
+        try await repository.recordAutomaticPriceObservation(snapshot(3), observedAt: third)
+        let history = try await repository.fetchPriceHistory(cardID: card.id, source: .cardmarket)
+        let usHistory = try await repository.fetchPriceHistory(cardID: card.id, source: .tcgplayer)
+        XCTAssertEqual(history.map(\.amount), [2, 3])
+        XCTAssertEqual(history.map(\.sourceUpdatedAt), [sourceDate, sourceDate])
+        XCTAssertEqual(history.map(\.currencyCode), ["EUR", "EUR"])
+        XCTAssertEqual(usHistory.map(\.amount), [7, 7])
+        let downloaded = try await repository.fetchDownloadedSetIDs()
+        let current = try await repository.fetchPrices(cardIDs: [card.id])
+        XCTAssertTrue(downloaded.isEmpty)
+        XCTAssertTrue(current.isEmpty)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        XCTAssertEqual(history.map { calendar.component(.day, from: $0.day) }, [1, 3])
+    }
+
+    func testAutomaticPriceWriteCannotCreatePrintingsOrOverwriteCardMetadataAndIgnoresOlderCurrentPrices() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        try await repository.replaceCatalog([.init(series: .init(id: "sv", name: "SV", logoURL: nil), sets: [set(id: "sv01", seriesID: "sv", name: "Set")])])
+        let original = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "Original", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        let old = Date(timeIntervalSince1970: 100)
+        let newer = Date(timeIntervalSince1970: 200)
+        try await repository.replaceCard(.init(card: original, variants: [.normal], prices: [
+            .init(cardID: original.id, variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: 4, updatedAt: newer)
+        ]))
+        let changed = CatalogCard(id: original.id, setID: original.setID, localID: "999", name: "Changed", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        try await repository.recordAutomaticPriceObservation(.init(card: changed, variants: [.normal, .holo], prices: [
+            .init(cardID: original.id, variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: 2, updatedAt: old),
+            .init(cardID: original.id, variant: .holo, source: .tcgplayer, currencyCode: "USD", amount: 8, updatedAt: newer)
+        ]), observedAt: Date())
+        let savedCard = try await repository.fetchCard(id: original.id)
+        let variants = try await repository.fetchVariants(cardID: original.id)
+        let quotes = try await repository.fetchPrices(cardIDs: [original.id])[original.id] ?? []
+        XCTAssertEqual(savedCard, original)
+        XCTAssertEqual(variants, [.normal])
+        XCTAssertEqual(quotes.count, 1)
+        XCTAssertEqual(quotes.first?.amount, 4)
+        let history = try await repository.fetchPriceHistory(cardID: original.id, source: .cardmarket)
+        XCTAssertFalse(history.contains { $0.amount == 2 })
+    }
+
+    func testAutomaticPriceWriteRejectsInvalidPricesAtomically() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let card = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "One", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        for quote in [
+            CatalogPriceQuote(cardID: card.id, variant: .normal, source: .cardmarket, currencyCode: "USD", amount: 1, updatedAt: Date()),
+            CatalogPriceQuote(cardID: "wrong", variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: 1, updatedAt: Date()),
+            CatalogPriceQuote(cardID: card.id, variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: .infinity, updatedAt: Date())
+        ] {
+            do {
+                try await repository.recordAutomaticPriceObservation(.init(card: card, variants: [.normal], prices: [quote]), observedAt: Date())
+                XCTFail("Invalid quote was accepted")
+            } catch { XCTAssertEqual(error as? CatalogRepositoryError, .invalidSnapshot) }
+        }
+        let statistics = try await repository.priceStorageStatistics()
+        let success = try await repository.metadataDate(forKey: AutomaticPriceUpdatePolicy.successKey(card.id))
+        XCTAssertEqual(statistics.historyPointCount, 0)
+        XCTAssertNil(success)
+    }
+
+    @MainActor
+    func testAutomaticUpdaterHonorsDisabledPreferencesAndDailyDeduplication() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let card = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "One", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: card, variants: [.normal], prices: [
+            .init(cardID: card.id, variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: 1, updatedAt: Date())
+        ]))
+        let catalog = CatalogStore(provider: provider, repository: repository)
+        let updater = AutomaticPriceUpdater()
+        let suite = "AutomaticPrices.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(false, forKey: AutomaticPriceUpdateSettings.enabledKey)
+        await updater.run(catalog: catalog, ownedIDs: [card.id], collectingSetIDs: [], background: false, defaults: defaults)
+        let disabledCount = await provider.cardRequestCount
+        XCTAssertEqual(disabledCount, 0)
+        defaults.set(true, forKey: AutomaticPriceUpdateSettings.enabledKey)
+        await updater.run(catalog: catalog, ownedIDs: [card.id], collectingSetIDs: [], background: true, defaults: defaults)
+        let backgroundDisabledCount = await provider.cardRequestCount
+        XCTAssertEqual(backgroundDisabledCount, 0)
+        await updater.run(catalog: catalog, ownedIDs: [card.id], collectingSetIDs: [], background: false, defaults: defaults)
+        await updater.run(catalog: catalog, ownedIDs: [card.id], collectingSetIDs: [], background: false, defaults: defaults)
+        let finalCount = await provider.cardRequestCount
+        XCTAssertEqual(finalCount, 1)
+        XCTAssertFalse(updater.isRunning)
+        XCTAssertEqual(catalog.priceDataRevision, 1)
+        XCTAssertGreaterThan(defaults.double(forKey: AutomaticPriceUpdateSettings.lastCheckKey), 0)
+    }
+
+    @MainActor
+    func testAutomaticUpdaterCancellationDoesNotRecordSuccessAndFailuresBackOff() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let provider = AutomaticPriceFailureProvider()
+        let catalog = CatalogStore(provider: provider, repository: repository)
+        let updater = AutomaticPriceUpdater()
+        let suite = "AutomaticPrices.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let task = Task {
+            await updater.run(catalog: catalog, ownedIDs: ["owned"], collectingSetIDs: [], background: false, defaults: defaults)
+        }
+        task.cancel()
+        await task.value
+        let cancelledRequests = await provider.requests
+        XCTAssertEqual(cancelledRequests, 0)
+        await updater.run(catalog: catalog, ownedIDs: ["owned"], collectingSetIDs: [], background: false, defaults: defaults)
+        await updater.run(catalog: catalog, ownedIDs: ["owned"], collectingSetIDs: [], background: false, defaults: defaults)
+        let failedRequests = await provider.requests
+        let success = try await repository.metadataDate(forKey: AutomaticPriceUpdatePolicy.successKey("owned"))
+        XCTAssertEqual(failedRequests, 1)
+        XCTAssertNil(success)
+        XCTAssertFalse(updater.isRunning)
+    }
+
+    func testBackgroundPriceRefreshIsRegisteredInApplicationConfiguration() {
+        let bundle = Bundle(for: CatalogStore.self)
+        XCTAssertTrue((bundle.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []).contains("fetch"))
+        XCTAssertTrue((bundle.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String] ?? []).contains(AutomaticPriceUpdateSettings.taskIdentifier))
+    }
+
+    @MainActor
+    func testAutomaticUpdaterStopsAfterThreeFailuresAndBacksOffTheWholeQueue() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let provider = AutomaticPriceFailureProvider()
+        let catalog = CatalogStore(provider: provider, repository: repository)
+        let updater = AutomaticPriceUpdater()
+        let suite = "AutomaticPrices.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for _ in 0..<2 {
+            await updater.run(catalog: catalog, ownedIDs: ["1", "2", "3", "4"], collectingSetIDs: [], background: false, defaults: defaults)
+        }
+        let count = await provider.requests
+        XCTAssertEqual(count, 3)
+        XCTAssertGreaterThan(defaults.double(forKey: AutomaticPriceUpdateSettings.retryAfterKey), Date().timeIntervalSince1970)
+    }
+
+    func testClearingAllPricesMakesAutomaticTargetsEligibleAgainWithoutDeletingCards() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let card = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "One", imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        try await repository.setMetadataDate(Date(), forKey: AutomaticPriceUpdatePolicy.attemptKey(card.id))
+        try await repository.recordAutomaticPriceObservation(.init(card: card, variants: []), observedAt: Date())
+        try await repository.clearAllPrices()
+        let targets = try await repository.automaticPriceTargets(ownedIDs: [card.id], collectingSetIDs: [], additionalIDs: [])
+        XCTAssertEqual(targets.count, 1)
+        XCTAssertNil(targets.first?.lastSuccess)
+        XCTAssertNil(targets.first?.lastAttempt)
+    }
+
+    @MainActor
+    func testAutomaticUpdaterCancelsAnInFlightRequestWithoutWritingHistory() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let provider = AutomaticPriceCancellationProvider()
+        let catalog = CatalogStore(provider: provider, repository: repository)
+        let updater = AutomaticPriceUpdater()
+        let suite = "AutomaticPrices.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let task = Task {
+            await updater.run(catalog: catalog, ownedIDs: ["owned"], collectingSetIDs: [], background: false, defaults: defaults)
+        }
+        for _ in 0..<200 {
+            if await provider.requests > 0 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        task.cancel()
+        await task.value
+        let requests = await provider.requests
+        let success = try await repository.metadataDate(forKey: AutomaticPriceUpdatePolicy.successKey("owned"))
+        let statistics = try await repository.priceStorageStatistics()
+        XCTAssertEqual(requests, 1)
+        XCTAssertNil(success)
+        XCTAssertEqual(statistics.historyPointCount, 0)
+        XCTAssertFalse(updater.isRunning)
+        XCTAssertEqual(catalog.priceDataRevision, 0)
+    }
+
     func testCombinedNameAndNumberSearchDoesNotMistakePokemonForSetCode() async throws {
         let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
         let series = CatalogSeries(id: "sv", name: "Scarlet & Violet", logoURL: nil)
@@ -3351,6 +3589,31 @@ final class CatalogFoundationTests: XCTestCase {
             intent: .defaultIntent
         ))
         return try XCTUnwrap(UIImage(cgImage: image).pngData())
+    }
+}
+
+private actor AutomaticPriceCancellationProvider: CatalogProvider {
+    private(set) var requests = 0
+    func fetchCardIndex() async throws -> [CatalogCard] { throw TCGdexError.invalidResponse }
+    func fetchSeriesIndex() async throws -> [CatalogSeries] { throw TCGdexError.invalidResponse }
+    func fetchSet(id: String) async throws -> CatalogSetSnapshot { throw TCGdexError.invalidResponse }
+    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot { throw TCGdexError.invalidResponse }
+    func fetchCard(id: String) async throws -> CatalogCardSnapshot {
+        requests += 1
+        try await Task.sleep(for: .seconds(30))
+        throw TCGdexError.invalidResponse
+    }
+}
+
+private actor AutomaticPriceFailureProvider: CatalogProvider {
+    private(set) var requests = 0
+    func fetchCardIndex() async throws -> [CatalogCard] { throw TCGdexError.invalidResponse }
+    func fetchSeriesIndex() async throws -> [CatalogSeries] { throw TCGdexError.invalidResponse }
+    func fetchSeries(id: String) async throws -> CatalogSeriesSnapshot { throw TCGdexError.invalidResponse }
+    func fetchSet(id: String) async throws -> CatalogSetSnapshot { throw TCGdexError.invalidResponse }
+    func fetchCard(id: String) async throws -> CatalogCardSnapshot {
+        requests += 1
+        throw TCGdexError.invalidResponse
     }
 }
 

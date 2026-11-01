@@ -17,6 +17,10 @@ struct TallyDexApp: App {
     @State private var artworkCacheStore = ArtworkCacheStore()
     @State private var localCollectionSharing = LocalCollectionSharingController()
     @State private var appNavigation = AppNavigationStore()
+    @State private var priceUpdater = AutomaticPriceUpdater()
+    @AppStorage(AutomaticPriceUpdateSettings.enabledKey) private var automaticPrices = true
+    @AppStorage(AutomaticPriceUpdateSettings.backgroundKey) private var backgroundPrices = false
+    @AppStorage(AppExperienceSettings.introductionCompletedKey) private var introductionCompleted = false
 
     init() {
 #if DEBUG
@@ -42,6 +46,25 @@ struct TallyDexApp: App {
 #endif
     }
 
+    private var isUITesting: Bool {
+#if DEBUG
+        ReliabilityUITestFixture.current != nil
+            || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+#else
+        false
+#endif
+    }
+
+    private var priceUpdateContext: AutomaticPriceUpdateContext {
+        AutomaticPriceUpdateContext(
+            active: scenePhase == .active, enabled: automaticPrices,
+            ready: !isUITesting && !catalogStore.isInitialLoading && !collectionStore.isInitialLoading
+                && introductionCompleted,
+            ownedIDs: collectionStore.ownedCardIDs,
+            collectingSetIDs: Set(collectionStore.setPreferencesByID.values.filter { $0.status == .collecting }.map(\.setID))
+        )
+    }
+
     var body: some Scene {
         WindowGroup {
             RootTabView()
@@ -52,9 +75,10 @@ struct TallyDexApp: App {
                 .environment(artworkCacheStore)
                 .environment(localCollectionSharing)
                 .environment(appNavigation)
+                .environment(priceUpdater)
                 .preferredColorScheme(AppAppearance.resolve(appearance).colorScheme)
                 .task {
-                    await catalogStore.start()
+                    await catalogStore.start(allowRemoteRefresh: scenePhase == .active)
 #if DEBUG
                     if let fixture = ReliabilityUITestFixture.current {
                         await fixture.prepare(collectionStore, catalogStore: catalogStore)
@@ -62,6 +86,7 @@ struct TallyDexApp: App {
                         return
                     }
 #endif
+                    guard scenePhase == .active else { return }
                     await artworkCacheStore.prefetch(groups: catalogStore.groups)
 #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("-BrowserEditorTesting") {
@@ -79,8 +104,21 @@ struct TallyDexApp: App {
 #endif
                     await collectionStore.start()
                 }
+                .task(id: priceUpdateContext) {
+                    let context = priceUpdateContext
+                    guard context.active, context.ready, context.enabled else { return }
+                    while !Task.isCancelled {
+                        await priceUpdater.run(catalog: catalogStore, ownedIDs: context.ownedIDs,
+                            collectingSetIDs: context.collectingSetIDs, background: false,
+                            defaults: preferencesDefaults)
+                        do { try await Task.sleep(for: .seconds(120)) } catch { return }
+                    }
+                }
+                .onChange(of: automaticPrices) { _, _ in schedulePriceUpdates() }
+                .onChange(of: backgroundPrices) { _, _ in schedulePriceUpdates() }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase != .active {
+                        if newPhase == .background { schedulePriceUpdates() }
                         if !allowBrowserSharingWhileBackgrounded, localCollectionSharing.isRunning {
                             localCollectionSharing.stop()
                         }
@@ -92,6 +130,7 @@ struct TallyDexApp: App {
 #if DEBUG
                         if ReliabilityUITestFixture.current != nil { return }
 #endif
+                        guard scenePhase == .active else { return }
                         await artworkCacheStore.prefetch(groups: catalogStore.groups)
                     }
                 }
@@ -105,5 +144,30 @@ struct TallyDexApp: App {
                     }
                 }
         }
+        .backgroundTask(.appRefresh(AutomaticPriceUpdateSettings.taskIdentifier)) {
+            await refreshPricesInBackground()
+        }
+    }
+
+    private func schedulePriceUpdates() {
+        guard !isUITesting else { return }
+        AutomaticPriceUpdater.schedule(defaults: preferencesDefaults)
+    }
+
+    @MainActor
+    private func refreshPricesInBackground() async {
+        guard !isUITesting,
+              preferencesDefaults.bool(forKey: AppExperienceSettings.introductionCompletedKey),
+              preferencesDefaults.bool(forKey: AutomaticPriceUpdateSettings.backgroundKey) else { return }
+        defer { schedulePriceUpdates() }
+        await collectionStore.start()
+        // A simultaneous scene startup may already be loading the local store.
+        while collectionStore.isInitialLoading && !Task.isCancelled {
+            do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+        }
+        guard !Task.isCancelled else { return }
+        await priceUpdater.run(catalog: catalogStore, ownedIDs: collectionStore.ownedCardIDs,
+            collectingSetIDs: Set(collectionStore.setPreferencesByID.values.filter { $0.status == .collecting }.map(\.setID)),
+            background: true, defaults: preferencesDefaults)
     }
 }

@@ -641,6 +641,9 @@ private struct CollectionDashboardView: View {
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .task(id: refreshKey) { await refresh() }
+        .onChange(of: catalogStore.priceDataRevision) { _, _ in
+            Task { await refreshMarketPrices() }
+        }
     }
 
     private var completionLabel: String {
@@ -694,7 +697,7 @@ private struct CollectionDashboardView: View {
         .padding(.horizontal, 10)
     }
 
-    private func refresh() async {
+    private func refreshMarketPrices() async {
         let ids = ownedIDs
         pricesLoaded = ids.isEmpty
         priceLoadFailed = false
@@ -715,6 +718,10 @@ private struct CollectionDashboardView: View {
             featuredCard = nil
         }
 
+    }
+
+    private func refresh() async {
+        await refreshMarketPrices()
         guard !trackedSets.isEmpty else {
             setProgress = nil
             failedSetCount = 0
@@ -2204,6 +2211,11 @@ private struct CatalogSetDetailView: View {
         .task(id: set.id) {
             await loadCards()
         }
+        .onChange(of: catalogStore.priceDataRevision) { _, _ in
+            Task {
+                pricesByCardID = (try? await catalogStore.prices(cardIDs: cards.map(\.id))) ?? pricesByCardID
+            }
+        }
         .task(id: collectionGoal) {
             guard !cards.isEmpty else { return }
             await loadGoalVariants()
@@ -3525,6 +3537,13 @@ private struct CatalogCardDetailPage: View {
         .task(id: card.id) {
             await loadDetails()
         }
+        .onChange(of: catalogStore.priceDataRevision) { _, _ in
+            Task {
+                guard let prices = try? await catalogStore.prices(cardIDs: [card.id]), let current = snapshot else { return }
+                snapshot = CatalogCardSnapshot(card: current.card, variants: current.variants,
+                    prices: prices[card.id] ?? [], printings: current.printings)
+            }
+        }
         .onChange(of: detailsExpandedByDefault) { _, isExpanded in
             isRichMetadataExpanded = isExpanded
         }
@@ -4778,7 +4797,7 @@ private struct CatalogCardPriceHistoryView: View {
                     }
                 }
 
-                Text("TallyDex stores one exact TCGdex market price per source day when this printing refreshes. It never substitutes another variant or converts between EUR and USD.")
+                Text("Automatic updates save one observation per day when a check succeeds. Older history may use the provider’s update date. Missed days are not filled in, and prices are never substituted between printings or converted between EUR and USD.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -4788,7 +4807,7 @@ private struct CatalogCardPriceHistoryView: View {
         }
         .navigationTitle("Price History")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: "\(snapshot.card.id)|\(selectedSource.rawValue)") {
+        .task(id: "\(snapshot.card.id)|\(selectedSource.rawValue)|\(catalogStore.priceDataRevision)") {
             await loadHistory()
         }
         .onChange(of: selectedVariant) { _, _ in selectedDay = nil }
@@ -6336,6 +6355,9 @@ struct CollectionView: View {
                 if isOwnedCardsExpanded { await loadCards() }
                 else { await loadPrices() }
             }
+            .onChange(of: catalogStore.priceDataRevision) { _, _ in
+                Task { await loadPrices() }
+            }
         }
     }
 
@@ -7282,6 +7304,11 @@ private struct CustomCollectionFolderDetailView: View {
         .task(id: ownedMatchIDsKey) {
             await loadPricesForOwnedMatches()
         }
+        .onChange(of: catalogStore.priceDataRevision) { _, _ in
+            Task {
+                pricesByCardID = (try? await catalogStore.prices(cardIDs: matches.map(\.id))) ?? pricesByCardID
+            }
+        }
     }
 
     private func prepareMissingExport() async {
@@ -7646,6 +7673,13 @@ private struct SettingsPreferencesView: View {
                     .pickerStyle(.navigationLink)
                 } header: {
                     HelpSectionHeader(title: "Prices", message: "Show one marketplace or both on cards and sets. Collection totals and rankings use one marketplace: EUR for Cardmarket or USD for TCGplayer. Currencies are never mixed. Prices are supplied by TCGdex.")
+                }
+                Section {
+                    NavigationLink {
+                        AutomaticPriceUpdatesSettingsView()
+                    } label: {
+                        Label("Automatic Updates", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                    }
                 }
             }
         }

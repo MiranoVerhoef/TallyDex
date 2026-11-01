@@ -993,6 +993,8 @@ protocol CatalogRepository: Sendable {
     func replaceSets(_ sets: [CatalogSet], forSeriesID seriesID: String) async throws
     func replaceSet(_ snapshot: CatalogSetSnapshot) async throws
     func replaceCard(_ snapshot: CatalogCardSnapshot) async throws
+    func automaticPriceTargets(ownedIDs: Set<String>, collectingSetIDs: Set<String>, additionalIDs: Set<String>) async throws -> [AutomaticPriceTarget]
+    func recordAutomaticPriceObservation(_ snapshot: CatalogCardSnapshot, observedAt: Date) async throws
     func replaceSearchIndex(_ cards: [CatalogCard]) async throws
     func setMetadataDate(_ date: Date, forKey key: String) async throws
 }

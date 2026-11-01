@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.54",
-        headline: "Swipe between cards",
+        version: "0.9.55",
+        headline: "Automatic price updates",
         notes: [
             AppReleaseNote(
-                systemImage: "hand.draw",
-                title: "Browse without going back",
-                detail: "Swipe left or right in card details to browse your current list."
+                systemImage: "chart.line.uptrend.xyaxis",
+                title: "Keep prices up to date",
+                detail: "Prices refresh for owned cards and My Sets, with optional background updates."
             ),
         ]
     )
@@ -123,6 +123,9 @@ struct IntroductionView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @AppStorage(PricingSettings.displayModeKey)
     private var priceDisplayMode = ""
+    @AppStorage(AutomaticPriceUpdateSettings.enabledKey) private var automaticPrices = true
+    @AppStorage(AutomaticPriceUpdateSettings.backgroundKey) private var backgroundPrices = false
+    @State private var showsPriceUpdateExplanation = false
     @State private var page = 0
 
     private let pageCount = 4
@@ -355,6 +358,23 @@ struct IntroductionView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 16))
+
+            preferenceCard("Price history") {
+                Toggle("Automatic price updates", isOn: $automaticPrices)
+                    .accessibilityIdentifier("setup.prices.automatic")
+                Toggle("Allow background updates", isOn: $backgroundPrices)
+                    .disabled(!automaticPrices)
+                    .accessibilityIdentifier("setup.prices.background")
+                HStack(alignment: .top) {
+                    Text("Owned cards update first, then My Sets. Allow background updates so iOS can check while TallyDex is closed. Timing is managed by iOS.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button { showsPriceUpdateExplanation = true } label: { Image(systemName: "info.circle") }
+                        .accessibilityLabel("About background price updates")
+                }
+            }
+            .alert("Background price updates", isPresented: $showsPriceUpdateExplanation) {
+                Button("OK", role: .cancel) { }
+            } message: { Text(AutomaticPriceUpdateSettings.explanation) }
 
         }
     }

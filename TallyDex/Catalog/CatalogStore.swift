@@ -43,6 +43,7 @@ final class CatalogStore {
     private(set) var isPreparingSearchIndex = false
     private(set) var searchIndexMessage: String?
     private(set) var searchIndexUpdated: Date?
+    private(set) var priceDataRevision = 0
 
     @ObservationIgnored private let provider: any CatalogProvider
     @ObservationIgnored private let bundle: Bundle
@@ -77,7 +78,7 @@ final class CatalogStore {
         self.now = now
     }
 
-    func start() async {
+    func start(allowRemoteRefresh: Bool = true) async {
         guard !hasStarted else { return }
         hasStarted = true
 
@@ -111,6 +112,7 @@ final class CatalogStore {
             searchIndexUpdated = try await repository.metadataDate(
                 forKey: Self.lastSearchIndexRefreshKey
             )
+            guard allowRemoteRefresh else { return }
             let sourceChanged = configuredAPIFingerprint.map {
                 UserDefaults.standard.string(forKey: Self.apiConfigurationKey) != $0
             } ?? false
@@ -334,6 +336,31 @@ final class CatalogStore {
 
     func prices(cardIDs: [String]) async throws -> [String: [CatalogPriceQuote]] {
         try await resolveRepository().fetchPrices(cardIDs: cardIDs)
+    }
+
+    func automaticPriceTargets(ownedIDs: Set<String>, collectingSetIDs: Set<String>) async throws -> [AutomaticPriceTarget] {
+        let supplementalIDs = Set(collectingSetIDs.flatMap { setID in
+            TrickOrTradeRelease.release(setID: setID)?.cardIDs
+                ?? JumboPromoRelease.release(setID: setID)?.cardIDs ?? []
+        })
+        return try await resolveRepository().automaticPriceTargets(
+            ownedIDs: ownedIDs, collectingSetIDs: collectingSetIDs, additionalIDs: supplementalIDs
+        )
+    }
+
+    func refreshAutomaticPrice(cardID: String) async throws {
+        let repository = try resolveRepository()
+        try Task.checkCancellation()
+        try await repository.setMetadataDate(now(), forKey: AutomaticPriceUpdatePolicy.attemptKey(cardID))
+        let snapshot = try await provider.fetchCard(id: cardID)
+        try Task.checkCancellation()
+        guard snapshot.card.id == cardID else { throw CatalogRepositoryError.invalidSnapshot }
+        try await repository.recordAutomaticPriceObservation(snapshot, observedAt: now())
+        // Do not mark card details/variants as refreshed: only prices were saved.
+    }
+
+    func automaticPricesDidUpdate() {
+        priceDataRevision &+= 1
     }
 
     func priceHistory(

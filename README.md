@@ -57,6 +57,14 @@ apps can use this source URL:
 https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.json
 ```
 
+## Automatic price updates
+
+Version 0.9.55 checks owned cards first, then cards in My Sets. Automatic
+foreground catch-up records daily price observations without changing ownership
+or printings. Optional background refresh can be enabled during setup or in
+**Settings → Prices & Currency → Automatic Updates**. iOS controls when background
+work runs; missed days are not filled in. See [the implementation notes](docs/automatic-price-updates.md).
+
 ## Bulk collection editing
 
 Version 0.9.50 adds bulk ownership editing in sets, Search (list and grid), and

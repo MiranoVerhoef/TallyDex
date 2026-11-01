@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.55",
+          "buildVersion": "91",
+          "date": "2026-11-01",
+          "localizedDescription": "Adds automatic price history for owned cards and My Sets, with optional background refresh and setup/Settings controls. Background timing is managed by iOS.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.55/TallyDex-v0.9.55.ipa",
+          "size": 30544663,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.54",
           "buildVersion": "90",
           "date": "2026-10-24",

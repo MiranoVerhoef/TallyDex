@@ -995,6 +995,101 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
         }
     }
 
+    func automaticPriceTargets(
+        ownedIDs: Set<String>, collectingSetIDs: Set<String>, additionalIDs: Set<String>
+    ) async throws -> [AutomaticPriceTarget] {
+        try await database.queue.read { database in
+            let setsJSON = Self.encodeStrings(collectingSetIDs.sorted())
+            let watchedIDs = try String.fetchAll(database, sql: """
+                SELECT id FROM catalogSearchCard WHERE setID IN (SELECT value FROM json_each(?))
+                UNION
+                SELECT id FROM catalogCard WHERE setID IN (SELECT value FROM json_each(?))
+                """, arguments: [setsJSON, setsJSON])
+            let dates = Dictionary(uniqueKeysWithValues: try Row.fetchAll(database, sql: """
+                SELECT key, updatedAt FROM catalogMetadata WHERE key LIKE 'catalog.price.auto.%'
+                """).map { row -> (String, Date) in (row["key"], row["updatedAt"]) })
+            return Set(watchedIDs).union(ownedIDs).union(additionalIDs).map { id in
+                AutomaticPriceTarget(
+                    cardID: id, isOwned: ownedIDs.contains(id),
+                    lastAttempt: dates[AutomaticPriceUpdatePolicy.attemptKey(id)],
+                    lastSuccess: dates[AutomaticPriceUpdatePolicy.successKey(id)]
+                )
+            }
+        }
+    }
+
+    /// Price-only transaction. Never replaces a card, printing, set, or ownership.
+    /// History may also be recorded for an indexed, not-yet-downloaded card.
+    func recordAutomaticPriceObservation(_ snapshot: CatalogCardSnapshot, observedAt: Date) async throws {
+        guard observedAt.timeIntervalSince1970.isFinite,
+              snapshot.prices.allSatisfy({ quote in
+                  quote.cardID == snapshot.card.id && quote.amount.isFinite && quote.amount > 0
+                      && quote.currencyCode == quote.source.currencyCode
+                      && quote.updatedAt.timeIntervalSince1970.isFinite
+                      && snapshot.variants.contains(quote.variant)
+              }), Set(snapshot.prices.map(\.id)).count == snapshot.prices.count else {
+            throw CatalogRepositoryError.invalidSnapshot
+        }
+        try await database.queue.write { database in
+            let dayFormatter = DateFormatter()
+            dayFormatter.calendar = Calendar(identifier: .gregorian)
+            dayFormatter.locale = Locale(identifier: "en_US_POSIX")
+            dayFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+            dayFormatter.dateFormat = "yyyy-MM-dd"
+            // fetchVariants also reads catalogPrice, so adding an unfamiliar
+            // price kind would implicitly add a printing. Never do that here.
+            let cachedKinds = Set(try String.fetchAll(database, sql: """
+                SELECT kind FROM catalogVariant WHERE cardID = ?
+                UNION SELECT variant FROM catalogPrice WHERE cardID = ?
+                """, arguments: [snapshot.card.id, snapshot.card.id]))
+            for quote in snapshot.prices {
+                let latestKnown = try Date.fetchOne(database, sql: """
+                    SELECT MAX(timestamp) FROM (
+                        SELECT updatedAt AS timestamp FROM catalogPrice
+                        WHERE cardID = ? AND variant = ? AND source = ?
+                        UNION ALL
+                        SELECT sourceUpdatedAt AS timestamp FROM catalogPriceHistory
+                        WHERE cardID = ? AND variant = ? AND source = ?
+                    )
+                    """, arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
+                                       quote.cardID, quote.variant.rawValue, quote.source.rawValue])
+                guard latestKnown.map({ quote.updatedAt >= $0 }) ?? true else { continue }
+                if cachedKinds.contains(quote.variant.rawValue) {
+                    try database.execute(sql: """
+                        INSERT INTO catalogPrice
+                            (cardID, variant, source, currencyCode, amount, updatedAt, productID,
+                             average1Day, average7Days, average30Days)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(cardID, variant, source) DO UPDATE SET
+                            currencyCode = excluded.currencyCode, amount = excluded.amount,
+                            updatedAt = excluded.updatedAt,
+                            productID = COALESCE(excluded.productID, catalogPrice.productID),
+                            average1Day = excluded.average1Day, average7Days = excluded.average7Days,
+                            average30Days = excluded.average30Days
+                        WHERE excluded.updatedAt >= catalogPrice.updatedAt
+                        """, arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
+                                           quote.currencyCode, quote.amount, quote.updatedAt, quote.productID,
+                                           quote.average1Day, quote.average7Days, quote.average30Days])
+                }
+                try database.execute(sql: """
+                    INSERT INTO catalogPriceHistory
+                        (cardID, variant, source, day, currencyCode, amount, sourceUpdatedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(cardID, variant, source, day) DO UPDATE SET
+                        currencyCode = excluded.currencyCode, amount = excluded.amount,
+                        sourceUpdatedAt = excluded.sourceUpdatedAt
+                    WHERE excluded.sourceUpdatedAt >= catalogPriceHistory.sourceUpdatedAt
+                    """, arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
+                                       dayFormatter.string(from: observedAt), quote.currencyCode,
+                                       quote.amount, quote.updatedAt])
+            }
+            try database.execute(sql: """
+                INSERT INTO catalogMetadata (key, value, updatedAt) VALUES (?, '', ?)
+                ON CONFLICT(key) DO UPDATE SET updatedAt = excluded.updatedAt
+                """, arguments: [AutomaticPriceUpdatePolicy.successKey(snapshot.card.id), observedAt])
+        }
+    }
+
     func replaceSearchIndex(_ cards: [CatalogCard]) async throws {
         let cardIDs = cards.map(\.id)
         guard Set(cardIDs).count == cardIDs.count else {
