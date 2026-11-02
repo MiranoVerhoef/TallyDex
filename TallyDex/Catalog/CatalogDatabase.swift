@@ -174,6 +174,13 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v10-market-price-statistics") { database in
+            try database.alter(table: "catalogPrice") { table in
+                table.add(column: "averagePrice", .double)
+                table.add(column: "lowPrice", .double)
+            }
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -962,8 +969,8 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     sql: """
                     INSERT INTO catalogPrice
                         (cardID, variant, source, currencyCode, amount, updatedAt, productID,
-                         average1Day, average7Days, average30Days)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         average1Day, average7Days, average30Days, averagePrice, lowPrice)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(cardID, variant, source) DO UPDATE SET
                         currencyCode = excluded.currencyCode,
                         amount = excluded.amount,
@@ -971,11 +978,14 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                         productID = COALESCE(excluded.productID, catalogPrice.productID),
                         average1Day = excluded.average1Day,
                         average7Days = excluded.average7Days,
-                        average30Days = excluded.average30Days
+                        average30Days = excluded.average30Days,
+                        averagePrice = excluded.averagePrice,
+                        lowPrice = excluded.lowPrice
                     """,
                     arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
                                 quote.currencyCode, quote.amount, quote.updatedAt, quote.productID,
-                                quote.average1Day, quote.average7Days, quote.average30Days]
+                                quote.average1Day, quote.average7Days, quote.average30Days,
+                                quote.averagePrice, quote.lowPrice]
                 )
                 try database.execute(
                     sql: """
@@ -1058,18 +1068,20 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                     try database.execute(sql: """
                         INSERT INTO catalogPrice
                             (cardID, variant, source, currencyCode, amount, updatedAt, productID,
-                             average1Day, average7Days, average30Days)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             average1Day, average7Days, average30Days, averagePrice, lowPrice)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(cardID, variant, source) DO UPDATE SET
                             currencyCode = excluded.currencyCode, amount = excluded.amount,
                             updatedAt = excluded.updatedAt,
                             productID = COALESCE(excluded.productID, catalogPrice.productID),
                             average1Day = excluded.average1Day, average7Days = excluded.average7Days,
-                            average30Days = excluded.average30Days
+                            average30Days = excluded.average30Days,
+                            averagePrice = excluded.averagePrice, lowPrice = excluded.lowPrice
                         WHERE excluded.updatedAt >= catalogPrice.updatedAt
                         """, arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
                                            quote.currencyCode, quote.amount, quote.updatedAt, quote.productID,
-                                           quote.average1Day, quote.average7Days, quote.average30Days])
+                                           quote.average1Day, quote.average7Days, quote.average30Days,
+                                           quote.averagePrice, quote.lowPrice])
                 }
                 try database.execute(sql: """
                     INSERT INTO catalogPriceHistory
@@ -1174,7 +1186,9 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             productID: row["productID"],
             average1Day: row["average1Day"],
             average7Days: row["average7Days"],
-            average30Days: row["average30Days"]
+            average30Days: row["average30Days"],
+            averagePrice: row["averagePrice"],
+            lowPrice: row["lowPrice"]
         )
     }
 

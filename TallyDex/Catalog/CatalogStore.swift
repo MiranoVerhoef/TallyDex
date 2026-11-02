@@ -356,6 +356,7 @@ final class CatalogStore {
         try Task.checkCancellation()
         guard snapshot.card.id == cardID else { throw CatalogRepositoryError.invalidSnapshot }
         try await repository.recordAutomaticPriceObservation(snapshot, observedAt: now())
+        try await repository.setMetadataDate(now(), forKey: marketMetricsRefreshKey(cardID))
         // Do not mark card details/variants as refreshed: only prices were saved.
     }
 
@@ -465,6 +466,10 @@ final class CatalogStore {
                     )
                     try? await repository.setMetadataDate(
                         refreshDate,
+                        forKey: marketMetricsRefreshKey(snapshot.card.id)
+                    )
+                    try? await repository.setMetadataDate(
+                        refreshDate,
                         forKey: richMetadataCheckKey(snapshot.card.id)
                     )
                     try? await repository.setMetadataDate(
@@ -524,11 +529,15 @@ final class CatalogStore {
         let lastRichMetadataCheck = try await repository.metadataDate(
             forKey: richMetadataCheckKey(card.id)
         )
+        let lastMarketMetricsCheck = try await repository.metadataDate(
+            forKey: marketMetricsRefreshKey(card.id)
+        )
         if !forceRefresh,
            !needsPricingRefresh(lastPriceRefresh),
            lastRollingAverageRefresh != nil,
            lastDetailedPrintingCheck != nil,
-           lastRichMetadataCheck != nil {
+           lastRichMetadataCheck != nil,
+           lastMarketMetricsCheck != nil {
             return try await cachedSnapshot(for: card, in: repository)
         }
         do {
@@ -539,6 +548,10 @@ final class CatalogStore {
             try await repository.setMetadataDate(
                 refreshDate,
                 forKey: rollingAverageRefreshKey(card.id)
+            )
+            try await repository.setMetadataDate(
+                refreshDate,
+                forKey: marketMetricsRefreshKey(card.id)
             )
             try await repository.setMetadataDate(
                 refreshDate,
@@ -619,6 +632,10 @@ final class CatalogStore {
 
     private func rollingAverageRefreshKey(_ cardID: String) -> String {
         "catalog.price.\(cardID).rollingAveragesChecked"
+    }
+
+    private func marketMetricsRefreshKey(_ cardID: String) -> String {
+        "catalog.price.\(cardID).marketMetricsChecked.v1"
     }
 
     private func detailedPrintingCheckKey(_ cardID: String) -> String {

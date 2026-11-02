@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.56",
+          "buildVersion": "92",
+          "date": "2026-11-02",
+          "localizedDescription": "Shows average, market and low prices in a cleaner comparison panel with clear currencies and separate ownership controls.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.56/TallyDex-v0.9.56.ipa",
+          "size": 30570438,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.55",
           "buildVersion": "91",
           "date": "2026-11-01",

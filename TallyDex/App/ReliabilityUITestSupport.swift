@@ -171,7 +171,13 @@ private struct ReliabilityCatalogProvider: CatalogProvider {
         let printing = CatalogPrinting(cardID: card.id, providerID: "ui-normal", rawType: "normal", kind: .normal,
             subtype: nil, size: "standard", stamps: [], foil: nil, languages: ["en"],
             cardmarketProductID: nil, tcgplayerProductID: nil, cardtraderProductID: nil)
-        return .init(card: card, variants: [.normal], printings: [printing])
+        return .init(card: card, variants: [.normal], prices: [
+            .init(cardID: card.id, variant: .normal, source: .cardmarket, currencyCode: "EUR",
+                  amount: 1.25, updatedAt: Date(timeIntervalSince1970: 100),
+                  averagePrice: 1.10, lowPrice: 0.80),
+            .init(cardID: card.id, variant: .normal, source: .tcgplayer, currencyCode: "USD",
+                  amount: 2.50, updatedAt: Date(timeIntervalSince1970: 100), lowPrice: 1.70)
+        ], printings: [printing])
     }
 }
 #endif

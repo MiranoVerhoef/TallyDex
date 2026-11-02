@@ -720,23 +720,26 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
     let unit: String?
     let idProduct: Int?
     let average: Double?
+    let low: Double?
     let trend: Double?
     let average1Day: Double?
     let average7Days: Double?
     let average30Days: Double?
     let averageHolo: Double?
+    let lowHolo: Double?
     let trendHolo: Double?
     let average1DayHolo: Double?
     let average7DaysHolo: Double?
     let average30DaysHolo: Double?
 
     private enum CodingKeys: String, CodingKey {
-        case updated, unit, idProduct, trend
+        case updated, unit, idProduct, trend, low
         case average = "avg"
         case average1Day = "avg1"
         case average7Days = "avg7"
         case average30Days = "avg30"
         case averageHolo = "avg-holo"
+        case lowHolo = "low-holo"
         case trendHolo = "trend-holo"
         case average1DayHolo = "avg1-holo"
         case average7DaysHolo = "avg7-holo"
@@ -746,32 +749,37 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
     func quotes(cardID: String, variants: Set<CatalogVariantKind>) -> [CatalogPriceQuote] {
         guard let updatedAt = tcgdexDate(updated) else { return [] }
         var quotes: [CatalogPriceQuote] = []
-        if variants.contains(.normal), let amount = positive(trend ?? average) {
+        if variants.contains(.normal), let amount = firstPositive(trend, average) {
             quotes.append(.init(cardID: cardID, variant: .normal, source: .cardmarket,
                                 currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt,
                                 productID: idProduct,
                                 average1Day: positive(average1Day),
                                 average7Days: positive(average7Days),
-                                average30Days: positive(average30Days)))
+                                average30Days: positive(average30Days),
+                                averagePrice: positive(average), lowPrice: positive(low)))
         }
         let foilVariants = variants.intersection([.reverseHolo, .holo])
         if foilVariants.count == 1, let variant = foilVariants.first,
-           let amount = positive(trendHolo ?? averageHolo) {
+           let amount = firstPositive(trendHolo, averageHolo) {
             quotes.append(.init(cardID: cardID, variant: variant, source: .cardmarket,
                                 currencyCode: unit ?? "EUR", amount: amount, updatedAt: updatedAt,
                                 productID: idProduct,
                                 average1Day: positive(average1DayHolo),
                                 average7Days: positive(average7DaysHolo),
-                                average30Days: positive(average30DaysHolo)))
+                                average30Days: positive(average30DaysHolo),
+                                averagePrice: positive(averageHolo), lowPrice: positive(lowHolo)))
         }
         return quotes
     }
 
     func exactQuote(cardID: String, variant: CatalogVariantKind) -> CatalogPriceQuote? {
+        // A detailed printing can carry its own price in the standard bucket,
+        // even for a Holo card. Keep every statistic in the SAME bucket as the
+        // selected amount; never combine standard avg with holo low or vice versa.
+        let usesHoloBucket = variant == .reverseHolo || firstPositive(trend, average) == nil
         guard let updatedAt = tcgdexDate(updated),
-              let amount = variant == .reverseHolo
-                ? firstPositive(trendHolo, averageHolo)
-                : firstPositive(trend, average, trendHolo, averageHolo) else { return nil }
+              let amount = usesHoloBucket ? firstPositive(trendHolo, averageHolo)
+                : firstPositive(trend, average) else { return nil }
         return CatalogPriceQuote(
             cardID: cardID,
             variant: variant,
@@ -780,14 +788,16 @@ private struct CardmarketPricingDTO: Decodable, Sendable {
             amount: amount,
             updatedAt: updatedAt,
             productID: idProduct,
-            average1Day: variant == .reverseHolo ? positive(average1DayHolo) : firstPositive(average1Day, average1DayHolo),
-            average7Days: variant == .reverseHolo ? positive(average7DaysHolo) : firstPositive(average7Days, average7DaysHolo),
-            average30Days: variant == .reverseHolo ? positive(average30DaysHolo) : firstPositive(average30Days, average30DaysHolo)
+            average1Day: positive(usesHoloBucket ? average1DayHolo : average1Day),
+            average7Days: positive(usesHoloBucket ? average7DaysHolo : average7Days),
+            average30Days: positive(usesHoloBucket ? average30DaysHolo : average30Days),
+            averagePrice: positive(usesHoloBucket ? averageHolo : average),
+            lowPrice: positive(usesHoloBucket ? lowHolo : low)
         )
     }
 
     private func positive(_ value: Double?) -> Double? {
-        guard let value, value > 0 else { return nil }
+        guard let value, value.isFinite, value > 0 else { return nil }
         return value
     }
 
@@ -817,7 +827,7 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
             guard let amount = market?.marketPrice, amount > 0 else { return nil }
             return CatalogPriceQuote(cardID: cardID, variant: variant, source: .tcgplayer,
                                      currencyCode: unit ?? "USD", amount: amount, updatedAt: updatedAt,
-                                     productID: market?.productId)
+                                     productID: market?.productId, lowPrice: market?.lowPrice)
         }
     }
 
@@ -851,7 +861,8 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
             currencyCode: unit ?? "USD",
             amount: amount,
             updatedAt: updatedAt,
-            productID: market?.productId
+            productID: market?.productId,
+            lowPrice: market?.lowPrice
         )
     }
 
@@ -867,6 +878,7 @@ private struct TCGplayerPricingDTO: Decodable, Sendable {
 private struct TCGplayerMarketDTO: Decodable, Sendable {
     let productId: Int?
     let marketPrice: Double?
+    let lowPrice: Double?
 }
 
 private func tcgdexDate(_ value: String?) -> Date? {

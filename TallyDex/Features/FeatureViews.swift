@@ -14,11 +14,14 @@ import LinkPresentation
 struct HelpSectionHeader: View {
     let title: String
     let message: String
+    var alignHelpTrailing = false
     @State private var showingHelp = false
 
     var body: some View {
         HStack(spacing: 8) {
             Text(title)
+                .fixedSize(horizontal: false, vertical: true)
+            if alignHelpTrailing { Spacer(minLength: 8) }
             Button { showingHelp = true } label: {
                 Image(systemName: "info.circle")
                     .font(.body)
@@ -88,6 +91,132 @@ private func collectorPrintingLabel(
         return printing.displayName
     }
     return "\(printing.displayName) \(index + 1)"
+}
+
+private enum PrintingPriceHelp {
+    static let message = "Cardmarket Avg is the average supplied by TCGdex, and Low is the lowest reported marketplace price. When Avg is unavailable, Trend is shown instead. TCGplayer shows Market and Low; its midpoint is not an average. Each market uses its reported currency: EUR for Cardmarket and USD for TCGplayer, without conversion. Low is a reference, not a guaranteed checkout price: TallyDex does not filter to Dutch sellers or calculate shipping. Collection totals and history keep their existing trend/market valuation basis."
+}
+
+/// Compact, currency-labelled statistics; no merging of marketplaces or printings.
+private struct PrintingMarketPricesView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let quotes: [CatalogPriceQuote]
+    let variant: CatalogVariantKind
+    let mode: CatalogPriceDisplayMode
+    var manualValue: ManualCardValue? = nil
+
+    private var hasQuote: Bool {
+        quotes.contains { $0.variant == variant && mode.sources.contains($0.source) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if hasQuote {
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        accessiblePrices
+                    } else {
+                        ViewThatFits(in: .horizontal) {
+                            priceGrid
+                            accessiblePrices
+                        }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("printing.pricePanel.\(variant.rawValue)")
+            } else if manualValue == nil {
+                Text("Prices unavailable")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let manualValue {
+                Label("Your estimate · \(formattedCatalogPrice(manualValue.amount, currencyCode: manualValue.currencyCode))", systemImage: "pencil.line")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func quote(for source: CatalogPriceSource) -> CatalogPriceQuote? {
+        quotes.first { $0.variant == variant && $0.source == source }
+    }
+
+    private var priceGrid: some View {
+        Grid(horizontalSpacing: 16, verticalSpacing: 10) {
+            ForEach(mode.sources, id: \.self) { source in
+                let quote = quote(for: source)
+                GridRow {
+                    sourceLabel(source, currency: quote?.currencyCode ?? source.currencyCode)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .gridColumnAlignment(.leading)
+                    metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Avg" : "Market"),
+                           amount: quote?.collectionMetricAmount, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                        .gridColumnAlignment(.trailing)
+                    metric("Low", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                        .gridColumnAlignment(.trailing)
+                }
+                if source != mode.sources.last {
+                    Divider().gridCellColumns(3).gridCellUnsizedAxes(.horizontal)
+                }
+            }
+        }
+    }
+
+    private var accessiblePrices: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(mode.sources, id: \.self) { source in
+                let quote = quote(for: source)
+                VStack(alignment: .leading, spacing: 10) {
+                    sourceLabel(source, currency: quote?.currencyCode ?? source.currencyCode)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 24) {
+                            metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Avg" : "Market"),
+                                   amount: quote?.collectionMetricAmount, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                            metric("Low", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                        }
+                        VStack(alignment: .leading, spacing: 12) {
+                            metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Avg" : "Market"),
+                                   amount: quote?.collectionMetricAmount, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                            metric("Low", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("printing.prices.\(variant.rawValue).\(source.rawValue)")
+                if source != mode.sources.last { Divider() }
+            }
+        }
+    }
+
+    private func sourceLabel(_ source: CatalogPriceSource, currency: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(source.displayName)
+                .font(.caption.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(currency)
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(source.displayName)
+        .accessibilityValue(currency)
+        .accessibilityIdentifier("printing.price.\(variant.rawValue).\(source.rawValue).source")
+    }
+
+    private func metric(_ title: String, amount: Double?, currency: String, source: CatalogPriceSource) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(amount.map { formattedCatalogPrice($0, currencyCode: currency) } ?? "—")
+                .font(.subheadline.weight(.semibold)).monospacedDigit()
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(source.displayName), \(title)")
+        .accessibilityValue("\(amount.map { formattedCatalogPrice($0, currencyCode: currency) } ?? "Not available") \(currency)")
+        .accessibilityIdentifier("printing.price.\(variant.rawValue).\(source.rawValue).\(title == "Low" ? "low" : "reference")")
+    }
 }
 
 private struct CardCompletionIndicator: View {
@@ -2445,7 +2574,7 @@ private struct CatalogVariantPickerView: View {
                     }
                 }
 
-                Section("Owned printings") {
+                Section {
                     if isLoading {
                         ProgressView("Loading printings…")
                     } else if availableVariants.isEmpty {
@@ -2456,6 +2585,8 @@ private struct CatalogVariantPickerView: View {
                             printingRows(for: variant)
                         }
                     }
+                } header: {
+                    HelpSectionHeader(title: "Owned printings", message: PrintingPriceHelp.message)
                 }
 
                 if let message {
@@ -2500,50 +2631,52 @@ private struct CatalogVariantPickerView: View {
         let quantity = quantities[variant, default: 0]
         let isUpdating = updatingVariants.contains(variant)
 
-        return HStack(spacing: 12) {
-            Button {
-                update(variant, to: quantity > 0 ? 0 : 1)
-            } label: {
-                Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
-            .disabled(isUpdating)
-            .accessibilityLabel(quantity > 0 ? "Remove \(variant.displayName)" : "Add \(variant.displayName)")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label ?? variant.displayName)
-                Text(priceText(for: variant))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-
-            if allowsMultipleCopies {
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
                 Button {
-                    update(variant, to: max(0, quantity - 1))
+                    update(variant, to: quantity > 0 ? 0 : 1)
                 } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 22, height: 22)
+                    Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(quantity > 0 ? Color.accentColor : Color.secondary)
                 }
-                .buttonStyle(.bordered)
-                .frame(minWidth: 44, minHeight: 44)
-                .disabled(quantity == 0 || isUpdating)
-
-                Text("\(quantity)")
-                    .font(.body.monospacedDigit().weight(.semibold))
-                    .frame(minWidth: 24)
-
-                Button {
-                    update(variant, to: quantity + 1)
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(.plain)
                 .disabled(isUpdating)
+                .accessibilityLabel(quantity > 0 ? "Remove \(variant.displayName)" : "Add \(variant.displayName)")
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label ?? variant.displayName)
+                        .font(.body.weight(.semibold))
+                }
+                Spacer()
+
+                if allowsMultipleCopies {
+                    Button {
+                        update(variant, to: max(0, quantity - 1))
+                    } label: {
+                        Image(systemName: "minus")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(quantity == 0 || isUpdating)
+
+                    Text("\(quantity)")
+                        .font(.body.monospacedDigit().weight(.semibold))
+                        .frame(minWidth: 24)
+
+                    Button {
+                        update(variant, to: quantity + 1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(isUpdating)
+                }
             }
+            printingPrices(for: variant)
         }
         .transaction { transaction in
             transaction.animation = nil
@@ -2555,54 +2688,54 @@ private struct CatalogVariantPickerView: View {
         let isUpdating = updatingVariants.contains(printing.kind ?? .normal)
         let label = collectorPrintingLabel(printing, within: printings)
 
-        return HStack(spacing: 12) {
-            Button {
-                update(printing, to: quantity > 0 ? 0 : 1)
-            } label: {
-                Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-            }
-            .buttonStyle(.plain)
-            .disabled(isUpdating)
-            .accessibilityLabel(quantity > 0 ? "Remove \(label)" : "Add \(label)")
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    update(printing, to: quantity > 0 ? 0 : 1)
+                } label: {
+                    Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundStyle(quantity > 0 ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .disabled(isUpdating)
+                .accessibilityLabel(quantity > 0 ? "Remove \(label)" : "Add \(label)")
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                if let variant = printing.kind {
-                    Text(priceText(for: variant))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.body.weight(.semibold))
+                }
+                Spacer()
+
+                if allowsMultipleCopies, let variant = printing.kind {
+                    Button { update(printing, to: max(0, quantity - 1)) } label: {
+                        Image(systemName: "minus").frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(quantity == 0 || isUpdating)
+
+                    Text("\(quantity)")
+                        .font(.body.monospacedDigit().weight(.semibold))
+                        .frame(minWidth: 24)
+
+                    Button { update(printing, to: quantity + 1) } label: {
+                        Image(systemName: "plus").frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(isUpdating || variant != printing.kind)
                 }
             }
-            Spacer()
-
-            if allowsMultipleCopies, let variant = printing.kind {
-                Button { update(printing, to: max(0, quantity - 1)) } label: {
-                    Image(systemName: "minus").frame(width: 22, height: 22)
-                }
-                .buttonStyle(.bordered)
-                .frame(minWidth: 44, minHeight: 44)
-                .disabled(quantity == 0 || isUpdating)
-
-                Text("\(quantity)")
-                    .font(.body.monospacedDigit().weight(.semibold))
-                    .frame(minWidth: 24)
-
-                Button { update(printing, to: quantity + 1) } label: {
-                    Image(systemName: "plus").frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minWidth: 44, minHeight: 44)
-                .disabled(isUpdating || variant != printing.kind)
-            }
+            if let variant = printing.kind { printingPrices(for: variant) }
         }
         .transaction { $0.animation = nil }
     }
 
-    private func priceText(for variant: CatalogVariantKind) -> String {
+    private func printingPrices(for variant: CatalogVariantKind) -> some View {
         let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
         let mode = PricingSettings.resolveDisplayMode(priceDisplayModeRaw, preferredSource: source)
-        return displayedPriceText(quotes: snapshot?.prices ?? [], variant: variant, mode: mode)
+        return PrintingMarketPricesView(quotes: snapshot?.prices ?? [], variant: variant, mode: mode)
     }
 
     private func load() async {
@@ -3893,7 +4026,7 @@ private struct CatalogCardDetailPage: View {
     @ViewBuilder
     private var collectionSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Your collection")
+            HelpSectionHeader(title: "Your collection", message: PrintingPriceHelp.message, alignHelpTrailing: true)
                 .font(.headline)
 
             if isLoadingDetails {
@@ -3920,6 +4053,7 @@ private struct CatalogCardDetailPage: View {
             }
 
             if !availableVariants.isEmpty || collectionStore.manualValuesByKey.values.contains(where: { $0.cardID == card.id }) {
+                Divider()
                 NavigationLink {
                     ManualCardValuesView(
                         cardID: card.id,
@@ -3928,10 +4062,15 @@ private struct CatalogCardDetailPage: View {
                         marketPrices: snapshot?.prices ?? []
                     )
                 } label: {
-                    Label("Your estimates", systemImage: "pencil.line")
-                        .font(.subheadline.weight(.medium))
+                    HStack {
+                        Label("Your estimates", systemImage: "pencil.line")
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-                .padding(.top, 4)
             }
         }
         .padding(16)
@@ -3960,61 +4099,63 @@ private struct CatalogCardDetailPage: View {
         let quantity = quantities[variant, default: 0]
         let isUpdating = updatingVariants.contains(variant)
 
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label ?? variant.displayName)
-                    .font(.body.weight(.medium))
-                Text(priceText(for: variant))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label ?? variant.displayName)
+                        .font(.body.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if allowsMultipleCopies {
+                        Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
                 if allowsMultipleCopies {
-                    Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Button {
+                        updateQuantity(for: variant, to: max(0, quantity - 1))
+                    } label: {
+                        Image(systemName: "minus")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(quantity == 0 || isUpdating)
+                    .accessibilityLabel("Remove one \(variant.displayName)")
+
+                    Text("\(quantity)")
+                        .font(.body.monospacedDigit().weight(.semibold))
+                        .frame(minWidth: 28)
+                        .accessibilityLabel("\(quantity) owned")
+
+                    Button {
+                        updateQuantity(for: variant, to: quantity + 1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isUpdating)
+                    .accessibilityLabel("Add one \(variant.displayName)")
+                } else {
+                    Button {
+                        updateQuantity(for: variant, to: quantity > 0 ? 0 : 1)
+                    } label: {
+                        Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                            .font(.title2)
+                            .foregroundStyle(quantity > 0 ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(isUpdating)
+                    .accessibilityLabel(
+                        quantity > 0 ? "Remove \(variant.displayName)" : "Mark \(variant.displayName) as owned"
+                    )
                 }
             }
-
-            Spacer()
-
-            if allowsMultipleCopies {
-                Button {
-                    updateQuantity(for: variant, to: max(0, quantity - 1))
-                } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 22, height: 22)
-                }
-                .buttonStyle(.bordered)
-                .disabled(quantity == 0 || isUpdating)
-                .accessibilityLabel("Remove one \(variant.displayName)")
-
-                Text("\(quantity)")
-                    .font(.body.monospacedDigit().weight(.semibold))
-                    .frame(minWidth: 28)
-                    .accessibilityLabel("\(quantity) owned")
-
-                Button {
-                    updateQuantity(for: variant, to: quantity + 1)
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isUpdating)
-                .accessibilityLabel("Add one \(variant.displayName)")
-            } else {
-                Button {
-                    updateQuantity(for: variant, to: quantity > 0 ? 0 : 1)
-                } label: {
-                    Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
-                        .font(.title2)
-                }
-                .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
-                .disabled(isUpdating)
-                .accessibilityLabel(
-                    quantity > 0 ? "Remove \(variant.displayName)" : "Mark \(variant.displayName) as owned"
-                )
-            }
+            printingPrices(for: variant)
         }
     }
 
@@ -4024,54 +4165,51 @@ private struct CatalogCardDetailPage: View {
         let isUpdating = updatingVariants.contains(variant)
         let label = collectorPrintingLabel(printing, within: printings)
 
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.body.weight(.medium))
-                Text(priceText(for: variant)).font(.caption).foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label).font(.body.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if allowsMultipleCopies {
+                        Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
                 if allowsMultipleCopies {
-                    Text(quantity == 1 ? "1 copy" : "\(quantity) copies")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Button { updateQuantity(for: printing, to: max(0, quantity - 1)) } label: {
+                        Image(systemName: "minus").frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(quantity == 0 || isUpdating)
+                    Text("\(quantity)").font(.body.monospacedDigit().weight(.semibold)).frame(minWidth: 28)
+                    Button { updateQuantity(for: printing, to: quantity + 1) } label: {
+                        Image(systemName: "plus").frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isUpdating)
+                } else {
+                    Button { updateQuantity(for: printing, to: quantity > 0 ? 0 : 1) } label: {
+                        Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle")
+                            .font(.title2)
+                            .foregroundStyle(quantity > 0 ? Color.accentColor : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .disabled(isUpdating)
+                    .accessibilityLabel(quantity > 0 ? "Remove \(label)" : "Mark \(label) as owned")
                 }
             }
-            Spacer()
-            if allowsMultipleCopies {
-                Button { updateQuantity(for: printing, to: max(0, quantity - 1)) } label: {
-                    Image(systemName: "minus").frame(width: 22, height: 22)
-                }
-                .buttonStyle(.bordered)
-                .disabled(quantity == 0 || isUpdating)
-                Text("\(quantity)").font(.body.monospacedDigit().weight(.semibold)).frame(minWidth: 28)
-                Button { updateQuantity(for: printing, to: quantity + 1) } label: {
-                    Image(systemName: "plus").frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isUpdating)
-            } else {
-                Button { updateQuantity(for: printing, to: quantity > 0 ? 0 : 1) } label: {
-                    Image(systemName: quantity > 0 ? "checkmark.circle.fill" : "circle").font(.title2)
-                }
-                .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
-                .disabled(isUpdating)
-                .accessibilityLabel(quantity > 0 ? "Remove \(label)" : "Mark \(label) as owned")
-            }
+            printingPrices(for: variant)
         }
     }
 
-    private func priceText(for variant: CatalogVariantKind) -> String {
+    private func printingPrices(for variant: CatalogVariantKind) -> some View {
         let source = CatalogPriceSource(rawValue: preferredPriceSource) ?? .cardmarket
-        let quotes = snapshot?.prices ?? []
-        let marketText = displayedPriceText(quotes: quotes, variant: variant, mode: priceDisplayMode)
-        let hasDisplayedQuote = quotes.contains {
-            $0.variant == variant && priceDisplayMode.sources.contains($0.source)
-        }
         let manual = collectionStore.manualValue(cardID: card.id, variant: variant,
                                                  currencyCode: source.currencyCode)
-        if let manual {
-            let estimate = "Your estimate \(formattedCatalogPrice(manual.amount, currencyCode: manual.currencyCode))"
-            return hasDisplayedQuote ? "\(marketText) · \(estimate)" : estimate
-        }
-        return hasDisplayedQuote ? marketText : "\(marketText) · add your estimate"
+        return PrintingMarketPricesView(quotes: snapshot?.prices ?? [], variant: variant,
+            mode: priceDisplayMode, manualValue: manual)
     }
 
     private func updateQuantity(for variant: CatalogVariantKind, to newQuantity: Int) {

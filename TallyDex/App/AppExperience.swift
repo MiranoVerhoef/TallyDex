@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.55",
-        headline: "Automatic price updates",
+        version: "0.9.56",
+        headline: "Clearer card prices",
         notes: [
             AppReleaseNote(
                 systemImage: "chart.line.uptrend.xyaxis",
-                title: "Keep prices up to date",
-                detail: "Prices refresh for owned cards and My Sets, with optional background updates."
+                title: "Prices at a glance",
+                detail: "Average, market and low prices now appear in a cleaner comparison panel."
             ),
         ]
     )

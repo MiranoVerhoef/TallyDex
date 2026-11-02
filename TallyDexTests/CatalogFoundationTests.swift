@@ -5,6 +5,126 @@ import XCTest
 @testable import TallyDex
 
 final class CatalogFoundationTests: XCTestCase {
+    func testCollectionPriceMetricsUseAverageWithoutChangingValuationAndDoNotCallTCGplayerMidAnAverage() {
+        let quote = CatalogPriceQuote(cardID: "card", variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 1.25, updatedAt: Date(), averagePrice: 1.10, lowPrice: 0.80)
+        XCTAssertEqual(quote.amount, 1.25)
+        XCTAssertEqual(quote.collectionMetricTitle, "Avg")
+        XCTAssertEqual(quote.collectionMetricAmount, 1.10)
+        XCTAssertEqual(quote.lowPrice, 0.80)
+        let legacy = CatalogPriceQuote(cardID: "card", variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 1.25, updatedAt: Date())
+        XCTAssertEqual(legacy.collectionMetricTitle, "Trend")
+        XCTAssertNil(legacy.lowPrice)
+        let us = CatalogPriceQuote(cardID: "card", variant: .normal, source: .tcgplayer,
+            currencyCode: "USD", amount: 2.50, updatedAt: Date(), lowPrice: 1.70)
+        XCTAssertEqual(us.collectionMetricTitle, "Market")
+        XCTAssertEqual(us.collectionMetricAmount, 2.50)
+        XCTAssertNil(us.averagePrice)
+        for invalid in [0.0, -1, Double.infinity, Double.nan] {
+            let invalidQuote = CatalogPriceQuote(cardID: "card", variant: .normal, source: .cardmarket,
+                currencyCode: "EUR", amount: 1.25, updatedAt: Date(), averagePrice: invalid, lowPrice: invalid)
+            XCTAssertNil(invalidQuote.averagePrice)
+            XCTAssertNil(invalidQuote.lowPrice)
+            XCTAssertEqual(invalidQuote.collectionMetricTitle, "Trend")
+        }
+    }
+
+    func testDetailedCardmarketStatisticsStayInTheSamePriceBucketAsThePrintingQuote() async throws {
+        let response = #"""
+        {"id":"test-1","localId":"1","name":"Test","set":{"id":"test"},
+         "variants_detailed":[
+          {"type":"holo","variantId":"holo-1","pricing":{"cardmarket":{
+           "updated":"2026-11-02T08:00:00Z","unit":"EUR","trend":4,"avg":5,"low":3,
+           "trend-holo":15,"avg-holo":20,"low-holo":12}}},
+          {"type":"reverse","variantId":"reverse-1","pricing":{"cardmarket":{
+           "updated":"2026-11-02T08:00:00Z","unit":"EUR","trend":4,"avg":5,"low":3,
+           "trend-holo":15,"avg-holo":20,"low-holo":12}}}
+         ]}
+        """#
+        let client = TCGdexClient(httpClient: HTTPClientStub(responses: [
+            .init(data: Data(response.utf8), statusCode: 200, retryAfter: nil)
+        ]), retryPolicy: .init(maximumAttempts: 1, baseDelay: .zero))
+        let snapshot = try await client.fetchCard(id: "test-1")
+        let holo = try XCTUnwrap(snapshot.prices.first { $0.variant == .holo })
+        let reverse = try XCTUnwrap(snapshot.prices.first { $0.variant == .reverseHolo })
+        XCTAssertEqual(holo.amount, 4)
+        XCTAssertEqual(holo.averagePrice, 5)
+        XCTAssertEqual(holo.lowPrice, 3)
+        XCTAssertEqual(reverse.amount, 15)
+        XCTAssertEqual(reverse.averagePrice, 20)
+        XCTAssertEqual(reverse.lowPrice, 12)
+        XCTAssertEqual(snapshot.variants, [.holo, .reverseHolo])
+    }
+
+    func testPriceQuoteDecodesLegacyDataWithoutStatisticsAndRoundTripsNewStatistics() throws {
+        let original = CatalogPriceQuote(cardID: "card", variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 1.25, updatedAt: Date(timeIntervalSince1970: 100),
+            averagePrice: 1.10, lowPrice: 0.80)
+        let encoded = try JSONEncoder().encode(original)
+        XCTAssertEqual(try JSONDecoder().decode(CatalogPriceQuote.self, from: encoded), original)
+        var legacy = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacy.removeValue(forKey: "averagePrice")
+        legacy.removeValue(forKey: "lowPrice")
+        let decoded = try JSONDecoder().decode(CatalogPriceQuote.self, from: JSONSerialization.data(withJSONObject: legacy))
+        XCTAssertNil(decoded.averagePrice)
+        XCTAssertNil(decoded.lowPrice)
+        XCTAssertEqual(decoded.amount, 1.25)
+    }
+
+    func testMarketStatisticsPersistThroughNormalAndAutomaticWritesWithoutChangingHistoryBasisOrPrintings() async throws {
+        let database = try CatalogDatabase.inMemory()
+        let repository = GRDBCatalogRepository(database: database)
+        let card = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "One",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        try await repository.replaceCatalog([.init(series: .init(id: "sv", name: "SV", logoURL: nil),
+            sets: [set(id: "sv01", seriesID: "sv", name: "Set")])])
+        let date = Date(timeIntervalSince1970: 100)
+        let quote = CatalogPriceQuote(cardID: card.id, variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 1.25, updatedAt: date, averagePrice: 1.10, lowPrice: 0.80)
+        try await repository.replaceCard(.init(card: card, variants: [.normal], prices: [quote]))
+        let first = try await repository.fetchPrices(cardIDs: [card.id])[card.id]?.first
+        XCTAssertEqual(first, quote)
+        let refreshed = CatalogPriceQuote(cardID: card.id, variant: .normal, source: .cardmarket,
+            currencyCode: "EUR", amount: 1.50, updatedAt: date.addingTimeInterval(60), averagePrice: 1.40, lowPrice: 0.90)
+        try await repository.recordAutomaticPriceObservation(.init(card: card, variants: [.normal], prices: [refreshed]), observedAt: Date())
+        let second = try await repository.fetchPrices(cardIDs: [card.id])[card.id]?.first
+        let history = try await repository.fetchPriceHistory(cardID: card.id, source: .cardmarket)
+        let variants = try await repository.fetchVariants(cardID: card.id)
+        XCTAssertEqual(second, refreshed)
+        XCTAssertEqual(history.last?.amount, 1.50)
+        XCTAssertEqual(variants, [.normal])
+        let columns = try await database.queue.read { try $0.columns(in: "catalogPrice") }
+        XCTAssertFalse(try XCTUnwrap(columns.first(where: { $0.name == "averagePrice" })).isNotNull)
+        XCTAssertFalse(try XCTUnwrap(columns.first(where: { $0.name == "lowPrice" })).isNotNull)
+    }
+
+    @MainActor
+    func testCardDetailsRefreshLegacyCacheOnceForMarketStatisticsEvenWhenOtherDetailsAreFresh() async throws {
+        let repository = GRDBCatalogRepository(database: try CatalogDatabase.inMemory())
+        let card = CatalogCard(id: "sv01-001", setID: "sv01", localID: "001", name: "One",
+            imageURL: nil, category: nil, illustrator: nil, rarity: nil)
+        try await repository.replaceCatalog([.init(series: .init(id: "sv", name: "SV", logoURL: nil),
+            sets: [set(id: "sv01", seriesID: "sv", name: "Set")])])
+        let date = Date(timeIntervalSince1970: 100)
+        try await repository.replaceCard(.init(card: card, variants: [.normal]))
+        for key in ["catalog.price.\(card.id).lastRefresh", "catalog.price.\(card.id).rollingAveragesChecked",
+                    "catalog.card.\(card.id).detailedPrintingsChecked.v2", "catalog.card.\(card.id).richMetadataChecked.v1"] {
+            try await repository.setMetadataDate(date, forKey: key)
+        }
+        let provider = CatalogProviderSpy(cardSnapshot: .init(card: card, variants: [.normal], prices: [
+            .init(cardID: card.id, variant: .normal, source: .cardmarket, currencyCode: "EUR", amount: 1.25,
+                  updatedAt: date, averagePrice: 1.10, lowPrice: 0.80)
+        ]))
+        let store = CatalogStore(provider: provider, repository: repository, now: { date.addingTimeInterval(60) })
+        let first = try await store.details(for: card)
+        let second = try await store.details(for: card)
+        let requests = await provider.cardRequestCount
+        XCTAssertEqual(first.prices.first?.averagePrice, 1.10)
+        XCTAssertEqual(second.prices.first?.lowPrice, 0.80)
+        XCTAssertEqual(requests, 1)
+    }
+
     func testAutomaticPricePolicyPrioritizesOwnedThenOldestAndHonorsDailyChecksAndRetryDelay() {
         let now = ISO8601DateFormatter().date(from: "2026-11-01T12:00:00Z")!
         let yesterday = now.addingTimeInterval(-86_400)
@@ -855,11 +975,13 @@ final class CatalogFoundationTests: XCTestCase {
               "updated": "2026-08-22T08:03:05.134Z",
               "unit": "EUR",
               "avg": 0.10,
+              "low": 0.02,
               "trend": 0.07,
               "avg1": 0.06,
               "avg7": 0.08,
               "avg30": 0.11,
               "avg-holo": 0.28,
+              "low-holo": 0.08,
               "trend-holo": 0.26,
               "avg1-holo": 0.24,
               "avg7-holo": 0.25,
@@ -868,8 +990,8 @@ final class CatalogFoundationTests: XCTestCase {
             "tcgplayer": {
               "updated": "2026-08-22T08:03:19.776Z",
               "unit": "USD",
-              "normal": { "marketPrice": 0.21 },
-              "reverse-holofoil": { "marketPrice": 0.43 }
+              "normal": { "marketPrice": 0.21, "lowPrice": 0.12, "midPrice": 0.30 },
+              "reverse-holofoil": { "marketPrice": 0.43, "lowPrice": 0.31 }
             }
           }
         }
@@ -898,12 +1020,19 @@ final class CatalogFoundationTests: XCTestCase {
         XCTAssertEqual(normalCardmarket?.average1Day, 0.06)
         XCTAssertEqual(normalCardmarket?.average7Days, 0.08)
         XCTAssertEqual(normalCardmarket?.average30Days, 0.11)
+        XCTAssertEqual(normalCardmarket?.averagePrice, 0.10)
+        XCTAssertEqual(normalCardmarket?.lowPrice, 0.02)
+        XCTAssertEqual(normalCardmarket?.currencyCode, "EUR")
         let reverseCardmarket = snapshot.prices.first {
             $0.source == .cardmarket && $0.variant == .reverseHolo
         }
         XCTAssertEqual(reverseCardmarket?.average1Day, 0.24)
         XCTAssertEqual(reverseCardmarket?.average7Days, 0.25)
         XCTAssertEqual(reverseCardmarket?.average30Days, 0.29)
+        XCTAssertEqual(reverseCardmarket?.averagePrice, 0.28)
+        XCTAssertEqual(reverseCardmarket?.lowPrice, 0.08)
+        XCTAssertEqual(snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .normal }?.lowPrice, 0.12)
+        XCTAssertNil(snapshot.prices.first { $0.source == .tcgplayer }?.averagePrice)
         XCTAssertEqual(
             snapshot.prices.first { $0.source == .tcgplayer && $0.variant == .normal }?.amount,
             0.21
@@ -2947,6 +3076,10 @@ final class CatalogFoundationTests: XCTestCase {
         try await repository.setMetadataDate(
             refreshDate,
             forKey: "catalog.card.\(card.id).richMetadataChecked.v1"
+        )
+        try await repository.setMetadataDate(
+            refreshDate,
+            forKey: "catalog.price.\(card.id).marketMetricsChecked.v1"
         )
         let provider = CatalogProviderSpy(cardSnapshot: snapshot)
         let store = CatalogStore(

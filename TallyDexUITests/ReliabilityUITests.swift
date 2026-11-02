@@ -173,6 +173,95 @@ final class ReliabilityUITests: XCTestCase {
         detail("swsh8-16")
     }
 
+    func testCollectionPrintingPricesShowAverageLowAndNativeCurrenciesForBothMarkets() {
+        launch("filters")
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
+        settings()
+        tap(button("Prices & Currency"))
+        tap(button("Show prices from"))
+        tap(button("Both"))
+        tap(app.tabBars.buttons["Search"])
+        tap(app.searchFields.firstMatch)
+        app.searchFields.firstMatch.typeText("Phantump 16\n")
+        tap(app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch)
+        let page = detail("swsh8-16")
+        let cm = app.descendants(matching: .any)["printing.price.normal.cardmarket.source"].firstMatch
+        for _ in 0..<5 { if cm.exists && cm.isHittable { break }; page.swipeUp() }
+        XCTAssertTrue(cm.waitForExistence(timeout: 10))
+        XCTAssertEqual(cm.label, "Cardmarket")
+        XCTAssertEqual(cm.value as? String, "EUR")
+        let cmReference = app.descendants(matching: .any)["printing.price.normal.cardmarket.reference"].firstMatch
+        let cmLow = app.descendants(matching: .any)["printing.price.normal.cardmarket.low"].firstMatch
+        XCTAssertTrue(cmReference.label.contains("Avg"))
+        XCTAssertTrue((cmReference.value as? String ?? "").contains("€1.10"))
+        XCTAssertTrue(cmLow.label.contains("Low"))
+        XCTAssertTrue((cmLow.value as? String ?? "").contains("€0.80"))
+        let us = app.descendants(matching: .any)["printing.price.normal.tcgplayer.source"].firstMatch
+        XCTAssertEqual(us.label, "TCGplayer")
+        XCTAssertEqual(us.value as? String, "USD")
+        let usReference = app.descendants(matching: .any)["printing.price.normal.tcgplayer.reference"].firstMatch
+        XCTAssertTrue(usReference.label.contains("Market"))
+        XCTAssertFalse(usReference.label.contains("Avg"))
+        XCTAssertTrue((usReference.value as? String ?? "").contains("$2.50"))
+        XCTAssertTrue((app.descendants(matching: .any)["printing.price.normal.tcgplayer.low"].firstMatch.value as? String ?? "").contains("$1.70"))
+        let panel = app.descendants(matching: .any)["printing.pricePanel.normal"].firstMatch
+        XCTAssertTrue(panel.exists)
+        XCTAssertLessThanOrEqual(app.buttons["Remove Normal"].frame.maxY, panel.frame.minY,
+                                 "Ownership controls belong above the price panel, not beside its values")
+        capturePurchaseScreen("Native average and low prices for both marketplaces")
+        tap(app.buttons["About Your collection"])
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "not filter to Dutch sellers")).firstMatch.waitForExistence(timeout: 5))
+        tap(app.buttons["Done"])
+        back()
+        settings()
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
+    }
+
+    func testCollectionPrintingPricesRemainReadableInDarkModeWithAccessibilityText() {
+        app.launchArguments += ["-AppleInterfaceStyle", "Dark", "-app.appearance", "dark",
+                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        launch("filters")
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
+        // Isolate the pricing layout from the native large-text search UI.
+        app.open(URL(string: "tallydex://card/swsh8-16")!)
+        let page = detail("swsh8-16")
+        let low = app.descendants(matching: .any)["printing.price.normal.cardmarket.low"].firstMatch
+        for _ in 0..<10 {
+            if low.exists && low.isHittable { break }
+            page.swipeUp()
+        }
+        capturePurchaseScreen("Accessibility pricing panel before bounds checks")
+        for role in ["source", "reference", "low"] {
+            let cell = app.descendants(matching: .any)["printing.price.normal.cardmarket.\(role)"].firstMatch
+            XCTAssertTrue(cell.exists, role)
+            XCTAssertTrue(cell.isHittable, role)
+            XCTAssertGreaterThanOrEqual(cell.frame.minX, page.frame.minX, role)
+            XCTAssertLessThanOrEqual(cell.frame.maxX, page.frame.maxX, role)
+        }
+        capturePurchaseScreen("Printing prices dark mode accessibility text")
+    }
+
+    func testPricingPanelStaysFullWidthBelowMultipleCopyControls() {
+        launch("filters")
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
+        settings()
+        tap(button("Collection Preferences"))
+        turnOn("Track multiple copies")
+        app.open(URL(string: "tallydex://card/swsh8-16")!)
+        let page = detail("swsh8-16")
+        let panel = app.descendants(matching: .any)["printing.pricePanel.normal"].firstMatch
+        for _ in 0..<8 { if panel.exists && panel.isHittable { break }; page.swipeUp() }
+        XCTAssertTrue(panel.exists)
+        XCTAssertTrue(app.staticTexts["7 copies"].exists)
+        XCTAssertGreaterThan(panel.frame.width, page.frame.width * 0.65)
+        XCTAssertTrue(app.descendants(matching: .any)["printing.price.normal.cardmarket.reference"].firstMatch.label.contains("Avg"))
+        XCTAssertTrue(app.descendants(matching: .any)["printing.price.normal.cardmarket.low"].firstMatch.label.contains("Low"))
+        capturePurchaseScreen("Full-width pricing panel with multiple-copy controls")
+        tap(app.buttons["Close"])
+        back()
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
+    }
+
     func testCardDetailSwipesFollowSetOrderRespectBoundsAndBackOnce() {
         openSwipeTestSet()
         swipeDetail("swsh8-16", left: false)
@@ -796,12 +885,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -822,7 +911,7 @@ final class ReliabilityUITests: XCTestCase {
         tap(app.alerts.buttons["OK"])
         capturePurchaseScreen("Optional background price updates in setup")
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
 
@@ -861,10 +950,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -874,10 +963,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.55"])
+        expectState(["intro=true", "seen=0.9.56"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

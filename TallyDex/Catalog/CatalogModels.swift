@@ -650,6 +650,8 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
     let average1Day: Double?
     let average7Days: Double?
     let average30Days: Double?
+    let averagePrice: Double?
+    let lowPrice: Double?
 
     init(
         cardID: String,
@@ -661,7 +663,9 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
         productID: Int? = nil,
         average1Day: Double? = nil,
         average7Days: Double? = nil,
-        average30Days: Double? = nil
+        average30Days: Double? = nil,
+        averagePrice: Double? = nil,
+        lowPrice: Double? = nil
     ) {
         self.cardID = cardID
         self.variant = variant
@@ -673,6 +677,8 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.average1Day = average1Day
         self.average7Days = average7Days
         self.average30Days = average30Days
+        self.averagePrice = Self.validMetric(averagePrice)
+        self.lowPrice = Self.validMetric(lowPrice)
     }
 
     var id: String { "\(cardID)|\(variant.rawValue)|\(source.rawValue)" }
@@ -689,6 +695,20 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
 
     var hasRollingAverages: Bool {
         average1Day != nil || average7Days != nil || average30Days != nil
+    }
+
+    /// Display statistics are independent of the trend/market valuation basis.
+    var collectionMetricTitle: String {
+        source == .cardmarket ? (averagePrice == nil ? "Trend" : "Avg") : "Market"
+    }
+
+    var collectionMetricAmount: Double {
+        source == .cardmarket ? (averagePrice ?? amount) : amount
+    }
+
+    private static func validMetric(_ value: Double?) -> Double? {
+        guard let value, value.isFinite, value > 0 else { return nil }
+        return value
     }
 }
 
