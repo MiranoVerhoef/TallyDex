@@ -59,8 +59,9 @@ https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.js
 
 ## Automatic price updates
 
-Version 0.9.56 adds a compact marketplace comparison panel to card ownership
-and printing sheets. Cardmarket Avg/Low and TCGplayer Market/Low use their
+Version 0.9.57 refines the panel with full price labels, inline currencies and
+right-aligned amounts. Version 0.9.56 adds a compact marketplace comparison
+panel to card ownership and printing sheets. Cardmarket Avg/Low and TCGplayer Market/Low use their
 native EUR/USD currencies, with ownership controls kept separate. Collection
 totals and history retain their existing valuation basis. See [pricing details](docs/printing-market-statistics.md).
 

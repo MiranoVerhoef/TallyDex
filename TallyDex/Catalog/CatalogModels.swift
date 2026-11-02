@@ -699,7 +699,7 @@ struct CatalogPriceQuote: Codable, Equatable, Hashable, Identifiable, Sendable {
 
     /// Display statistics are independent of the trend/market valuation basis.
     var collectionMetricTitle: String {
-        source == .cardmarket ? (averagePrice == nil ? "Trend" : "Avg") : "Market"
+        source == .cardmarket ? (averagePrice == nil ? "Trend price" : "Average price") : "Market price"
     }
 
     var collectionMetricAmount: Double {

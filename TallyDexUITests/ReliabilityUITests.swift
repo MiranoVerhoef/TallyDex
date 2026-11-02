@@ -192,18 +192,23 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertEqual(cm.value as? String, "EUR")
         let cmReference = app.descendants(matching: .any)["printing.price.normal.cardmarket.reference"].firstMatch
         let cmLow = app.descendants(matching: .any)["printing.price.normal.cardmarket.low"].firstMatch
-        XCTAssertTrue(cmReference.label.contains("Avg"))
+        XCTAssertEqual(cmReference.label, "Cardmarket, Average price")
         XCTAssertTrue((cmReference.value as? String ?? "").contains("€1.10"))
-        XCTAssertTrue(cmLow.label.contains("Low"))
+        XCTAssertEqual(cmLow.label, "Cardmarket, Lowest price")
         XCTAssertTrue((cmLow.value as? String ?? "").contains("€0.80"))
         let us = app.descendants(matching: .any)["printing.price.normal.tcgplayer.source"].firstMatch
         XCTAssertEqual(us.label, "TCGplayer")
         XCTAssertEqual(us.value as? String, "USD")
         let usReference = app.descendants(matching: .any)["printing.price.normal.tcgplayer.reference"].firstMatch
-        XCTAssertTrue(usReference.label.contains("Market"))
-        XCTAssertFalse(usReference.label.contains("Avg"))
+        XCTAssertEqual(usReference.label, "TCGplayer, Market price")
         XCTAssertTrue((usReference.value as? String ?? "").contains("$2.50"))
-        XCTAssertTrue((app.descendants(matching: .any)["printing.price.normal.tcgplayer.low"].firstMatch.value as? String ?? "").contains("$1.70"))
+        let usLow = app.descendants(matching: .any)["printing.price.normal.tcgplayer.low"].firstMatch
+        XCTAssertEqual(usLow.label, "TCGplayer, Lowest price")
+        XCTAssertTrue((usLow.value as? String ?? "").contains("$1.70"))
+        XCTAssertEqual(cmReference.frame.maxX, usReference.frame.maxX, accuracy: 1,
+                       "Reference prices should share a right-aligned column")
+        XCTAssertEqual(cmLow.frame.maxX, usLow.frame.maxX, accuracy: 1,
+                       "Lowest prices should share a right-aligned column")
         let panel = app.descendants(matching: .any)["printing.pricePanel.normal"].firstMatch
         XCTAssertTrue(panel.exists)
         XCTAssertLessThanOrEqual(app.buttons["Remove Normal"].frame.maxY, panel.frame.minY,
@@ -254,8 +259,8 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(panel.exists)
         XCTAssertTrue(app.staticTexts["7 copies"].exists)
         XCTAssertGreaterThan(panel.frame.width, page.frame.width * 0.65)
-        XCTAssertTrue(app.descendants(matching: .any)["printing.price.normal.cardmarket.reference"].firstMatch.label.contains("Avg"))
-        XCTAssertTrue(app.descendants(matching: .any)["printing.price.normal.cardmarket.low"].firstMatch.label.contains("Low"))
+        XCTAssertEqual(app.descendants(matching: .any)["printing.price.normal.cardmarket.reference"].firstMatch.label, "Cardmarket, Average price")
+        XCTAssertEqual(app.descendants(matching: .any)["printing.price.normal.cardmarket.low"].firstMatch.label, "Cardmarket, Lowest price")
         capturePurchaseScreen("Full-width pricing panel with multiple-copy controls")
         tap(app.buttons["Close"])
         back()
@@ -885,12 +890,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -911,7 +916,7 @@ final class ReliabilityUITests: XCTestCase {
         tap(app.alerts.buttons["OK"])
         capturePurchaseScreen("Optional background price updates in setup")
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
 
@@ -950,10 +955,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -963,10 +968,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.56"])
+        expectState(["intro=true", "seen=0.9.57"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

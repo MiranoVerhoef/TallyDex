@@ -1,15 +1,15 @@
 # Printing price statistics
 
-The card's **Your collection** rows and **Choose printings** sheet display compact, separate marketplace summaries. Cardmarket shows **Avg** and **Low**; TCGplayer shows **Market** and **Low** because its `midPrice` is not an average. Each summary explicitly shows the currency supplied by the API. Both-market mode keeps EUR and USD on separate rows; narrow layouts can stack the metrics.
+The card's **Your collection** rows and **Choose printings** sheet display compact, separate marketplace summaries. Cardmarket shows **Average price** and **Lowest price**; TCGplayer shows **Market price** and **Lowest price** because its `midPrice` is not an average. Currency appears beside each marketplace, and amounts align to the right in shared columns. Both-market mode keeps EUR and USD on separate rows; narrow layouts can stack the metrics. These full labels refine the original abbreviated labels in 0.9.56.
 
 ## Mapping
 
 | Provider data | Display/use |
 | --- | --- |
-| Cardmarket `avg` / `avg-holo` | Avg, retained independently of the primary quote |
-| Cardmarket `low` / `low-holo` | Low from the same selected printing price bucket |
-| Cardmarket `trend` / `trend-holo` | Existing valuation/history basis; explicitly labelled Trend when Avg is missing |
-| TCGplayer `marketPrice` / `lowPrice` | Market / Low for the selected printing/product |
+| Cardmarket `avg` / `avg-holo` | Average price, retained independently of the primary quote |
+| Cardmarket `low` / `low-holo` | Lowest price from the same selected printing price bucket |
+| Cardmarket `trend` / `trend-holo` | Existing valuation/history basis; explicitly labelled Trend price when Average price is missing |
+| TCGplayer `marketPrice` / `lowPrice` | Market price / Lowest price for the selected printing/product |
 | Provider `unit` | Currency label and number formatting; no conversion or mixing |
 
 Detailed printings can contain their own standard price bucket even when the card is Holo. The existing primary-quote bucket selects the average, low and rolling averages too; these metrics are not borrowed from another bucket. General foil data remains omitted when it cannot be mapped unambiguously to a printing. Missing/nonpositive/nonfinite metrics are unavailable, not zero. An info marker explains price meanings, native currencies and the fact that Low is not a guaranteed checkout price or a Dutch-seller/shipping calculation. Existing manual-estimate controls are retained.
@@ -55,3 +55,17 @@ The user approved the refined layout and requested an AltStore release with hidd
 The device archive and Release simulator build both succeeded. Archive checks confirmed version/build, arm64, minimum iOS 26.0, development distribution, retained background-fetch configuration, and exclusion of reliability fixtures and test purchase configuration. The IPA passed ZIP integrity checks: **30,570,438 bytes**, SHA-256 **`565ff60a9f3ccc289aac597527c3288bbda420d80a64f65aa53b27b137fce949`**. The AltStore feed adds the new version while preserving all existing entries. No TestFlight upload or public purchase gating is part of this release.
 
 The Release app installed and launched on the existing simulator without opening its window or erasing data. The captured launch screen (`artifacts/v0.9.56/release-launch.png`) was visually checked and shows the correct 0.9.56 update notes. Simulator logs also contain Apple CoreAnimation/PointerUI diagnostics; these are not a claim of an entirely warning-free runtime.
+
+## Full-label follow-up
+
+After feedback on 0.9.56, the price labels now spell out Average price, Market price and Lowest price; the existing fallback is called Trend price. Currency sits beside the marketplace, and both metric headings and values align to the right in shared columns. The info text uses the same terminology. Price amounts, provider selection, ownership and valuation logic are unchanged.
+
+Hidden iPhone 18 Pro / iOS 27.0 verification passed **one focused unit test and three UI checks**, with zero failures, skips or runtime warnings (`artifacts/pricing-full-labels/verification.xcresult`). The UI checks cover full accessible labels, native-currency values, aligned columns, ownership state, largest accessibility text/dark mode, and multiple-copy controls. Exported screenshots in `artifacts/pricing-full-labels/screens/` were visually inspected. This follow-up remained unpublished at that stage; the subsequently requested release is recorded below.
+
+## Release 0.9.57 (93)
+
+Hidden iPhone 18 Pro / iOS 27.0 verification with Xcode 27.2 passed **268 unit tests and six UI checks**: **274 passed, zero failures, skips or runtime warnings** (`artifacts/v0.9.57/verification.xcresult`). The UI checks cover both-market labels/currencies and column alignment, dark mode with the largest accessibility text size, multiple-copy layout, first setup, skipping setup and one-time update notes. Exported light/both-market and dark/largest-text screenshots were visually inspected.
+
+The device archive passed version/build, arm64, minimum iOS 26.0, development channel, background-fetch configuration and release-fixture exclusion checks. The IPA passed ZIP integrity checks: **30,571,312 bytes**, SHA-256 **`61e34b0d7ab7cba40cb23de12602573a277b640bf6ed318d1ec3d2fe61e025f5`**. The AltStore feed adds the new entry while preserving existing releases and other apps. This is an AltStore development release.
+
+The Release simulator build also succeeded, installed and launched hidden on the existing simulator. Its launch screenshot (`artifacts/v0.9.57/release-launch.png`) was visually checked for the correct 0.9.57 notes. No simulator data was erased.

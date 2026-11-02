@@ -9,16 +9,16 @@ final class CatalogFoundationTests: XCTestCase {
         let quote = CatalogPriceQuote(cardID: "card", variant: .normal, source: .cardmarket,
             currencyCode: "EUR", amount: 1.25, updatedAt: Date(), averagePrice: 1.10, lowPrice: 0.80)
         XCTAssertEqual(quote.amount, 1.25)
-        XCTAssertEqual(quote.collectionMetricTitle, "Avg")
+        XCTAssertEqual(quote.collectionMetricTitle, "Average price")
         XCTAssertEqual(quote.collectionMetricAmount, 1.10)
         XCTAssertEqual(quote.lowPrice, 0.80)
         let legacy = CatalogPriceQuote(cardID: "card", variant: .normal, source: .cardmarket,
             currencyCode: "EUR", amount: 1.25, updatedAt: Date())
-        XCTAssertEqual(legacy.collectionMetricTitle, "Trend")
+        XCTAssertEqual(legacy.collectionMetricTitle, "Trend price")
         XCTAssertNil(legacy.lowPrice)
         let us = CatalogPriceQuote(cardID: "card", variant: .normal, source: .tcgplayer,
             currencyCode: "USD", amount: 2.50, updatedAt: Date(), lowPrice: 1.70)
-        XCTAssertEqual(us.collectionMetricTitle, "Market")
+        XCTAssertEqual(us.collectionMetricTitle, "Market price")
         XCTAssertEqual(us.collectionMetricAmount, 2.50)
         XCTAssertNil(us.averagePrice)
         for invalid in [0.0, -1, Double.infinity, Double.nan] {
@@ -26,7 +26,7 @@ final class CatalogFoundationTests: XCTestCase {
                 currencyCode: "EUR", amount: 1.25, updatedAt: Date(), averagePrice: invalid, lowPrice: invalid)
             XCTAssertNil(invalidQuote.averagePrice)
             XCTAssertNil(invalidQuote.lowPrice)
-            XCTAssertEqual(invalidQuote.collectionMetricTitle, "Trend")
+            XCTAssertEqual(invalidQuote.collectionMetricTitle, "Trend price")
         }
     }
 

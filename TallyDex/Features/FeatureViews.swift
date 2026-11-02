@@ -94,7 +94,7 @@ private func collectorPrintingLabel(
 }
 
 private enum PrintingPriceHelp {
-    static let message = "Cardmarket Avg is the average supplied by TCGdex, and Low is the lowest reported marketplace price. When Avg is unavailable, Trend is shown instead. TCGplayer shows Market and Low; its midpoint is not an average. Each market uses its reported currency: EUR for Cardmarket and USD for TCGplayer, without conversion. Low is a reference, not a guaranteed checkout price: TallyDex does not filter to Dutch sellers or calculate shipping. Collection totals and history keep their existing trend/market valuation basis."
+    static let message = "Cardmarket Average price is the average supplied by TCGdex. When unavailable, Trend price is shown instead. TCGplayer supplies Market price, which is a different measurement from Cardmarket's average. Lowest price is the lowest reported price for that printing on each marketplace. Prices use the reported currency without conversion. Lowest price is a reference, not a guaranteed checkout price: TallyDex does not filter to Dutch sellers or calculate shipping. Collection totals and history keep their existing trend/market valuation basis."
 }
 
 /// Compact, currency-labelled statistics; no merging of marketplaces or printings.
@@ -144,17 +144,17 @@ private struct PrintingMarketPricesView: View {
     }
 
     private var priceGrid: some View {
-        Grid(horizontalSpacing: 16, verticalSpacing: 10) {
+        Grid(horizontalSpacing: 12, verticalSpacing: 10) {
             ForEach(mode.sources, id: \.self) { source in
                 let quote = quote(for: source)
                 GridRow {
                     sourceLabel(source, currency: quote?.currencyCode ?? source.currencyCode)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .gridColumnAlignment(.leading)
-                    metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Avg" : "Market"),
+                    metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Average price" : "Market price"),
                            amount: quote?.collectionMetricAmount, currency: quote?.currencyCode ?? source.currencyCode, source: source)
                         .gridColumnAlignment(.trailing)
-                    metric("Low", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                    metric("Lowest price", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
                         .gridColumnAlignment(.trailing)
                 }
                 if source != mode.sources.last {
@@ -172,14 +172,16 @@ private struct PrintingMarketPricesView: View {
                     sourceLabel(source, currency: quote?.currencyCode ?? source.currencyCode)
                     ViewThatFits(in: .horizontal) {
                         HStack(alignment: .top, spacing: 24) {
-                            metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Avg" : "Market"),
+                            metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Average price" : "Market price"),
                                    amount: quote?.collectionMetricAmount, currency: quote?.currencyCode ?? source.currencyCode, source: source)
-                            metric("Low", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            metric("Lowest price", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         VStack(alignment: .leading, spacing: 12) {
-                            metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Avg" : "Market"),
+                            metric(quote?.collectionMetricTitle ?? (source == .cardmarket ? "Average price" : "Market price"),
                                    amount: quote?.collectionMetricAmount, currency: quote?.currencyCode ?? source.currencyCode, source: source)
-                            metric("Low", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
+                            metric("Lowest price", amount: quote?.lowPrice, currency: quote?.currencyCode ?? source.currencyCode, source: source)
                         }
                     }
                 }
@@ -192,22 +194,20 @@ private struct PrintingMarketPricesView: View {
     }
 
     private func sourceLabel(_ source: CatalogPriceSource, currency: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(source.displayName)
-                .font(.caption.weight(.medium))
-                .fixedSize(horizontal: false, vertical: true)
-            Text(currency)
-                .font(.caption2).foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(source.displayName)
-        .accessibilityValue(currency)
-        .accessibilityIdentifier("printing.price.\(variant.rawValue).\(source.rawValue).source")
+        Text("\(source.displayName) · \(Text(currency).foregroundColor(.secondary))")
+            .font(.caption.weight(.medium))
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(source.displayName)
+            .accessibilityValue(currency)
+            .accessibilityIdentifier("printing.price.\(variant.rawValue).\(source.rawValue).source")
     }
 
     private func metric(_ title: String, amount: Double?, currency: String, source: CatalogPriceSource) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .trailing, spacing: 3) {
             Text(title).font(.caption2).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.trailing)
             Text(amount.map { formattedCatalogPrice($0, currencyCode: currency) } ?? "—")
                 .font(.subheadline.weight(.semibold)).monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
@@ -215,7 +215,7 @@ private struct PrintingMarketPricesView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(source.displayName), \(title)")
         .accessibilityValue("\(amount.map { formattedCatalogPrice($0, currencyCode: currency) } ?? "Not available") \(currency)")
-        .accessibilityIdentifier("printing.price.\(variant.rawValue).\(source.rawValue).\(title == "Low" ? "low" : "reference")")
+        .accessibilityIdentifier("printing.price.\(variant.rawValue).\(source.rawValue).\(title == "Lowest price" ? "low" : "reference")")
     }
 }
 

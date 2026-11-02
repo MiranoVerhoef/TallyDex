@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.57",
+          "buildVersion": "93",
+          "date": "2026-11-02",
+          "localizedDescription": "Refines price comparisons with full labels, currencies beside marketplaces and consistently aligned amounts.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.57/TallyDex-v0.9.57.ipa",
+          "size": 30571312,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.56",
           "buildVersion": "92",
           "date": "2026-11-02",
