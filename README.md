@@ -59,6 +59,11 @@ https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.js
 
 ## Automatic price updates
 
+Version 0.9.58 adds a searchable Owned Cards grid and pull-down Settings search.
+Info panels use shorter paragraphs, and price panels match Market averages.
+Full collection backups include manual values; cached market quotes and price
+history remain local catalogue data and are not included in those exports.
+
 Version 0.9.57 refines the panel with full price labels, inline currencies and
 right-aligned amounts. Version 0.9.56 adds a compact marketplace comparison
 panel to card ownership and printing sheets. Cardmarket Avg/Low and TCGplayer Market/Low use their

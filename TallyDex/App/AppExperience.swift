@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.57",
-        headline: "Refined price labels",
+        version: "0.9.58",
+        headline: "Cleaner collection browsing",
         notes: [
             AppReleaseNote(
-                systemImage: "chart.line.uptrend.xyaxis",
-                title: "Clearer price comparisons",
-                detail: "Full price labels, currencies beside marketplaces and consistently aligned amounts."
+                systemImage: "magnifyingglass",
+                title: "Find cards and settings",
+                detail: "Search Owned Cards and Settings, with shorter help and consistent price panels."
             ),
         ]
     )
@@ -372,9 +372,9 @@ struct IntroductionView: View {
                         .accessibilityLabel("About background price updates")
                 }
             }
-            .alert("Background price updates", isPresented: $showsPriceUpdateExplanation) {
-                Button("OK", role: .cancel) { }
-            } message: { Text(AutomaticPriceUpdateSettings.explanation) }
+            .sheet(isPresented: $showsPriceUpdateExplanation) {
+                HelpInformationView(title: "Background price updates", message: AutomaticPriceUpdateSettings.explanation)
+            }
 
         }
     }

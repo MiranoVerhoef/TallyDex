@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.58",
+          "buildVersion": "94",
+          "date": "2026-11-02",
+          "localizedDescription": "Adds searchable Owned Cards and Settings, shorter help panels and consistent price backgrounds.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.58/TallyDex-v0.9.58.ipa",
+          "size": 30588341,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.57",
           "buildVersion": "93",
           "date": "2026-11-02",

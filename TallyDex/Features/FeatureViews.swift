@@ -35,25 +35,45 @@ struct HelpSectionHeader: View {
         }
         .textCase(nil)
         .sheet(isPresented: $showingHelp) {
-            NavigationStack {
-                ScrollView {
-                    Text(message)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showingHelp = false }
+            HelpInformationView(title: title, message: message)
+        }
+    }
+}
+
+struct HelpInformationView: View {
+    let title: String
+    let message: String
+    @Environment(\.dismiss) private var dismiss
+
+    private var paragraphs: [String] {
+        message.components(separatedBy: "\n\n").filter { !$0.isEmpty }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(paragraphs.indices, id: \.self) { index in
+                        Text(paragraphs[index])
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .font(.body)
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .padding(20)
             }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            .accessibilityIdentifier("help.content")
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -94,7 +114,7 @@ private func collectorPrintingLabel(
 }
 
 private enum PrintingPriceHelp {
-    static let message = "Cardmarket Average price is the average supplied by TCGdex. When unavailable, Trend price is shown instead. TCGplayer supplies Market price, which is a different measurement from Cardmarket's average. Lowest price is the lowest reported price for that printing on each marketplace. Prices use the reported currency without conversion. Lowest price is a reference, not a guaranteed checkout price: TallyDex does not filter to Dutch sellers or calculate shipping. Collection totals and history keep their existing trend/market valuation basis."
+    static let message = "Cardmarket shows Average price, or Trend price when an average is unavailable. TCGplayer shows Market price. Lowest price is the lowest reported price for that printing.\n\nEach marketplace uses its own currency. Collection values and history use trend or market prices."
 }
 
 /// Compact, currency-labelled statistics; no merging of marketplaces or printings.
@@ -124,7 +144,7 @@ private struct PrintingMarketPricesView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("printing.pricePanel.\(variant.rawValue)")
             } else if manualValue == nil {
@@ -3044,7 +3064,7 @@ private struct BulkOwnershipSheet: View {
                     }
                 } header: {
                     HelpSectionHeader(title: "\(cards.count) \(cards.count == 1 ? "card" : "cards") selected",
-                        message: "Choose the printings to update. Counts show how many selected cards have each printing available. Only verified, unambiguous printings are changed. All available printings also includes special printings. Marking owned preserves existing quantities. A safety backup is saved before changes, and you can undo the edit afterwards.")
+                        message: "Choose which printings to update. Counts show how many selected cards have each printing. All available printings includes special printings.\n\nOnly verified printings are changed. Marking owned keeps existing quantities. A safety backup is saved, and you can undo the edit.")
                 }
                 if loaded {
                     Section {
@@ -4728,9 +4748,6 @@ private struct CatalogRollingAveragesView: View {
                 }
             }
 
-            Text("Rolling averages supplied by TCGdex; they are separate from TallyDex’s locally accumulated daily history.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -5915,7 +5932,7 @@ private struct BinderPlanEditorView: View {
                     }
                     Toggle("Include missing cards", isOn: $includesMissingCards)
                 } header: {
-                    HelpSectionHeader(title: "Plan", message: "To edit a saved plan, touch and hold it and choose Edit. You can change its layout and card order.")
+                    HelpSectionHeader(title: "Plan", message: "Touch and hold a saved plan, then choose Edit.\n\nChange its layout and card order from there.")
                 }
 
                 Section("Appearance") {
@@ -6268,14 +6285,9 @@ struct CollectionView: View {
     private var preferredPriceSource = PricingSettings.defaultSource.rawValue
     @AppStorage(PricingSettings.displayModeKey)
     private var priceDisplayModeRaw = ""
-    @State private var cards: [CatalogCardSearchResult] = []
     @State private var pricesByCardID: [String: [CatalogPriceQuote]] = [:]
-    @State private var isLoadingCards = false
-    @State private var message: String?
     @State private var isCreatingFolder = false
     @State private var editingFolder: CustomCollectionFolder?
-    @State private var isOwnedCardsExpanded = false
-    @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
 
     private var ownedCardIDs: [String] {
         collectionStore.ownedCardIDs.sorted()
@@ -6411,63 +6423,16 @@ struct CollectionView: View {
                 }
 
                 Section {
-                    DisclosureGroup(isExpanded: $isOwnedCardsExpanded) {
-                        if collectionStore.isInitialLoading || isLoadingCards && cards.isEmpty {
-                            ProgressView("Loading your collection…")
-                        } else if ownedCardIDs.isEmpty {
-                            Text("No cards owned yet. Open a set or an All collection to start checking cards off.")
-                                .foregroundStyle(.secondary)
-                        } else if cards.isEmpty {
-                            Label(
-                                message
-                                    ?? collectionStore.loadMessage
-                                    ?? "Your quantities are safe and will appear after the catalog is available.",
-                                systemImage: "externaldrive.badge.exclamationmark"
-                            )
-                            .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(cards) { result in
-                                NavigationLink {
-                                    CatalogCardDetailView(card: result.card, cards: cards.map(\.card))
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        CachedCardImage(card: result.card)
-                                            .frame(width: 52, height: 72)
-                                            .overlay(alignment: .topLeading) {
-                                                if hasNotes(cardID: result.card.id) {
-                                                    Circle()
-                                                        .fill(.orange)
-                                                        .frame(width: 10, height: 10)
-                                                        .overlay(Circle().stroke(.white, lineWidth: 2))
-                                                }
-                                            }
-
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(result.card.name)
-                                                .font(.body.weight(.semibold))
-                                            Text("\(result.setName) · #\(result.card.localID)")
-                                                .font(.caption.monospacedDigit())
-                                                .foregroundStyle(.secondary)
-                                            Text(collectionSummary(cardID: result.card.id))
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        CardCompletionIndicator(
-                                            progress: cardProgress(
-                                                for: result.card,
-                                                variants: variantsByCardID[result.card.id] ?? [],
-                                                catalog: catalogStore, collection: collectionStore
-                                            ),
-                                            size: 30
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    NavigationLink {
+                        OwnedCardsView()
                     } label: {
-                        Label("Owned cards", systemImage: "checkmark.circle")
+                        LabeledContent {
+                            Text(ownedCardIDs.count.formatted()).foregroundStyle(.secondary)
+                        } label: {
+                            Label("Owned cards", systemImage: "checkmark.circle")
+                        }
                     }
+                    .accessibilityIdentifier("collection.owned")
                 }
             }
             .listStyle(.insetGrouped)
@@ -6489,9 +6454,8 @@ struct CollectionView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
-            .task(id: "\(ownedCardIDsKey)|\(isOwnedCardsExpanded)") {
-                if isOwnedCardsExpanded { await loadCards() }
-                else { await loadPrices() }
+            .task(id: ownedCardIDsKey) {
+                await loadPrices()
             }
             .onChange(of: catalogStore.priceDataRevision) { _, _ in
                 Task { await loadPrices() }
@@ -6499,15 +6463,142 @@ struct CollectionView: View {
         }
     }
 
-    private func collectionSummary(cardID: String) -> String {
-        let entries = collectionStore.entries(for: cardID)
-        let total = entries.reduce(0) { $0 + $1.quantity }
-        let variants = entries
-            .sorted { $0.variant.displayName < $1.variant.displayName }
-            .map { "\($0.variant.displayName) ×\($0.quantity)" }
-            .joined(separator: " · ")
-        let copies = total == 1 ? "1 copy" : "\(total) copies"
-        return variants.isEmpty ? copies : "\(copies) · \(variants)"
+    private func loadPrices() async {
+        pricesByCardID = (try? await catalogStore.prices(cardIDs: ownedCardIDs)) ?? [:]
+    }
+}
+
+private struct OwnedCardsView: View {
+    @Environment(CatalogStore.self) private var catalogStore
+    @Environment(CollectionStore.self) private var collectionStore
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var cards: [CatalogCardSearchResult] = []
+    @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
+    @State private var isLoading = true
+    @State private var message: String?
+    @State private var query = ""
+    @State private var filters = CollectionCardFilters(ownership: .owned)
+    @State private var isShowingFilters = false
+    @State private var selectedVariantCard: CatalogCard?
+    @State private var bulkSelection = BulkCardSelection()
+    @State private var retry = 0
+
+    private var ownedCardIDs: [String] { collectionStore.ownedCardIDs.sorted() }
+
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 104, maximum: 150), spacing: 14)]
+    }
+
+    private var filterOptions: CollectionCardFilterOptions {
+        CollectionCardFilterOptions(matches: cards, groups: catalogStore.groups)
+    }
+
+    private var visibleCards: [CatalogCardSearchResult] {
+        let options = filterOptions
+        return cards.filter { result in
+            collectionStore.owns(cardID: result.id)
+                && CatalogCardTextQuery.matches(query, card: result.card, setName: result.setName)
+                && filters.matches(result, seriesID: options.seriesBySetID[result.card.setID], isOwned: true,
+                                   progress: cardProgress(for: result.card, variants: variantsByCardID[result.id] ?? [],
+                                                          catalog: catalogStore, collection: collectionStore))
+        }.sorted(by: filters.sort.precedes)
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                if let message {
+                    Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.secondary)
+                    Button("Try Again") { retry += 1 }
+                }
+                if collectionStore.isInitialLoading || isLoading && cards.isEmpty {
+                    ProgressView("Loading owned cards…")
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                } else if ownedCardIDs.isEmpty {
+                    ContentUnavailableView("No Owned Cards", systemImage: "checkmark.circle",
+                        description: Text("Mark cards as owned in a set or collection."))
+                } else if cards.isEmpty {
+                    ContentUnavailableView("Card Details Unavailable", systemImage: "rectangle.stack.badge.questionmark",
+                        description: Text("Your owned cards and quantities are saved. Try again when the catalogue is available."))
+                } else if visibleCards.isEmpty {
+                    ContentUnavailableView("No Matching Cards", systemImage: "magnifyingglass",
+                        description: Text("Try another search or clear your filters."))
+                    if !query.isEmpty || filters != CollectionCardFilters(ownership: .owned) {
+                        Button("Clear filters", systemImage: "arrow.counterclockwise") {
+                            query = ""
+                            filters = CollectionCardFilters(ownership: .owned)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    Text("\(visibleCards.count) of \(ownedCardIDs.count) owned cards")
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("owned.visibleCount")
+                    LazyVGrid(columns: columns, spacing: 18) {
+                        ForEach(visibleCards) { result in
+                            VStack(alignment: .leading, spacing: 5) {
+                                ZStack(alignment: .topTrailing) {
+                                    NavigationLink {
+                                        CatalogCardDetailView(card: result.card, cards: visibleCards.map(\.card))
+                                    } label: {
+                                        CatalogCardTile(card: result.card, hasNotes: hasNotes(cardID: result.id))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityIdentifier("owned.card.\(result.id)")
+                                    Button { selectedVariantCard = result.card } label: {
+                                        CardCompletionIndicator(progress: cardProgress(
+                                            for: result.card, variants: variantsByCardID[result.id] ?? [],
+                                            catalog: catalogStore, collection: collectionStore
+                                        ))
+                                        .frame(width: 44, height: 44)
+                                    }
+                                    .background(.regularMaterial, in: Circle())
+                                    .offset(x: 7, y: -7)
+                                    .opacity(bulkSelection.active ? 0 : 1)
+                                    .accessibilityLabel("Choose printings for \(result.card.name)")
+                                }
+                                Text(result.setName).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                                Text(collectionSummary(cardID: result.id))
+                                    .font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                            .modifier(BulkSelectableCard(card: result.card, selection: bulkSelection))
+                        }
+                    }
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Owned Cards")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Pokémon and number")
+        .scrollDismissesKeyboard(.interactively)
+        .modifier(BulkCardEditor(cards: visibleCards.map(\.card), selection: bulkSelection))
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { isShowingFilters = true } label: {
+                    Label("Filters", systemImage: filters.activeCount(defaultOwnership: .owned) > 0
+                          ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                }
+                .disabled(cards.isEmpty)
+                .accessibilityIdentifier("owned.filters")
+            }
+        }
+        .sheet(isPresented: $isShowingFilters) {
+            CollectionCardFilterSheet(filters: filters, defaultOwnership: .owned, options: filterOptions,
+                                      showsOwnership: false) { filters = $0 }
+        }
+        .sheet(item: $selectedVariantCard, onDismiss: {
+            Task { variantsByCardID = (try? await catalogStore.variants(cardIDs: ownedCardIDs)) ?? variantsByCardID }
+        }) { card in
+            CatalogVariantPickerView(card: card)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .task(id: "\(ownedCardIDs.joined(separator: "|"))|\(catalogStore.isPreparingSearchIndex)|\(retry)") {
+            await loadCards()
+        }
     }
 
     private func hasNotes(cardID: String) -> Bool {
@@ -6515,27 +6606,28 @@ struct CollectionView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
 
-    private func loadPrices() async {
-        pricesByCardID = (try? await catalogStore.prices(cardIDs: ownedCardIDs)) ?? [:]
+    private func collectionSummary(cardID: String) -> String {
+        collectionStore.entries(for: cardID)
+            .sorted { $0.variant.displayName < $1.variant.displayName }
+            .map { "\($0.variant.displayName) ×\($0.quantity)" }.joined(separator: " · ")
     }
 
     private func loadCards() async {
-        guard !ownedCardIDs.isEmpty else {
-            cards = []
-            pricesByCardID = [:]
-            return
-        }
-        isLoadingCards = true
+        isLoading = true
         message = nil
-        defer { isLoadingCards = false }
+        defer { isLoading = false }
         do {
             let loadedCards = try await catalogStore.searchResults(cardIDs: ownedCardIDs)
+            let variants = try await catalogStore.variants(cardIDs: loadedCards.map(\.id))
+            try Task.checkCancellation()
             cards = loadedCards
-            variantsByCardID = await catalogStore.prepareVariants(for: loadedCards.map(\.card))
-            pricesByCardID = (try? await catalogStore.prices(cardIDs: ownedCardIDs)) ?? [:]
-        } catch {
-            cards = []
-            message = "Your quantities are safe, but their card details couldn’t be loaded."
+            variantsByCardID = variants
+            if loadedCards.count < ownedCardIDs.count {
+                message = "Some owned cards aren’t in the saved catalogue yet. Your quantities are safe."
+            }
+        } catch is CancellationError { return }
+        catch {
+            message = "Owned cards couldn’t be loaded. Please try again."
         }
     }
 }
@@ -7043,24 +7135,29 @@ private struct CollectionCardFilterSheet: View {
     @State private var draft: CollectionCardFilters
     let defaultOwnership: CollectionOwnershipFilter
     let options: CollectionCardFilterOptions
+    let showsOwnership: Bool
     let onApply: (CollectionCardFilters) -> Void
 
     init(filters: CollectionCardFilters, defaultOwnership: CollectionOwnershipFilter,
-         options: CollectionCardFilterOptions, onApply: @escaping (CollectionCardFilters) -> Void) {
+         options: CollectionCardFilterOptions, showsOwnership: Bool = true,
+         onApply: @escaping (CollectionCardFilters) -> Void) {
         _draft = State(initialValue: filters)
         self.defaultOwnership = defaultOwnership
         self.options = options
+        self.showsOwnership = showsOwnership
         self.onApply = onApply
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Show") {
-                    Picker("Ownership", selection: $draft.ownership) {
-                        ForEach(CollectionOwnershipFilter.allCases) { Text($0.title).tag($0) }
+                if showsOwnership {
+                    Section("Show") {
+                        Picker("Ownership", selection: $draft.ownership) {
+                            ForEach(CollectionOwnershipFilter.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 Section {
@@ -7091,7 +7188,7 @@ private struct CollectionCardFilterSheet: View {
                         ForEach(options.releaseYears, id: \.self) { Text(String($0)).tag($0) }
                     }
                 } header: {
-                    HelpSectionHeader(title: "Card Filters", message: "Filters change only this view, not ownership or totals. Type and rarity depend on available card data; choose All to include cards with missing fields.")
+                    HelpSectionHeader(title: "Card Filters", message: "Filters apply to this view only.\n\nType and rarity depend on available card data. Choose All to include cards with missing details.")
                 }
                 .pickerStyle(.navigationLink)
 
@@ -7566,85 +7663,189 @@ struct SettingsView: View {
     @Environment(AccessStore.self) private var accessStore
     @Environment(ArtworkCacheStore.self) private var artworkCacheStore
     @Environment(LocalCollectionSharingController.self) private var localCollectionSharing
+    @State private var searchText = ""
+
+    private func visibleItems(in section: SettingsMenuSection) -> [SettingsMenuItem] {
+        SettingsMenuItem.allCases.filter {
+            $0.section == section && ($0 != .lifetime || accessStore.isEnforced) && $0.matches(searchText)
+        }
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Preferences") {
-                    ForEach(SettingsPreferencePage.allCases) { page in
-                        NavigationLink {
-                            SettingsPreferencesView(page: page)
-                        } label: {
-                            SettingsMenuLabel(title: page.title, detail: page.detail, systemImage: page.systemImage, tint: .blue)
+                ForEach(SettingsMenuSection.allCases) { section in
+                    let items = visibleItems(in: section)
+                    if !items.isEmpty {
+                        Section(section.rawValue) {
+                            ForEach(items) { item in
+                                NavigationLink {
+                                    destination(for: item)
+                                } label: {
+                                    menuLabel(for: item)
+                                }
+                                .accessibilityIdentifier("settings.\(item.rawValue)")
+                            }
                         }
                     }
                 }
-                Section("Collection & Data") {
-                    NavigationLink { CollectionBackupsView() } label: {
-                        SettingsMenuLabel(title: "Collection Backups", detail: "\(collectionStore.backups.count) saved backups", systemImage: "clock.arrow.circlepath", tint: .indigo)
-                    }
-                    NavigationLink { CollectionDataTransferView() } label: {
-                        SettingsMenuLabel(title: "Export & Import", detail: "Move or restore your collection", systemImage: "arrow.up.arrow.down.square", tint: .indigo)
-                    }
-                    NavigationLink { LocalCollectionSharingView() } label: {
-                        SettingsMenuLabel(title: "Collection Manager", detail: localCollectionSharing.isRunning ? "Active on your local network" : "Edit from a computer on the same Wi-Fi", systemImage: "desktopcomputer", tint: .indigo)
-                    }
-                }
-                Section("Storage") {
-                    NavigationLink {
-                        OfflineSetsSettingsView()
-                    } label: {
-                        LabeledContent {
-                            Text("\(artworkCacheStore.pinnedSetIDs.count)")
-                                .foregroundStyle(.secondary)
-                        } label: {
-                            Label("Offline Sets", systemImage: "arrow.down.circle")
-                        }
-                    }
-
-                    NavigationLink {
-                        PriceDataSettingsView()
-                    } label: {
-                        Label("Price Data", systemImage: "chart.xyaxis.line")
-                    }
-
-                    NavigationLink {
-                        ArtworkCacheSettingsView()
-                    } label: {
-                        Label("Artwork Cache", systemImage: "externaldrive")
-                    }
-                }
-                Section("Help & App") {
-                    if accessStore.isEnforced {
-                        NavigationLink { MembershipView() } label: {
-                            Label("Lifetime Access", systemImage: "checkmark.seal")
-                        }
-                    }
-                    NavigationLink { TipJarView() } label: {
-                        Label("Buy Me a Coffee", systemImage: "cup.and.saucer.fill")
-                    }
-                    NavigationLink {
-                        if AppDistributionChannel.current.enablesReleaseFeatures {
-                            ReleaseHistoryView()
-                        } else {
-                            WhatsNewView(release: AppReleaseNotes.current)
-                        }
-                    } label: {
-                        Label("What’s New", systemImage: "sparkles")
-                    }
-                    NavigationLink { CatalogIssueReportingView() } label: {
-                        Label("Missing or Incorrect Card", systemImage: "exclamationmark.bubble")
-                    }
-                    NavigationLink { AdvancedAPISettingsView() } label: {
-                        Label("Advanced", systemImage: "slider.horizontal.3")
-                    }
-                    NavigationLink { AboutTallyDexView() } label: {
-                        Label("About TallyDex", systemImage: "info.circle")
+                if !SettingsMenuSection.allCases.contains(where: { !visibleItems(in: $0).isEmpty }) {
+                    Section {
+                        ContentUnavailableView.search(text: searchText)
                     }
                 }
             }
             .navigationTitle("Settings")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search settings")
+            .scrollDismissesKeyboard(.interactively)
         }
+    }
+
+    @ViewBuilder
+    private func menuLabel(for item: SettingsMenuItem) -> some View {
+        if let page = item.preferencePage {
+            SettingsMenuLabel(title: page.title, detail: page.detail, systemImage: page.systemImage, tint: .blue)
+        } else if item.section == .collection {
+            SettingsMenuLabel(title: item.title, detail: detail(for: item), systemImage: item.systemImage, tint: .indigo)
+        } else if item == .offline {
+            LabeledContent {
+                Text("\(artworkCacheStore.pinnedSetIDs.count)").foregroundStyle(.secondary)
+            } label: {
+                Label(item.title, systemImage: item.systemImage)
+            }
+        } else {
+            Label(item.title, systemImage: item.systemImage)
+        }
+    }
+
+    private func detail(for item: SettingsMenuItem) -> String {
+        switch item {
+        case .backups: "\(collectionStore.backups.count) saved backups"
+        case .transfer: "Move or restore your collection"
+        case .manager: localCollectionSharing.isRunning ? "Active on your local network" : "Edit from a computer on the same Wi-Fi"
+        default: ""
+        }
+    }
+
+    @ViewBuilder
+    private func destination(for item: SettingsMenuItem) -> some View {
+        switch item {
+        case .browsing: SettingsPreferencesView(page: .browsing)
+        case .collection: SettingsPreferencesView(page: .collection)
+        case .prices: SettingsPreferencesView(page: .prices)
+        case .backups: CollectionBackupsView()
+        case .transfer: CollectionDataTransferView()
+        case .manager: LocalCollectionSharingView()
+        case .offline: OfflineSetsSettingsView()
+        case .priceData: PriceDataSettingsView()
+        case .artwork: ArtworkCacheSettingsView()
+        case .lifetime: MembershipView()
+        case .coffee: TipJarView()
+        case .whatsNew:
+            if AppDistributionChannel.current.enablesReleaseFeatures {
+                ReleaseHistoryView()
+            } else {
+                WhatsNewView(release: AppReleaseNotes.current)
+            }
+        case .report: CatalogIssueReportingView()
+        case .advanced: AdvancedAPISettingsView()
+        case .about: AboutTallyDexView()
+        }
+    }
+}
+
+private enum SettingsMenuSection: String, CaseIterable, Identifiable {
+    case preferences = "Preferences"
+    case collection = "Collection & Data"
+    case storage = "Storage"
+    case help = "Help & App"
+    var id: String { rawValue }
+}
+
+private enum SettingsMenuItem: String, CaseIterable, Identifiable {
+    case browsing, collection, prices, backups, transfer, manager, offline, priceData, artwork
+    case lifetime, coffee, whatsNew, report, advanced, about
+    var id: String { rawValue }
+
+    var preferencePage: SettingsPreferencePage? {
+        switch self {
+        case .browsing: .browsing
+        case .collection: .collection
+        case .prices: .prices
+        default: nil
+        }
+    }
+
+    var section: SettingsMenuSection {
+        switch self {
+        case .browsing, .collection, .prices: .preferences
+        case .backups, .transfer, .manager: .collection
+        case .offline, .priceData, .artwork: .storage
+        default: .help
+        }
+    }
+
+    var title: String {
+        if let preferencePage { return preferencePage.title }
+        return switch self {
+        case .backups: "Collection Backups"
+        case .transfer: "Export & Import"
+        case .manager: "Collection Manager"
+        case .offline: "Offline Sets"
+        case .priceData: "Price Data"
+        case .artwork: "Artwork Cache"
+        case .lifetime: "Lifetime Access"
+        case .coffee: "Buy Me a Coffee"
+        case .whatsNew: "What’s New"
+        case .report: "Missing or Incorrect Card"
+        case .advanced: "Advanced"
+        case .about: "About TallyDex"
+        default: ""
+        }
+    }
+
+    var systemImage: String {
+        if let preferencePage { return preferencePage.systemImage }
+        return switch self {
+        case .backups: "clock.arrow.circlepath"
+        case .transfer: "arrow.up.arrow.down.square"
+        case .manager: "desktopcomputer"
+        case .offline: "arrow.down.circle"
+        case .priceData: "chart.xyaxis.line"
+        case .artwork: "externaldrive"
+        case .lifetime: "checkmark.seal"
+        case .coffee: "cup.and.saucer.fill"
+        case .whatsNew: "sparkles"
+        case .report: "exclamationmark.bubble"
+        case .advanced: "slider.horizontal.3"
+        case .about: "info.circle"
+        default: "gearshape"
+        }
+    }
+
+    private var searchTerms: String {
+        switch self {
+        case .browsing: "appearance theme dark light system layout series grouped sets card details expand collapse default view"
+        case .collection: "goals normal master custom secret printings quantities multiple copies tracking"
+        case .prices: "marketplace Cardmarket TCGplayer EUR USD currency value automatic background updates history"
+        case .backups: "saved restore safety recovery"
+        case .transfer: "export import backup CSV PriceCharting text list move restore"
+        case .manager: "browser editor computer Wi-Fi local network pairing"
+        case .offline: "download sets internet available"
+        case .priceData: "history prices retention storage keep remove clear database"
+        case .artwork: "images photos thumbnails cache storage limit download logos symbols"
+        case .lifetime: "purchase unlock trial payment restore access"
+        case .coffee: "tip jar support donate donation purchase"
+        case .whatsNew: "release notes updates changes history"
+        case .report: "report missing incorrect card data artwork issue GitHub"
+        case .advanced: "API TCGdex development server URL connection fallback preview features code catalogue index search"
+        case .about: "version build privacy sync introduction setup copyright credits"
+        }
+    }
+
+    func matches(_ query: String) -> Bool {
+        let content = "\(title) \(searchTerms)"
+        return query.split(whereSeparator: \.isWhitespace).allSatisfy { content.localizedStandardContains(String($0)) }
     }
 }
 
@@ -7737,7 +7938,7 @@ private struct SettingsPreferencesView: View {
                     }
                     .pickerStyle(.navigationLink)
                 } header: {
-                    HelpSectionHeader(title: "Sets", message: "Series First opens a series before its sets. Grouped shows all sets in one list, grouped by series.")
+                    HelpSectionHeader(title: "Sets", message: "Series First opens a series before showing its sets.\n\nGrouped shows all sets in one list, organised by series.")
                 }
 
                 Section("Appearance") {
@@ -7767,7 +7968,7 @@ private struct SettingsPreferencesView: View {
 
                     Toggle("Track multiple copies", isOn: $allowsMultipleCopies)
                 } header: {
-                    HelpSectionHeader(title: "Collection", message: "The default goal applies only to sets you haven’t configured. Track multiple copies records exact quantities for each printing. Turning it off preserves saved quantities.")
+                    HelpSectionHeader(title: "Collection", message: "The default goal applies to sets you haven’t configured yet.\n\nTrack multiple copies saves quantities for each printing. Turning it off keeps your saved quantities.")
                 }
 
                 if CollectionGoal(rawValue: defaultCollectionGoal) == .custom {
@@ -7781,7 +7982,7 @@ private struct SettingsPreferencesView: View {
                         }
                         Toggle("Include cards beyond the main set number", isOn: $defaultCustomIncludesSecretCards)
                     } header: {
-                        HelpSectionHeader(title: "Default Custom Goal", message: "Default printings for newly configured Custom goals. Keep at least one printing selected. Each set can be edited separately.")
+                        HelpSectionHeader(title: "Default Custom Goal", message: "Choose the default printings for new Custom goals. Keep at least one selected.\n\nYou can adjust each set separately.")
                     }
                 }
             }
@@ -7810,7 +8011,7 @@ private struct SettingsPreferencesView: View {
                     }
                     .pickerStyle(.navigationLink)
                 } header: {
-                    HelpSectionHeader(title: "Prices", message: "Show one marketplace or both on cards and sets. Collection totals and rankings use one marketplace: EUR for Cardmarket or USD for TCGplayer. Currencies are never mixed. Prices are supplied by TCGdex.")
+                    HelpSectionHeader(title: "Prices", message: "Show one marketplace or both on cards and sets. Prices come from TCGdex.\n\nCollection values and rankings use your selected marketplace. Cardmarket uses EUR; TCGplayer uses USD. Currencies are never mixed.")
                 }
                 Section {
                     NavigationLink {
@@ -7875,7 +8076,7 @@ private struct CatalogueIndexSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    HelpSectionHeader(title: "Catalogue Speed", message: "Download the search index to find card names, sets, and numbers locally. Full details and artwork download as needed.")
+                    HelpSectionHeader(title: "Catalogue Speed", message: "Download the search index to find names, sets and card numbers locally.\n\nCard details and artwork download as needed.")
                 }
         }
         .navigationTitle("Catalogue Index")
@@ -7954,7 +8155,7 @@ private struct LocalCollectionSharingView: View {
             Section {
                 Toggle("Allow access while app is minimized", isOn: $allowWhileBackgrounded)
             } header: {
-                HelpSectionHeader(title: "Background Access", message: "iOS can suspend background apps. For uninterrupted access, keep TallyDex open. Each new session replaces the pairing code and browser session.")
+                HelpSectionHeader(title: "Background Access", message: "Keep TallyDex open for uninterrupted editing. iOS may pause access when the app is in the background.\n\nStarting a new session replaces the pairing code and disconnects the previous browser session.")
             }
 
             if let message = sharing.statusMessage {
@@ -8136,7 +8337,7 @@ private struct CollectionDataTransferView: View {
                 }
                 .disabled(isPreparing)
             } header: {
-                HelpSectionHeader(title: "Export", message: "A full backup preserves all TallyDex data. PriceCharting CSV includes cards with product IDs learned from an earlier import. For cards without IDs, use the text list. Review matches and quantities on PriceCharting after importing.")
+                HelpSectionHeader(title: "Export", message: "A full backup saves your collection, including quantities, goals, notes, wishlists, binder plans and manual values. Cached market prices and price history are not included.\n\nPriceCharting CSV uses product IDs from an earlier import. For cards without IDs, use the text list. Check matches and quantities after importing into PriceCharting.")
             }
 
             Section {
@@ -8156,7 +8357,7 @@ private struct CollectionDataTransferView: View {
                 }
                 .disabled(isPreparing)
             } header: {
-                HelpSectionHeader(title: "Import", message: "PriceCharting rows are matched by set, number, name, and printing. Uncertain matches are skipped, not guessed.")
+                HelpSectionHeader(title: "Import", message: "PriceCharting imports match cards by set, number, name and printing.\n\nUncertain matches are skipped for you to review.")
             } footer: {
                 Text("Review every import before applying it. A safety backup is saved first.")
             }
@@ -9047,7 +9248,7 @@ private struct AdvancedAPISettingsView: View {
                 LabeledContent("5", value: "Pokémon official image host")
                 LabeledContent("6", value: "Placeholder")
             } header: {
-                HelpSectionHeader(title: "Card Image Fallback Order", message: "Only exact card IDs and collector numbers are used. Bundled images are thumbnails, not high-resolution artwork. Cached and offline artwork remain available without a connection.")
+                HelpSectionHeader(title: "Card Image Fallback Order", message: "Images are matched by exact card ID and collector number. Bundled images are small thumbnails.\n\nCached artwork and offline downloads remain available without a connection.")
             }
             Section {
                 NavigationLink {
@@ -9069,10 +9270,8 @@ private struct AdvancedAPISettingsView: View {
         .onAppear { draftURL = savedURL }
         .onChange(of: draftURL) { _, _ in checkResult = nil; validationMessage = nil }
         .onChange(of: customEnabled) { _, _ in Task { await catalogStore.refresh() } }
-        .alert("TCGdex Development API", isPresented: $isShowingAPIInfo) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("This endpoint runs the development version of TCGdex for faster card and catalogue updates. The official TCGdex API remains the automatic fallback.")
+        .sheet(isPresented: $isShowingAPIInfo) {
+            HelpInformationView(title: "TCGdex Development API", message: "Uses the development version of TCGdex for faster card and catalogue updates.\n\nThe official API is used automatically if this service is unavailable.")
         }
     }
 
@@ -9152,7 +9351,7 @@ private struct PriceDataSettingsView: View {
                     value: statistics.map { size($0.databaseByteCount) } ?? "—"
                 )
             } header: {
-                HelpSectionHeader(title: "Usage", message: "The catalogue database includes card data and the search index. Artwork storage is shown separately in Artwork Cache.")
+                HelpSectionHeader(title: "Usage", message: "The catalogue database stores card details, prices, history and the search index.\n\nImage storage is shown separately in Artwork Cache.")
             }
 
             Section {
@@ -9445,7 +9644,7 @@ private struct ArtworkCacheSettingsView: View {
                     }
                 }
             } header: {
-                HelpSectionHeader(title: "Automatic Cache", message: "Images are resized and compressed on this iPhone. Least recently used images are removed at the limit. Offline sets and bundled images are stored separately and are never removed here.")
+                HelpSectionHeader(title: "Automatic Cache", message: "Images are compressed on this iPhone. Older cached images are removed when the limit is reached.\n\nOffline downloads and bundled images are kept separately.")
             } footer: {
                 Text("Lowering the limit removes older cached images immediately. Offline downloads are kept.")
             }
@@ -9541,7 +9740,6 @@ private struct AboutTallyDexView: View {
 
             Section("Privacy & Sync") {
                 LabeledContent("Collection storage", value: "On this iPhone")
-                LabeledContent("Analytics", value: "None")
                 LabeledContent("iCloud sync", value: "Off")
             }
 

@@ -496,7 +496,7 @@ struct TipJarView: View {
     var body: some View {
         Form {
             Section {
-                Text("Enjoying TallyDex? You can buy me a coffee. Tips are optional, can be repeated, and do not unlock app features.")
+                Text("Enjoying TallyDex? You can buy me a coffee.")
             }
 
             Section("Choose a coffee") {

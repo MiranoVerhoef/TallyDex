@@ -215,7 +215,8 @@ final class ReliabilityUITests: XCTestCase {
                                  "Ownership controls belong above the price panel, not beside its values")
         capturePurchaseScreen("Native average and low prices for both marketplaces")
         tap(app.buttons["About Your collection"])
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "not filter to Dutch sellers")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Each marketplace uses its own currency")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Dutch sellers")).firstMatch.exists)
         tap(app.buttons["Done"])
         back()
         settings()
@@ -362,6 +363,38 @@ final class ReliabilityUITests: XCTestCase {
         detail("sv05-ui-3")
         back()
         XCTAssertTrue(app.navigationBars["Wishlist"].waitForExistence(timeout: 10))
+    }
+
+    func testOwnedCardsOpensSearchableGridWithoutChangingOwnership() {
+        launch("filters")
+        settings()
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
+        tap(app.tabBars.buttons["Collection"])
+        tap(app.buttons["collection.owned"])
+        XCTAssertTrue(app.navigationBars["Owned Cards"].waitForExistence(timeout: 10))
+        // The shared bulk-selection wrapper supplies the tile's accessible ID.
+        let card = app.descendants(matching: .any)["bulk.target.swsh8-16"].firstMatch
+        capturePurchaseScreen("Owned Cards grid")
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        tap(app.searchFields.firstMatch)
+        app.searchFields.firstMatch.typeText("Phantump 16\n")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        tap(card)
+        XCTAssertTrue(detail("swsh8-16").waitForExistence(timeout: 10))
+        back()
+        XCTAssertTrue(app.navigationBars["Owned Cards"].waitForExistence(timeout: 5))
+        // iOS keeps native search active when returning from a result, hiding
+        // navigation-bar tools until the user closes search.
+        let closeSearch = app.navigationBars["Owned Cards"].buttons["Close"]
+        if closeSearch.exists { tap(closeSearch) }
+        capturePurchaseScreen("Owned Cards after returning from details")
+        tap(app.buttons["owned.filters"])
+        XCTAssertTrue(app.navigationBars["Filters"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.segmentedControls.buttons["Missing"].exists)
+        tap(app.buttons["collection.filters.cancel"])
+        back()
+        settings()
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
     }
 
     func testCollectionHomeOrdersValueWishlistThenPlanner() {
@@ -890,12 +923,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -911,12 +944,12 @@ final class ReliabilityUITests: XCTestCase {
         turnOn("setup.prices.background")
         XCTAssertEqual(background.value as? String, "1")
         tap(app.buttons["About background price updates"])
-        XCTAssertTrue(app.alerts["Background price updates"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.alerts.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "No notification or location permission is needed")).firstMatch.exists)
-        tap(app.alerts.buttons["OK"])
+        XCTAssertTrue(app.scrollViews["help.content"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Only card IDs are requested")).firstMatch.exists)
+        tap(app.buttons["Done"])
         capturePurchaseScreen("Optional background price updates in setup")
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
 
@@ -937,9 +970,9 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertFalse(background.isEnabled)
         turnOn("prices.automatic")
         tap(app.buttons["About automatic price updates"])
-        XCTAssertTrue(app.alerts["Automatic price updates"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.alerts.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "collection file, notes and photos are not uploaded")).firstMatch.exists)
-        tap(app.alerts.buttons["OK"])
+        XCTAssertTrue(app.scrollViews["help.content"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "collection file, notes and photos are not uploaded")).firstMatch.exists)
+        tap(app.buttons["Done"])
         capturePurchaseScreen("Automatic price updates settings")
         app.terminate()
         app.launch()
@@ -955,10 +988,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -968,10 +1001,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.57"])
+        expectState(["intro=true", "seen=0.9.58"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -1022,9 +1055,25 @@ final class ReliabilityUITests: XCTestCase {
         )
         XCTAssertEqual(XCTWaiter.wait(for: [loadedTips], timeout: 15), .completed)
         capturePurchaseScreen("Coffee-tips-review")
-        XCTAssertTrue(app.staticTexts.matching(
+        XCTAssertTrue(app.staticTexts["Enjoying TallyDex? You can buy me a coffee."].exists)
+        XCTAssertFalse(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Tips are optional")
         ).firstMatch.exists)
+    }
+
+    func testSettingsSearchFindsNestedOptionsAndKeepsNavigationWorking() {
+        launch("filters")
+        settings()
+        app.swipeDown()
+        let search = app.searchFields["Search settings"]
+        tap(search)
+        search.typeText("multiple copies")
+        XCTAssertTrue(button("Collection Preferences").waitForExistence(timeout: 5))
+        XCTAssertFalse(button("Prices & Currency").exists)
+        tap(button("Collection Preferences"))
+        XCTAssertTrue(app.switches["Track multiple copies"].waitForExistence(timeout: 5))
+        back()
+        expectState(["owned=1", "normal=7;stamp=2", "backups=2"])
     }
 
     func testSettingsHelpAndActiveMarketplaceOptionsRemainAvailable() {

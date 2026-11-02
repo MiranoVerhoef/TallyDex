@@ -10,7 +10,7 @@ enum AutomaticPriceUpdateSettings {
     static let lastCheckKey = "pricing.automaticLastCheck"
     static let retryAfterKey = "pricing.automaticRetryAfter"
     static let taskIdentifier = "com.miranoverhoef.TallyDex.prices.refresh"
-    static let explanation = "Updates prices for owned cards first, then cards in My Sets. Background updates let iOS check while TallyDex is closed, using internet data and some battery. Only card IDs are requested from your configured TCGdex service. Your collection file, notes and photos are not uploaded. iOS chooses when to run and may pause updates in Low Power Mode or after you force-quit. No notification or location permission is needed."
+    static let explanation = "Prices update for owned cards first, then My Sets. Background updates let iOS check while TallyDex is closed, using internet data and battery.\n\nOnly card IDs are requested from TCGdex. Your collection file, notes and photos are not uploaded.\n\niOS chooses when updates run and may pause them in Low Power Mode or after you force-quit."
 }
 
 struct AutomaticPriceTarget: Equatable, Sendable {
@@ -183,9 +183,9 @@ struct AutomaticPriceUpdatesSettingsView: View {
         }
         .navigationTitle("Automatic Updates")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Automatic price updates", isPresented: $showsExplanation) {
-            Button("OK", role: .cancel) { }
-        } message: { Text(AutomaticPriceUpdateSettings.explanation) }
+        .sheet(isPresented: $showsExplanation) {
+            HelpInformationView(title: "Automatic price updates", message: AutomaticPriceUpdateSettings.explanation)
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { systemStatus = UIApplication.shared.backgroundRefreshStatus }
         }

@@ -44,7 +44,7 @@ struct PreviewFeaturesSettingsView: View {
                             .accessibilityIdentifier("preview.message")
                     }
                 } header: {
-                    HelpSectionHeader(title: "Preview Access", message: "Experimental features are enabled only on this device. Preview codes don’t unlock paid access or change your collection.")
+                    HelpSectionHeader(title: "Preview Access", message: "Experimental features are enabled on this device only.\n\nPreview codes are separate from Lifetime Access.")
                 }
                 if unlocked {
                     Section {
