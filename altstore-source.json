@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.59",
+          "buildVersion": "95",
+          "date": "2026-11-03",
+          "localizedDescription": "Improves camera matching with ranked results, match scores, artwork comparison and easier positioning inside the guide.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.59/TallyDex-v0.9.59.ipa",
+          "size": 30614187,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.58",
           "buildVersion": "94",
           "date": "2026-11-02",

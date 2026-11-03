@@ -26,3 +26,9 @@ The user authorised both builds, hidden, on 2 November 2026: release the text/UI
 ## Verification
 
 Test clean front images, reused artwork, unreadable numbers, non-card backgrounds, two-card scenes, portrait/landscape orientation, different distances, corner positions, capture stability and crop alignment. Simulator/image replay can test recognition; actual camera positioning and capture timing also require a physical iPhone. The user selected hidden verification for both builds.
+
+## Implementation in 0.9.59
+
+The cleanup shipped separately as 0.9.58 (94). The camera pass is implemented as 0.9.59 (95): regional OCR, ranked choices with match scores, bounded artwork comparison, guide-coordinate mapping and card-front checks before automatic capture. A reproducible 336-card / 21-set artwork replay and 28 off-centre scenes exercise the shared recognition and crop code. See [camera-0.9.59.md](camera-0.9.59.md) for measured results, final verification and limitations.
+
+This pass improves the existing Vision pipeline. It does not train a custom detector or upload scan photos. The supplied ScanLab archive was unavailable at its earlier path. Reviewed real-camera training, physical-device capture timing, glare/sleeves and broader multiple-card/orientation checks remain follow-up work. The simulated benchmark must not be presented as universal real-camera accuracy.

@@ -57,12 +57,23 @@ apps can use this source URL:
 https://raw.githubusercontent.com/MiranoVerhoef/TallyDex/main/altstore-source.json
 ```
 
-## Automatic price updates
+## Camera matching
+
+Version 0.9.59 improves on-device camera matching with ranked choices and match
+scores, separate title/collector-number reads, and artwork comparison for similar
+matches. The blue guide is a focus area: cards need not fill its borders. Photos
+are processed on device; reference artwork downloads use the existing cache.
+Match scores are similarity indicators, not calibrated probabilities. See the
+[camera benchmark and verification notes](docs/camera-0.9.59.md).
+
+## Collection and Settings browsing
 
 Version 0.9.58 adds a searchable Owned Cards grid and pull-down Settings search.
 Info panels use shorter paragraphs, and price panels match Market averages.
 Full collection backups include manual values; cached market quotes and price
 history remain local catalogue data and are not included in those exports.
+
+## Prices and automatic updates
 
 Version 0.9.57 refines the panel with full price labels, inline currencies and
 right-aligned amounts. Version 0.9.56 adds a compact marketplace comparison
@@ -498,8 +509,8 @@ Completed in v0.9.10:
   to hide/show Details and Market actions, and paired-browser import/export
   with preview and rollback protection.
 - Binder editing now offers six background colors, preserved in backups and imports.
-- Make the camera guide a loose scan focus area so a card need not line up exactly
-  with its border; verify how candidate selection works before changing capture.
+- The camera guide is a loose scan focus area in v0.9.59; detected corners define
+  the crop, and ambiguous matches are ranked for the user to choose.
 - Set the intended one-time lifetime unlock price to €9.99. The local StoreKit
   configuration can test this now; the real price still needs App Store Connect.
 
@@ -611,14 +622,14 @@ Save Image to Photos converts artwork to PNG and uses a queue-safe PhotoKit
 callback, with duplicate save taps disabled while a save is in progress.
 
 The Collection tab now calls custom folders **Collections**, offers ten selectable
-icons, and opens with Owned cards collapsed. Collection icons are included in
+icons, and opens Owned Cards as a separate searchable grid. Collection icons are included in
 exports and rollback backups; older backups still import with a default icon.
 Progress circles follow the same set goal in Sets, Search, and Collections, so one
 of two required printings shows a half circle. An orange dot marks cards with notes,
 including after restarting the app. SM95 and SWSH186 retain TCGdex's Normal entry
 alongside the existing stamped-printing choices; saved ownership is preserved.
 
-**Settings → Catalogue Speed → Pre-index Complete Catalogue** refreshes the full
+**Settings → Advanced → Catalogue Index → Pre-index Complete Catalogue** refreshes the full
 lightweight search index. Detailed card records and images continue to load as
 needed. **Collection Manager → Allow access while app is minimized** is off by default.
 When enabled, the server remains available while iOS permits background execution;

@@ -9792,12 +9792,6 @@ enum CardScannerCaptureMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum CardScanMatchPolicy {
-    static func requiresRescan(candidateIDs: [String]) -> Bool {
-        Set(candidateIDs).count > 1
-    }
-}
-
 struct CardScannerView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
@@ -9810,7 +9804,7 @@ struct CardScannerView: View {
     @State private var scannedImage: UIImage?
     @State private var recognizedLines: [String] = []
     @State private var results: [CatalogCardSearchResult] = []
-    @State private var scanHasAmbiguousMatches = false
+    @State private var matchScores: [String: Int] = [:]
     @State private var variantsByCardID: [String: Set<CatalogVariantKind>] = [:]
     @State private var updatingCardIDs: Set<String> = []
     @State private var selectedVariantCard: CatalogCard?
@@ -9828,6 +9822,14 @@ struct CardScannerView: View {
         CardScannerCaptureMode.resolve(captureMode)
     }
 
+    private var isScannerUIFixture: Bool {
+        #if DEBUG
+        ReliabilityUITestFixture.current != nil && ProcessInfo.processInfo.arguments.contains("-CameraMatchesFixture")
+        #else
+        false
+        #endif
+    }
+
     private var cameraPrompt: String {
         if isScanning { return scanStatus }
         if resolvedCaptureMode == .manual { return "Place one card inside the guide" }
@@ -9837,7 +9839,9 @@ struct CardScannerView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        let resultSnapshot = results
+        let scoreSnapshot = matchScores
+        return NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
 
@@ -9878,6 +9882,12 @@ struct CardScannerView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 12)
 
+                    #if DEBUG
+                    if isScannerUIFixture {
+                        Button("Preview scan matches") { Task { await prepareScannerUIFixture() } }
+                            .accessibilityIdentifier("camera.fixture.matches")
+                    }
+                    #endif
                     Spacer()
 
                     cameraControls
@@ -9889,6 +9899,9 @@ struct CardScannerView: View {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 isVisible = true
+                #if DEBUG
+                if isScannerUIFixture { return }
+                #endif
                 camera.setAutomaticScanEnabled(resolvedCaptureMode == .automatic)
                 if !isShowingResults && photoToAlign == nil && !isScanning { camera.start() }
             }
@@ -9897,7 +9910,7 @@ struct CardScannerView: View {
                 camera.stop()
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active && isVisible && !isShowingResults && photoToAlign == nil && !isScanning {
+                if !isScannerUIFixture && phase == .active && isVisible && !isShowingResults && photoToAlign == nil && !isScanning {
                     camera.start()
                 } else {
                     camera.stop()
@@ -9915,7 +9928,7 @@ struct CardScannerView: View {
             }
         }
         .sheet(isPresented: $isShowingResults, onDismiss: resetScanner) {
-            scanResultsView
+            scanResultsView(results: resultSnapshot, matchScores: scoreSnapshot)
         }
         .fullScreenCover(item: $photoToAlign, onDismiss: finishPhotoAlignment) { selection in
             CardPhotoAlignmentView(image: selection.image) { alignedImage in
@@ -9955,6 +9968,25 @@ struct CardScannerView: View {
             Text(scanError ?? "")
         }
     }
+
+    #if DEBUG
+    private func prepareScannerUIFixture() async {
+        await catalogStore.preindexCompleteCatalog()
+        guard let candidates = try? await catalogStore.cards(matchingName: "Phantump") else { return }
+        print("Scanner UI fixture candidates: \(candidates.count)")
+        let references = candidates.map {
+            CardScanReference(id: $0.id, name: $0.card.name, localID: $0.card.localID,
+                setID: $0.card.setID, setName: $0.setName, officialCount: $0.card.setID == "swsh8" ? 264 : 100,
+                codes: [$0.card.setID])
+        }
+        let ranked = CardScanRanking.rank(references, lines: ["BASIC Phantump HP 60", "16/264"])
+        let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+        matchScores = Dictionary(uniqueKeysWithValues: ranked.map { ($0.id, $0.percentage) })
+        results = ranked.compactMap { byID[$0.id] }
+        print("Scanner UI fixture results: \(results.count)")
+        isShowingResults = true
+    }
+    #endif
 
     private func finishPhotoAlignment() {
         if let image = alignedPhotoToScan {
@@ -10051,6 +10083,21 @@ struct CardScannerView: View {
                 .position(x: geometry.size.width / 2, y: centerY)
                 .allowsHitTesting(false)
             }
+            Color.clear
+                .allowsHitTesting(false)
+                .onAppear {
+                    camera.setGuide(CardScanGuide(viewport: geometry.size,
+                        rectangle: CGRect(x: (geometry.size.width - guideWidth) / 2,
+                                          y: centerY - guideHeight / 2, width: guideWidth, height: guideHeight)))
+                }
+                .onChange(of: geometry.size) { _, size in
+                    let available = max(100, size.height - 270)
+                    let width = min(300, size.width - 72, available * 245 / 337)
+                    let height = width * 337 / 245
+                    camera.setGuide(CardScanGuide(viewport: size,
+                        rectangle: CGRect(x: (size.width - width) / 2, y: 60 + available / 2 - height / 2,
+                                          width: width, height: height)))
+                }
         }
         .ignoresSafeArea()
     }
@@ -10145,24 +10192,18 @@ struct CardScannerView: View {
         }
     }
 
-    private var scanResultsView: some View {
+    private func scanResultsView(results: [CatalogCardSearchResult], matchScores: [String: Int]) -> some View {
         NavigationStack {
             List {
                 if results.isEmpty {
                     ContentUnavailableView(
-                        scanHasAmbiguousMatches ? "More Than One Match" : "No Card Found",
+                        "No Card Found",
                         systemImage: "rectangle.and.text.magnifyingglass",
-                        description: Text(scanHasAmbiguousMatches
-                            ? "TallyDex couldn't identify one exact card. Scan it again with the card name and number clearly visible."
-                            : "Try again in brighter, even light with the complete card inside the guide.")
+                        description: Text("Try again in brighter, even light with the complete card inside the guide.")
                     )
                     .listRowBackground(Color.clear)
-                    if scanHasAmbiguousMatches {
-                        Button("Scan Again") { isShowingResults = false }
-                            .frame(maxWidth: .infinity)
-                    }
                 } else {
-                    Section("Card found") {
+                    Section {
                         ForEach(results) { result in
                             HStack(spacing: 10) {
                                 NavigationLink {
@@ -10179,6 +10220,12 @@ struct CardScannerView: View {
                                             Text("\(result.setName) · #\(result.card.localID)")
                                                 .font(.subheadline)
                                                 .foregroundStyle(.secondary)
+                                            if let score = matchScores[result.id] {
+                                                Text("\(score)% match")
+                                                    .font(.caption.weight(.semibold).monospacedDigit())
+                                                    .foregroundStyle(.tint)
+                                                    .accessibilityIdentifier("camera.match.\(result.id)")
+                                            }
                                         }
                                         Spacer(minLength: 8)
                                     }
@@ -10222,6 +10269,9 @@ struct CardScannerView: View {
                                 .accessibilityHint("Double-tap to toggle ownership. Touch and hold to choose printings")
                             }
                         }
+                    } header: {
+                        HelpSectionHeader(title: results.count == 1 ? "Best match" : "Possible matches",
+                            message: "Matches use card names, collector numbers and set details. Similar matches can also be compared by artwork. Choose the card that matches yours.\n\nPercentages show match strength, not a guaranteed probability. If none looks right, scan again.")
                     }
                 }
 
@@ -10317,7 +10367,7 @@ struct CardScannerView: View {
                 scanError = "The camera couldn’t capture that photo. Please try again."
                 return
             }
-            scan(image)
+            scan(image, guide: camera.captureGuide)
         }
     }
 
@@ -10328,12 +10378,12 @@ struct CardScannerView: View {
         camera.rearmAutomaticCapture()
     }
 
-    private func scan(_ image: UIImage) {
+    private func scan(_ image: UIImage, guide: CardScanGuide? = nil) {
         camera.stop()
         scannedImage = image
         recognizedLines = []
         results = []
-        scanHasAmbiguousMatches = false
+        matchScores = [:]
         scanError = nil
         detectedCardCorners = nil
         scanStatus = "Finding card…"
@@ -10342,31 +10392,14 @@ struct CardScannerView: View {
         Task {
             defer { isScanning = false }
             do {
-                let detection = await CardRectangleDetector.detect(in: image)
+                let detection = await CardRectangleDetector.detect(in: image, guide: guide)
                 detectedCardCorners = detection.corners
                 scanStatus = detection.corners == nil ? "Reading card…" : "Card found — matching…"
                 scanStartedAt = Date()
-                let lines: [String]
-                if detection.corners != nil {
-                    async let fullCaptureLines = CardTextRecognizer.recognize(image)
-                    async let correctedCardLines = CardTextRecognizer.recognize(detection.cardImage)
-                    let (fullLines, correctedLines) = try await (fullCaptureLines, correctedCardLines)
-                    let combined = fullLines + correctedLines
-                    lines = combined.reduce(into: []) { unique, line in
-                        if !unique.contains(line) { unique.append(line) }
-                    }
-                } else {
-                    lines = try await CardTextRecognizer.recognize(detection.cardImage)
-                }
+                let lines = try await CardTextRecognizer.recognize(detection.cardImage)
                 recognizedLines = lines
-                let matches = try await searchRecognizedText(lines)
-                // Never present several OCR guesses as if the camera identified
-                // the card. Ask for another scan instead of risking ownership of
-                // the wrong printing or set.
-                scanHasAmbiguousMatches = CardScanMatchPolicy.requiresRescan(
-                    candidateIDs: matches.map(\.card.id)
-                )
-                results = scanHasAmbiguousMatches ? [] : Array(matches.prefix(1))
+                let matches = try await searchRecognizedText(lines, image: detection.cardImage)
+                results = matches
                 // Keep the edge and scan animation visible long enough to make
                 // the detection step understandable instead of flashing by.
                 try? await Task.sleep(nanoseconds: 650_000_000)
@@ -10378,56 +10411,62 @@ struct CardScannerView: View {
         }
     }
 
-    private func searchRecognizedText(_ lines: [String]) async throws -> [CatalogCardSearchResult] {
-        let recognizedNames = CardTextRecognizer.nameCandidates(in: lines)
+    private func searchRecognizedText(_ lines: [String], image: UIImage) async throws -> [CatalogCardSearchResult] {
+        var candidates: [String: CatalogCardSearchResult] = [:]
+        func include(_ matches: [CatalogCardSearchResult]) {
+            for match in matches { candidates[match.id] = match }
+        }
         // A set mark plus collector number is more specific than 022/086 by
         // itself: multiple expansions can share the same printed denominator.
-        for identifier in CardTextRecognizer.setAndCollectorCandidates(in: lines) {
-            let matches = try await catalogStore.searchCards(query: identifier)
-            let nameChecked = matches.filter { result in
-                CardTextRecognizer.nameLooksLikeCard(result.card.name, candidates: recognizedNames)
-            }
-            if !nameChecked.isEmpty { return Array(nameChecked.prefix(20)) }
-            if recognizedNames.isEmpty, !matches.isEmpty { return Array(matches.prefix(20)) }
+        for identifier in CardTextRecognizer.setAndCollectorCandidates(in: lines).prefix(6) {
+            include(try await catalogStore.searchCards(query: identifier))
         }
-
         if let collectorNumber = CardTextRecognizer.collectorNumber(in: lines) {
-            let exact = try await catalogStore.searchCards(query: collectorNumber)
-            let nameChecked = exact.filter { result in
-                CardTextRecognizer.nameLooksLikeCard(result.card.name, candidates: recognizedNames)
-            }
-            if !nameChecked.isEmpty { return nameChecked }
-            if recognizedNames.isEmpty, !exact.isEmpty { return exact }
+            include(try await catalogStore.searchCards(query: collectorNumber))
         }
-
-        for candidate in CardTextRecognizer.nameCandidates(in: lines).prefix(8) {
-            let matches = try await catalogStore.searchCards(query: candidate)
-            if !matches.isEmpty { return Array(matches.prefix(20)) }
+        for number in CardScanRanking.numbers(in: lines).filter({ $0.contains(where: \.isLetter) }).prefix(4) {
+            include(try await catalogStore.searchCards(query: number))
         }
-
-        // OCR frequently reads a distinctive multi-word title with one or two
-        // damaged words (for example “Pikachu utth Grey Fat Hat”). Search the
-        // complete local name index by the most trustworthy leading name token,
-        // then rank the results against the entire recognized title. This stays
-        // universal and does not hard-code an individual promotional card.
-        for query in CardTextRecognizer.fallbackNameQueries(in: lines) {
-            let candidates = try await catalogStore.cards(matchingName: query)
-            let ranked = candidates.compactMap { result -> (CatalogCardSearchResult, Double)? in
-                let score = CardTextRecognizer.nameMatchScore(
-                    result.card.name,
-                    candidates: recognizedNames
-                )
-                return score >= 0.72 ? (result, score) : nil
-            }
-            .sorted { left, right in
-                if left.1 != right.1 { return left.1 > right.1 }
-                return left.0.card.name.localizedCaseInsensitiveCompare(right.0.card.name) == .orderedAscending
-            }
-            guard let bestScore = ranked.first?.1 else { continue }
-            let credible = ranked.prefix { bestScore - $0.1 <= 0.06 }.map(\.0)
-            if !credible.isEmpty { return Array(credible.prefix(20)) }
+        for candidate in CardTextRecognizer.nameCandidates(in: lines).prefix(5) {
+            include(try await catalogStore.searchCards(query: candidate))
         }
-        return []
+        for query in CardTextRecognizer.fallbackNameQueries(in: lines).prefix(3) {
+            include(try await catalogStore.cards(matchingName: query))
+        }
+        if CardScanRanking.numbers(in: lines).isEmpty && lines.contains(where: { $0.uppercased().hasPrefix("ENERGY") }) {
+            include(try await catalogStore.cards(matchingName: "Energy"))
+        }
+        let sets = Dictionary(catalogStore.groups.flatMap(\.sets).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let references = candidates.values.map { result in
+            CardScanReference(id: result.id, name: result.card.name, localID: result.card.localID,
+                setID: result.card.setID, setName: result.setName,
+                officialCount: sets[result.card.setID]?.officialCardCount ?? 0,
+                codes: [result.card.setID, sets[result.card.setID]?.abbreviation].compactMap { $0 },
+                releaseYear: result.setReleaseDate.flatMap { Int($0.prefix(4)) })
+        }
+        var ranked = await Task.detached(priority: .userInitiated) {
+            CardScanRanking.rank(references, lines: lines, limit: 16)
+        }.value
+        if CardScanVisualComparison.isUseful(ranked), let queryImage = image.cgImage {
+            scanStatus = "Comparing artwork…"
+            var images: [(id: String, image: CGImage)] = []
+            for match in ranked.prefix(16) {
+                try Task.checkCancellation()
+                guard let card = candidates[match.id]?.card,
+                      let data = try? await CatalogArtworkCache.shared.bestAvailableData(for: card.thumbnailArtworkReferences),
+                      let source = CGImageSourceCreateWithData(data as CFData, nil),
+                      let reference = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
+                images.append((match.id, reference))
+            }
+            let comparisonImages = images
+            let initialMatches = ranked
+            ranked = (try? await Task.detached(priority: .userInitiated) {
+                try CardScanVisualComparison.rerank(initialMatches, query: queryImage, references: comparisonImages)
+            }.value) ?? ranked
+        }
+        ranked = Array(ranked.prefix(5))
+        matchScores = Dictionary(uniqueKeysWithValues: ranked.map { ($0.id, $0.percentage) })
+        return ranked.compactMap { candidates[$0.id] }
     }
 
     private func resetScanner() {
@@ -10436,12 +10475,12 @@ struct CardScannerView: View {
         scanStatus = "Finding card…"
         recognizedLines = []
         results = []
-        scanHasAmbiguousMatches = false
+        matchScores = [:]
         variantsByCardID = [:]
         updatingCardIDs = []
         selectedVariantCard = nil
         collectionMessage = nil
-        if scanError == nil {
+        if scanError == nil && !isScannerUIFixture {
             camera.rearmAutomaticCapture()
             camera.start()
         }
@@ -10595,187 +10634,15 @@ private struct CardPhotoAlignmentView: View {
     }
 }
 
-enum CardTextRecognizer {
+extension CardTextRecognizer {
     static func recognize(_ image: UIImage) async throws -> [String] {
         guard let cgImage = image.cgImage else { return [] }
         let orientation = CGImagePropertyOrientation(image.imageOrientation)
         return try await Task.detached(priority: .userInitiated) {
-            let request = VNRecognizeTextRequest()
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            request.recognitionLanguages = ["en-US"]
-            try VNImageRequestHandler(cgImage: cgImage, orientation: orientation).perform([request])
-            return (request.results ?? [])
-                .compactMap { $0.topCandidates(1).first?.string }
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+            try CardScanOCR.recognize(cgImage, orientation: orientation)
         }.value
     }
 
-    static func collectorNumber(in lines: [String]) -> String? {
-        let joined = lines.joined(separator: " ")
-            .uppercased()
-            .replacingOccurrences(of: "O", with: "0")
-        guard let match = joined.range(of: #"\b\d{1,3}\s*/\s*\d{1,3}\b"#, options: .regularExpression) else {
-            return nil
-        }
-        return String(joined[match]).replacingOccurrences(of: " ", with: "")
-    }
-
-    static func setAndCollectorCandidates(in lines: [String]) -> [String] {
-        let pattern = #"\b([A-Z][A-Z0-9.]{1,7})\s+(?:EN\s+|US\s+)?(\d{1,3})\b"#
-        guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let adjacentPairs = zip(lines, lines.dropFirst()).map { "\($0.0) \($0.1)" }
-        let segments = (lines + adjacentPairs)
-            .sorted { left, right in
-                (left.contains("/") ? 0 : 1) < (right.contains("/") ? 0 : 1)
-            }
-        var candidates: [String] = []
-        for segment in segments {
-            let text = segment.uppercased()
-                .replacingOccurrences(of: #"[^A-Z0-9.]+"#, with: " ", options: .regularExpression)
-            let range = NSRange(text.startIndex..<text.endIndex, in: text)
-            for match in expression.matches(in: text, range: range) {
-                guard let codeRange = Range(match.range(at: 1), in: text),
-                      let numberRange = Range(match.range(at: 2), in: text) else { continue }
-                let scannedCode = String(text[codeRange])
-                let number = String(text[numberRange])
-                // Set marks often print the language directly beside the code, such
-                // as "SVE EN". Vision can collapse that to "SVEEN".
-                var possibleCodes = [scannedCode]
-                if scannedCode.count > 4,
-                   scannedCode.hasSuffix("EN") || scannedCode.hasSuffix("US") {
-                    possibleCodes.append(String(scannedCode.dropLast(2)))
-                } else if scannedCode.count == 4 {
-                    // On tiny set marks Vision can turn the adjacent EN language
-                    // mark into one arbitrary letter (for example CRI EN → CRIM).
-                    possibleCodes.append(String(scannedCode.dropLast()))
-                }
-                for code in possibleCodes where code.filter(\.isLetter).count >= 2 {
-                    guard !["BASIC", "STAGE", "TRAINER", "ENERGY", "POKEMON", "ILLUS"].contains(code) else {
-                        continue
-                    }
-                    let candidate = "\(code) \(number)"
-                    if !candidates.contains(candidate) { candidates.append(candidate) }
-                }
-            }
-        }
-        return candidates
-    }
-
-    static func nameCandidates(in lines: [String]) -> [String] {
-        let ignored = [
-            "basic", "stage", "trainer", "supporter", "energy", "pokemon",
-            "weakness", "resistance", "retreat", "illus", "hp",
-        ]
-        return lines.compactMap { line in
-            var candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            candidate = candidate.replacingOccurrences(
-                of: #"^(?:BASIC|STAGE\s*\d+)\s+"#,
-                with: "",
-                options: [.regularExpression, .caseInsensitive]
-            )
-            candidate = candidate.replacingOccurrences(
-                of: #"\s+HP\s*\d+.*$"#,
-                with: "",
-                options: [.regularExpression, .caseInsensitive]
-            )
-            candidate = candidate.replacingOccurrences(
-                of: #"\s+[-–—•·]?\s*(?:HP\s*)?\d{2,3}\s*$"#,
-                with: "",
-                options: [.regularExpression, .caseInsensitive]
-            )
-            candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            let lowercased = candidate.lowercased()
-            guard candidate.count >= 3,
-                  candidate.count <= 45,
-                  candidate.split(whereSeparator: \Character.isWhitespace).count <= 7,
-                  candidate.rangeOfCharacter(from: .letters) != nil,
-                  !ignored.contains(where: { lowercased == $0 || lowercased.hasPrefix("\($0) ") }) else {
-                return nil
-            }
-            return candidate
-        }
-    }
-
-    static func nameLooksLikeCard(_ cardName: String, candidates: [String]) -> Bool {
-        nameMatchScore(cardName, candidates: candidates) >= 0.72
-    }
-
-    static func nameMatchScore(_ cardName: String, candidates: [String]) -> Double {
-        let expected = searchableName(cardName)
-        guard expected.count >= 3 else { return 0 }
-        return candidates.reduce(0) { best, candidate in
-            let recognized = searchableName(candidate)
-            guard recognized.count >= 3 else { return best }
-            if recognized == expected
-                || recognized.hasPrefix(expected + " ")
-                || recognized.hasSuffix(" " + expected)
-                || recognized.contains(" " + expected + " ") {
-                return 1
-            }
-            let distance = levenshteinDistance(Array(expected), Array(recognized))
-            let length = max(expected.count, recognized.count)
-            let characterScore = length == 0 ? 0 : 1 - Double(distance) / Double(length)
-
-            let expectedWords = expected.split(separator: " ").map(String.init)
-            let recognizedWords = recognized.split(separator: " ").map(String.init)
-            let matchedWords = expectedWords.filter { expectedWord in
-                recognizedWords.contains { recognizedWord in
-                    let wordDistance = levenshteinDistance(Array(expectedWord), Array(recognizedWord))
-                    let wordLength = max(expectedWord.count, recognizedWord.count)
-                    return wordLength > 0 && 1 - Double(wordDistance) / Double(wordLength) >= 0.67
-                }
-            }.count
-            let wordScore = Double(matchedWords) / Double(max(1, expectedWords.count))
-            return max(best, characterScore * 0.72 + wordScore * 0.28)
-        }
-    }
-
-    static func fallbackNameQueries(in lines: [String]) -> [String] {
-        let ignoredWords: Set<String> = [
-            "ability", "attack", "basic", "during", "energy", "evolves", "flip",
-            "heads", "illus", "once", "pokemon", "resistance", "retreat", "search",
-            "stage", "trainer", "weakness", "your",
-        ]
-        var queries: [String] = []
-        for candidate in nameCandidates(in: lines).prefix(8) {
-            guard let word = candidate.split(whereSeparator: \Character.isWhitespace).first else { continue }
-            let cleaned = String(word)
-                .replacingOccurrences(of: #"[^A-Za-z0-9'’-]+"#, with: "", options: .regularExpression)
-            let normalized = searchableName(cleaned)
-            guard normalized.count >= 4, !ignoredWords.contains(normalized),
-                  !queries.contains(where: { searchableName($0) == normalized }) else { continue }
-            queries.append(cleaned)
-        }
-        return queries
-    }
-
-    private static func levenshteinDistance(_ left: [Character], _ right: [Character]) -> Int {
-        guard !left.isEmpty else { return right.count }
-        guard !right.isEmpty else { return left.count }
-        var previous = Array(0...right.count)
-        for (leftIndex, leftCharacter) in left.enumerated() {
-            var current = Array(repeating: 0, count: right.count + 1)
-            current[0] = leftIndex + 1
-            for (rightIndex, rightCharacter) in right.enumerated() {
-                current[rightIndex + 1] = min(
-                    current[rightIndex] + 1,
-                    previous[rightIndex + 1] + 1,
-                    previous[rightIndex] + (leftCharacter == rightCharacter ? 0 : 1)
-                )
-            }
-            previous = current
-        }
-        return previous[right.count]
-    }
-
-    private static func searchableName(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .lowercased()
-            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 struct CardRectangleCorners: Sendable, Equatable {
@@ -10875,7 +10742,7 @@ struct CardRectangleDetectionResult: @unchecked Sendable {
 }
 
 enum CardRectangleDetector {
-    static func detect(in image: UIImage) async -> CardRectangleDetectionResult {
+    static func detect(in image: UIImage, guide: CardScanGuide? = nil) async -> CardRectangleDetectionResult {
         guard let uprightImage = uprightBitmap(from: image),
               let cgImage = uprightImage.cgImage else {
             return CardRectangleDetectionResult(cardImage: image, corners: nil)
@@ -10887,19 +10754,26 @@ enum CardRectangleDetector {
             try? handler.perform([request])
             return bestCardObservation(
                 request.results ?? [],
-                imageSize: CGSize(width: cgImage.width, height: cgImage.height)
+                imageSize: CGSize(width: cgImage.width, height: cgImage.height),
+                region: guide?.region(in: CGSize(width: cgImage.width, height: cgImage.height))
             ).map(CardRectangleCorners.init(observation:))
         }.value
 
         guard let corners,
               let corrected = perspectiveCorrectedImage(cgImage: cgImage, corners: corners) else {
+            if let region = guide?.region(in: CGSize(width: cgImage.width, height: cgImage.height)), !region.isEmpty,
+               let crop = cgImage.cropping(to: CGRect(x: region.minX * CGFloat(cgImage.width),
+                   y: (1 - region.maxY) * CGFloat(cgImage.height), width: region.width * CGFloat(cgImage.width),
+                   height: region.height * CGFloat(cgImage.height))) {
+                return CardRectangleDetectionResult(cardImage: UIImage(cgImage: crop), corners: nil)
+            }
             return CardRectangleDetectionResult(cardImage: uprightImage, corners: nil)
         }
         return CardRectangleDetectionResult(cardImage: corrected, corners: corners)
     }
 
     static func detectLiveCorners(
-        in pixelBuffer: CVPixelBuffer
+        in pixelBuffer: CVPixelBuffer, guide: CardScanGuide? = nil
     ) -> (corners: CardRectangleCorners?, imageSize: CGSize) {
         let rawWidth = CVPixelBufferGetWidth(pixelBuffer)
         let rawHeight = CVPixelBufferGetHeight(pixelBuffer)
@@ -10911,7 +10785,7 @@ enum CardRectangleDetector {
         let request = rectangleRequest()
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
         try? handler.perform([request])
-        let observation = bestCardObservation(request.results ?? [], imageSize: imageSize)
+        let observation = bestCardObservation(request.results ?? [], imageSize: imageSize, region: guide?.region(in: imageSize))
         return (observation.map(CardRectangleCorners.init(observation:)), imageSize)
     }
 
@@ -10921,18 +10795,19 @@ enum CardRectangleDetector {
         request.minimumConfidence = 0.45
         request.minimumAspectRatio = 0.5
         request.maximumAspectRatio = 0.9
-        request.minimumSize = 0.14
+        request.minimumSize = 0.07
         request.quadratureTolerance = 32
         return request
     }
 
     private static func bestCardObservation(
         _ observations: [VNRectangleObservation],
-        imageSize: CGSize
+        imageSize: CGSize, region: CGRect? = nil
     ) -> VNRectangleObservation? {
         let expectedAspect = CGFloat(245.0 / 337.0)
         return observations.filter { observation in
             isPlausiblyUprightCard(observation, imageSize: imageSize)
+                && (region.map { CardScanGuide.contains(observation.boundingBox, in: $0) } ?? true)
         }.min { left, right in
             score(left, imageSize: imageSize, expectedAspect: expectedAspect)
                 < score(right, imageSize: imageSize, expectedAspect: expectedAspect)
@@ -10945,9 +10820,9 @@ enum CardRectangleDetector {
     ) -> Bool {
         let corners = CardRectangleCorners(observation: observation)
         let box = corners.boundingBox
-        guard box.width * box.height >= 0.15,
-              abs(box.midX - 0.5) <= 0.3,
-              abs(box.midY - 0.53) <= 0.36 else { return false }
+        guard box.width * box.height >= 0.018,
+              box.width * imageSize.width >= 90,
+              box.height * imageSize.height >= 125 else { return false }
 
         func pixelDistance(_ left: CGPoint, _ right: CGPoint) -> CGFloat {
             hypot(
@@ -11057,6 +10932,8 @@ private final class CardCameraController: NSObject, ObservableObject,
     private let photoOutput = AVCapturePhotoOutput()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "com.tallydex.camera.session", qos: .userInitiated)
+    private var scanGuide: CardScanGuide?
+    @Published private(set) var captureGuide: CardScanGuide?
     private let videoProcessingQueue = DispatchQueue(
         label: "com.tallydex.camera.live-detection",
         qos: .userInitiated
@@ -11102,6 +10979,11 @@ private final class CardCameraController: NSObject, ObservableObject,
                 self.liveCardCorners = nil
             }
         }
+    }
+
+    func setGuide(_ guide: CardScanGuide) {
+        captureGuide = guide
+        videoProcessingQueue.async { [weak self] in self?.scanGuide = guide }
     }
 
     func setAutomaticScanEnabled(_ enabled: Bool) {
@@ -11180,16 +11062,29 @@ private final class CardCameraController: NSObject, ObservableObject,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastLiveDetectionTime = CACurrentMediaTime()
 
-        let detection = CardRectangleDetector.detectLiveCorners(in: pixelBuffer)
+        let detection = CardRectangleDetector.detectLiveCorners(in: pixelBuffer, guide: scanGuide)
         let shouldCapture = stabilityTracker.observe(detection.corners)
         DispatchQueue.main.async { [weak self] in
-            self?.liveCardCorners = detection.corners
+            if detection.corners == nil { self?.liveCardCorners = nil }
             self?.liveFrameSize = detection.imageSize
         }
         guard shouldCapture else { return }
+        // A stable rectangle alone could be a book or screen. Verify card-front
+        // text before automatic capture; manual capture remains available.
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        request.recognitionLanguages = ["en-US"]
+        request.minimumTextHeight = 0.002
+        if let corners = detection.corners { request.regionOfInterest = corners.boundingBox }
+        let rawIsLandscape = CVPixelBufferGetWidth(pixelBuffer) > CVPixelBufferGetHeight(pixelBuffer)
+        try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: rawIsLandscape ? .right : .up).perform([request])
+        let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+        guard CardScanOCR.looksLikeCardFront(lines) else { stabilityTracker.reset(); return }
         automaticCaptureArmed = false
         stabilityTracker.reset()
         DispatchQueue.main.async { [weak self] in
+            self?.liveCardCorners = detection.corners
             self?.automaticCaptureRequest += 1
         }
     }

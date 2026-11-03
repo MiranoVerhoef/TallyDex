@@ -1,6 +1,7 @@
 import XCTest
 import UniformTypeIdentifiers
 import UIKit
+import ImageIO
 import StoreKit
 import StoreKitTest
 @testable import TallyDex
@@ -96,11 +97,178 @@ final class TallyDexSmokeTests: XCTestCase {
         XCTAssertFalse(CardTextRecognizer.nameLooksLikeCard("Omastar", candidates: candidates))
     }
 
-    func testScannerRequiresRescanForMultipleDistinctCards() {
-        XCTAssertFalse(CardScanMatchPolicy.requiresRescan(candidateIDs: []))
-        XCTAssertFalse(CardScanMatchPolicy.requiresRescan(candidateIDs: ["sma-SV64"]))
-        XCTAssertFalse(CardScanMatchPolicy.requiresRescan(candidateIDs: ["sma-SV64", "sma-SV64"]))
-        XCTAssertTrue(CardScanMatchPolicy.requiresRescan(candidateIDs: ["sma-SV64", "sm4-54"]))
+    func testScannerRanksExactIdentityAboveReprintsAndKeepsMultipleChoices() {
+        let exact = CardScanReference(id: "test-025", name: "Pikachu", localID: "025", setID: "test",
+            setName: "Test", officialCount: 198, codes: ["SVI"])
+        let reprint = CardScanReference(id: "other-25", name: "Pikachu", localID: "25", setID: "other",
+            setName: "Other", officialCount: 102, codes: ["OTHER"])
+        let ranked = CardScanRanking.rank([reprint, exact, exact], lines: ["BASIC Pikachu HP 70", "SVI EN 025/198"])
+        XCTAssertEqual(ranked.map(\.id), [exact.id, reprint.id])
+        XCTAssertGreaterThan(ranked[0].percentage, ranked[1].percentage)
+        XCTAssertLessThan(ranked[0].percentage, 100)
+        XCTAssertTrue(CardScanRanking.rank([exact], lines: ["Grocery list", "Milk and bread"]).isEmpty)
+    }
+
+    func testScannerReadsPrefixedNumbersAndRecognisesCardFrontEvidence() {
+        let fractions = CardScanRanking.fractions(in: ["SV64/SV94", "TG13 / TG30"])
+        XCTAssertEqual(fractions.map(\.number), ["SV64", "TG13"])
+        XCTAssertTrue(CardScanOCR.looksLikeCardFront(["BASIC Pikachu HP70", "025/198"]))
+        XCTAssertTrue(CardScanOCR.looksLikeCardFront(["ENERGY", "© Pokémon"]))
+        XCTAssertFalse(CardScanOCR.looksLikeCardFront(["Pokémon"]))
+        XCTAssertFalse(CardScanOCR.looksLikeCardFront(["Book cover", "ISBN 123456"]))
+    }
+
+    func testScannerGuideAllowsSmallOffCentreCardsButRejectsOutsideCards() {
+        let guide = CardScanGuide(viewport: CGSize(width: 400, height: 800),
+            rectangle: CGRect(x: 50, y: 100, width: 300, height: 420))
+        let region = guide.region(in: CGSize(width: 1200, height: 1600))
+        XCTAssertGreaterThan(region.minX, 0)
+        XCTAssertLessThan(region.maxX, 1)
+        let small = CGRect(x: region.minX + 0.01, y: region.minY + 0.01, width: 0.12, height: 0.17)
+        XCTAssertTrue(CardScanGuide.contains(small, in: region))
+        XCTAssertFalse(CardScanGuide.contains(CGRect(x: 0, y: 0, width: 0.1, height: 0.15), in: region))
+    }
+
+    func testScannerCopyrightYearSeparatesOtherwiseIdenticalNumberedCards() {
+        let earlier = CardScanReference(id: "old-121", name: "Water Energy", localID: "121", setID: "old",
+            setName: "Old", officialCount: 123, codes: [], releaseYear: 2007)
+        let later = CardScanReference(id: "new-121", name: "Water Energy", localID: "121", setID: "new",
+            setName: "New", officialCount: 123, codes: [], releaseYear: 2010)
+        let result = CardScanRanking.rank([earlier, later], lines: ["ENERGY", "121/123", "©2010 Pokémon"])
+        XCTAssertEqual(result.first?.id, later.id)
+        XCTAssertEqual(CardScanRanking.fractions(in: ["SV89/5V94"]).first?.total, "SV94")
+        XCTAssertTrue(CardScanRanking.numbers(in: ["SH6 ★"]).contains("SH6"))
+    }
+
+    func testScannerNameOnlyMatchingNormalisesHyphensAndApostrophes() {
+        let card = CardScanReference(id: "test-SV64", name: "Lucario-GX", localID: "SV64", setID: "test",
+            setName: "Test", officialCount: 94, codes: [])
+        XCTAssertEqual(CardScanRanking.rank([card], lines: ["Lucario GX", "HP 210"]).first?.id, card.id)
+    }
+
+    func testScannerVisualComparisonSeparatesUnrelatedImagesAndRecognisesIdenticalArtwork() throws {
+        let size = CGSize(width: 240, height: 330)
+        let query = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(origin: .zero, size: size))
+            UIColor.white.setFill(); context.fill(CGRect(x: 30, y: 50, width: 180, height: 140))
+        }
+        let other = UIGraphicsImageRenderer(size: size).image { context in
+            UIColor.blue.setFill(); context.fill(CGRect(origin: .zero, size: size))
+            UIColor.black.setFill(); context.fill(CGRect(x: 70, y: 200, width: 80, height: 80))
+        }
+        let image = try XCTUnwrap(query.cgImage)
+        let matches = try CardScanVisualComparison.rerank(
+            [.init(id: "wrong", score: 0.96), .init(id: "correct", score: 0.60)], query: image,
+            references: [("wrong", try XCTUnwrap(other.cgImage)), ("correct", image)])
+        XCTAssertEqual(matches.first?.id, "correct")
+        XCTAssertGreaterThan(matches[0].score, matches[1].score)
+    }
+
+    func testScannerRanksSavedIOSReplayWithVisualEvidence() throws {
+        #if targetEnvironment(simulator)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("artifacts/scanner-benchmark")
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("ios-results.json")) else {
+            throw XCTSkip("Run the opt-in iOS artwork replay first.")
+        }
+        let previous = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let references = try JSONDecoder().decode([CardScanReference].self,
+            from: Data(contentsOf: root.appendingPathComponent("references.json")))
+        let index = CardScanReferenceIndex(references)
+        var rows: [[String: Any]] = []
+        for row in previous where row["kind"] as? String == "clean" {
+            let id = try XCTUnwrap(row["id"] as? String)
+            let lines = try XCTUnwrap(row["lines"] as? [String])
+            let ranked = try autoreleasepool {
+                var ranked = CardScanRanking.rank(index.candidates(lines: lines), lines: lines, limit: 16)
+                if CardScanVisualComparison.isUseful(ranked) {
+                    let source = try XCTUnwrap(CGImageSourceCreateWithURL(root.appendingPathComponent("images/\(id).webp") as CFURL, nil))
+                    let query = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+                    var images: [(id: String, image: CGImage)] = []
+                    for match in ranked {
+                        let url = root.appendingPathComponent("images/\(match.id).webp")
+                        if FileManager.default.fileExists(atPath: url.path),
+                           let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                           let image = CGImageSourceCreateImageAtIndex(source, 0, nil) { images.append((match.id, image)) }
+                    }
+                    ranked = try CardScanVisualComparison.rerank(ranked, query: query, references: images)
+                }
+                return ranked
+            }
+            rows.append(["id": id, "split": row["split"] ?? "", "rank": ranked.firstIndex { $0.id == id }.map { $0 + 1 } ?? 0,
+                         "candidates": ranked.prefix(5).map { ["id": $0.id, "score": $0.percentage] }])
+        }
+        try JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys, .prettyPrinted])
+            .write(to: root.appendingPathComponent("ios-final-ranked-results.json"), options: .atomic)
+        let top1 = rows.filter { $0["rank"] as? Int == 1 }.count
+        let top3 = rows.filter { (1...3).contains($0["rank"] as? Int ?? 0) }.count
+        print("Scanner final iOS replay: \(rows.count), top1 \(top1), top3 \(top3)")
+        XCTAssertGreaterThanOrEqual(rows.count, 300)
+        XCTAssertGreaterThanOrEqual(Double(top1) / Double(rows.count), 0.95)
+        #else
+        throw XCTSkip("Local artwork replay runs on the simulator.")
+        #endif
+    }
+
+    func testScannerArtworkReplayBenchmark() async throws {
+        #if targetEnvironment(simulator)
+        struct Sample: Decodable { let id: String; let image: String?; let split: String? }
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("artifacts/scanner-benchmark")
+        guard FileManager.default.fileExists(atPath: root.appendingPathComponent("manifest.json").path) else {
+            throw XCTSkip("Opt-in replay: run Scripts/prepare_scanner_benchmark.py first.")
+        }
+        let references = try JSONDecoder().decode([CardScanReference].self,
+            from: Data(contentsOf: root.appendingPathComponent("references.json")))
+        let index = CardScanReferenceIndex(references)
+        let samples = try JSONDecoder().decode([Sample].self,
+            from: Data(contentsOf: root.appendingPathComponent("manifest.json"))).filter { $0.image != nil }
+        var rows: [[String: Any]] = []
+        for (offset, sample) in samples.enumerated() {
+            let bytes = try Data(contentsOf: root.appendingPathComponent(sample.image!))
+            let source = try XCTUnwrap(UIImage(data: bytes))
+            var cases: [(String, UIImage, CardScanGuide?)] = [("clean", source, nil)]
+            if offset % 12 == 0 {
+                let size = CGSize(width: 1000, height: 1400)
+                let x: CGFloat = offset % 24 == 0 ? 130 : 530
+                let y: CGFloat = offset % 24 == 0 ? 180 : 740
+                let frame = UIGraphicsImageRenderer(size: size).image { context in
+                    UIColor.darkGray.setFill(); context.fill(CGRect(origin: .zero, size: size))
+                    source.draw(in: CGRect(x: x, y: y, width: 300, height: 413))
+                }
+                cases.append(("off-centre", frame,
+                    CardScanGuide(viewport: size, rectangle: CGRect(x: 80, y: 80, width: 840, height: 1240))))
+            }
+            for (kind, image, guide) in cases {
+                let detected: CardRectangleDetectionResult
+                if let guide { detected = await CardRectangleDetector.detect(in: image, guide: guide) }
+                else { detected = CardRectangleDetectionResult(cardImage: image, corners: nil) }
+                let lines = try await CardTextRecognizer.recognize(detected.cardImage)
+                let ranked = CardScanRanking.rank(index.candidates(lines: lines), lines: lines)
+                let rank = ranked.firstIndex { $0.id == sample.id }.map { $0 + 1 } ?? 0
+                rows.append(["id": sample.id, "split": sample.split ?? "", "kind": kind, "rank": rank,
+                             "detected": detected.corners != nil, "lines": lines,
+                             "candidates": ranked.map { ["id": $0.id, "score": $0.percentage] }])
+            }
+            if offset % 20 == 0 {
+                print("Scanner iOS replay \(offset + 1)/\(samples.count)")
+                try JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys])
+                    .write(to: root.appendingPathComponent("ios-results.json"), options: .atomic)
+            }
+        }
+        try JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys, .prettyPrinted])
+            .write(to: root.appendingPathComponent("ios-results.json"), options: .atomic)
+        let clean = rows.filter { $0["kind"] as? String == "clean" }
+        let top1 = clean.filter { $0["rank"] as? Int == 1 }.count
+        let top3 = clean.filter { (1...3).contains($0["rank"] as? Int ?? 0) }.count
+        let scenes = rows.filter { $0["kind"] as? String == "off-centre" }
+        print("Scanner iOS clean \(clean.count), top1 \(top1), top3 \(top3); scene detections \(scenes.filter { $0["detected"] as? Bool == true }.count)/\(scenes.count)")
+        XCTAssertGreaterThanOrEqual(clean.count, 300)
+        XCTAssertGreaterThanOrEqual(Double(top3) / Double(clean.count), 0.90)
+        XCTAssertGreaterThanOrEqual(Double(scenes.filter { $0["detected"] as? Bool == true }.count) / Double(scenes.count), 0.85)
+        #else
+        throw XCTSkip("Local artwork replay runs on the simulator.")
+        #endif
     }
 
     func testScannerFuzzyTitleMatchingRecoversDamagedOCRWithoutFalsePositive() {
@@ -227,7 +395,7 @@ final class TallyDexSmokeTests: XCTestCase {
     }
 
     func testCurrentReleaseNotesAreUsefulAndUnique() {
-        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.58")
+        XCTAssertEqual(AppReleaseNotes.current.version, "0.9.59")
         XCTAssertGreaterThanOrEqual(AppReleaseNotes.current.notes.count, 1)
         XCTAssertEqual(
             Set(AppReleaseNotes.current.notes.map(\.id)).count,
