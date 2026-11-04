@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.60",
+          "buildVersion": "96",
+          "date": "2026-11-04",
+          "localizedDescription": "Adds automatic full collection exports to a folder in Files, with grouped edits and a configurable backup history.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.60/TallyDex-v0.9.60.ipa",
+          "size": 30654274,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.59",
           "buildVersion": "95",
           "date": "2026-11-03",

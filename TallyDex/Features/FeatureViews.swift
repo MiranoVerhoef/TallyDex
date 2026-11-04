@@ -8292,12 +8292,14 @@ private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
 private struct CollectionDataTransferView: View {
     @Environment(CatalogStore.self) private var catalogStore
     @Environment(CollectionStore.self) private var collectionStore
+    @Environment(AutomaticCollectionBackup.self) private var automaticBackup
     @State private var exportFile = CollectionTransferFileDocument()
     @State private var exportType = UTType.tallyDexCollection
     @State private var exportFilename = "TallyDex-Collection.pokecollection"
     @State private var exportCompletionText = "Export saved successfully."
     @State private var isExporting = false
     @State private var isImporting = false
+    @State private var isChoosingBackupFolder = false
     @State private var isPreparing = false
     @State private var stagedImportSelection: CollectionBackupSelection?
     @State private var importKind = CollectionFileImportKind.tallyDexBackup
@@ -8341,6 +8343,49 @@ private struct CollectionDataTransferView: View {
             }
 
             Section {
+                Toggle("Automatic Export", isOn: Binding(
+                    get: { automaticBackup.isEnabled },
+                    set: { enabled in
+                        if enabled && automaticBackup.destination == nil {
+                            isChoosingBackupFolder = true
+                        } else {
+                            automaticBackup.setEnabled(enabled)
+                        }
+                    }
+                ))
+                .disabled(automaticBackup.isSaving)
+
+                if automaticBackup.isEnabled {
+                    Button {
+                        isChoosingBackupFolder = true
+                    } label: {
+                        LabeledContent("Backup Folder", value: automaticBackup.destination?.name ?? "Choose Folder")
+                    }
+                    .disabled(automaticBackup.isSaving)
+
+                    Stepper(value: Binding(
+                        get: { automaticBackup.keepVersions },
+                        set: { automaticBackup.setKeepVersions($0, collection: collectionStore) }
+                    ), in: AutomaticCollectionBackup.versionLimits) {
+                        LabeledContent("Keep Versions", value: automaticBackup.keepVersions.formatted())
+                    }
+                    .disabled(automaticBackup.isSaving)
+
+                    if automaticBackup.isSaving {
+                        ProgressView("Saving backup…")
+                    } else if let date = automaticBackup.lastSavedAt {
+                        LabeledContent("Last Backup", value: date.formatted(date: .abbreviated, time: .shortened))
+                    }
+                }
+                if let message = automaticBackup.message {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text("Full backups are saved after a pause in editing. The oldest automatic versions are removed when the limit is reached.")
+            }
+
+            Section {
                 Button {
                     importKind = .tallyDexBackup
                     isImporting = true
@@ -8380,6 +8425,16 @@ private struct CollectionDataTransferView: View {
         }
         .navigationTitle("Export & Import")
         .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(isPresented: $isChoosingBackupFolder, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let folder):
+                if automaticBackup.chooseFolder(folder) {
+                    automaticBackup.requestSave(collectionStore, immediate: true)
+                }
+            case .failure:
+                message = "The backup folder couldn’t be opened."
+            }
+        }
         .fileExporter(
             isPresented: $isExporting,
             document: exportFile,

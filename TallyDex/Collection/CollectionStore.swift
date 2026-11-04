@@ -249,6 +249,10 @@ final class CollectionStore {
         )
     }
 
+    func backupChanges() throws -> AsyncThrowingStream<Void, Error> {
+        try resolveRepository().backupChanges()
+    }
+
     func prepareImport(data: Data, filename: String) async throws -> PreparedCollectionImport {
         guard data.count <= CollectionTransferCodec.maximumImportByteCount else {
             throw CollectionRepositoryError.importTooLarge(

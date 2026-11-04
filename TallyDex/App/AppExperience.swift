@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.59",
-        headline: "Smarter camera matching",
+        version: "0.9.60",
+        headline: "Automatic collection backups",
         notes: [
             AppReleaseNote(
-                systemImage: "camera.viewfinder",
-                title: "Find your card",
-                detail: "Ranked matches, artwork comparison and easier positioning inside the camera guide."
+                systemImage: "arrow.up.doc",
+                title: "Automatic Export",
+                detail: "Save full backups after edits and choose how many versions to keep in Settings → Export & Import."
             ),
         ]
     )

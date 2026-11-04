@@ -670,6 +670,25 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         }
     }
 
+    func backupChanges() -> AsyncThrowingStream<Void, Error> {
+        // The tables read by captureSnapshot. Safety backups and catalogue prices
+        // are separate, so writing those cannot trigger another export.
+        let tables = ["collectionVariant", "collectionPrinting", "collectionSetPreference",
+                      "customCollectionFolder", "collectionCardMetadata", "binderPlan",
+                      "priceChartingProduct", "collectionManualValue", "collectorBadge"]
+        let observation = DatabaseRegionObservation(tracking: tables.map { Table<Row>($0) })
+        return AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let token = observation.start(in: database.queue, onError: {
+                continuation.finish(throwing: $0)
+            }, onChange: { _ in
+                continuation.yield()
+            })
+            continuation.onTermination = { _ in token.cancel() }
+            // Also reconcile changes made before the app last exited.
+            continuation.yield()
+        }
+    }
+
     func previewImport(
         _ document: PortableCollectionDocument,
         mode: CollectionImportMode

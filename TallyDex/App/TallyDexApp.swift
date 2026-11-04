@@ -14,6 +14,7 @@ struct TallyDexApp: App {
     @State private var catalogStore: CatalogStore
     @State private var collectionStore: CollectionStore
     @State private var accessStore: AccessStore
+    @State private var automaticBackup: AutomaticCollectionBackup
     @State private var artworkCacheStore = ArtworkCacheStore()
     @State private var localCollectionSharing = LocalCollectionSharingController()
     @State private var appNavigation = AppNavigationStore()
@@ -29,6 +30,7 @@ struct TallyDexApp: App {
             _accessStore = State(initialValue: accessStore)
             _catalogStore = State(initialValue: fixture.makeCatalogStore())
             _collectionStore = State(initialValue: fixture.makeCollectionStore())
+            _automaticBackup = State(initialValue: AutomaticCollectionBackup(defaults: fixture.defaults))
             return
         }
 #endif
@@ -36,6 +38,7 @@ struct TallyDexApp: App {
         _accessStore = State(initialValue: accessStore)
         _catalogStore = State(initialValue: CatalogStore())
         _collectionStore = State(initialValue: CollectionStore(accessStore: accessStore))
+        _automaticBackup = State(initialValue: AutomaticCollectionBackup())
     }
 
     private var preferencesDefaults: UserDefaults {
@@ -71,6 +74,7 @@ struct TallyDexApp: App {
                 .defaultAppStorage(preferencesDefaults)
                 .environment(catalogStore)
                 .environment(collectionStore)
+                .environment(automaticBackup)
                 .environment(accessStore)
                 .environment(artworkCacheStore)
                 .environment(localCollectionSharing)
@@ -104,6 +108,10 @@ struct TallyDexApp: App {
 #endif
                     await collectionStore.start()
                 }
+                .task(id: collectionStore.isInitialLoading ? nil : automaticBackup.observationID) {
+                    guard !collectionStore.isInitialLoading, collectionStore.loadMessage == nil else { return }
+                    await automaticBackup.watch(collectionStore)
+                }
                 .task(id: priceUpdateContext) {
                     let context = priceUpdateContext
                     guard context.active, context.ready, context.enabled else { return }
@@ -118,13 +126,17 @@ struct TallyDexApp: App {
                 .onChange(of: backgroundPrices) { _, _ in schedulePriceUpdates() }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase != .active {
-                        if newPhase == .background { schedulePriceUpdates() }
+                        if newPhase == .background {
+                            schedulePriceUpdates()
+                            automaticBackup.flushPending(collectionStore)
+                        }
                         if !allowBrowserSharingWhileBackgrounded, localCollectionSharing.isRunning {
                             localCollectionSharing.stop()
                         }
                         return
                     }
                     accessStore.tick()
+                    automaticBackup.requestSave(collectionStore)
                     Task {
                         await catalogStore.refreshIfNeeded()
 #if DEBUG

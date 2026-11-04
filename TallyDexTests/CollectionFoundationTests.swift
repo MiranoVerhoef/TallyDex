@@ -5,6 +5,63 @@ import PDFKit
 @testable import TallyDex
 
 final class CollectionFoundationTests: XCTestCase {
+    func testAutomaticBackupKeepsNewestChangedVersionsAndPreservesOtherFiles() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manual = directory.appendingPathComponent("TallyDex-Collection.pokecollection")
+        let otherDevice = directory.appendingPathComponent("TallyDex-Auto-OTHER-2026-01-01T000000.000Z-12345678.pokecollection")
+        for url in [manual, otherDevice] {
+            try Data("keep me".utf8).write(to: url)
+        }
+
+        let repository = GRDBCollectionRepository(database: try .inMemory())
+        let prefix = "TallyDex-Auto-TEST-"
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        var last: AutomaticCollectionBackup.SavedBackup?
+        var written: [String] = []
+        for quantity in 1...3 {
+            let changeDate = date.addingTimeInterval(Double(quantity))
+            try await repository.setQuantity(quantity, cardID: "test-1", variant: .normal, updatedAt: changeDate)
+            let document = try await repository.exportCollection(exportedAt: changeDate, appVersion: "test")
+            let (saved, rotationFailed) = try AutomaticCollectionBackup.writeVersions(
+                document, in: directory, previous: last, limit: 2, prefix: prefix
+            )
+            XCTAssertFalse(rotationFailed)
+            last = saved
+            written.append(saved.filename)
+        }
+
+        let current = try await repository.exportCollection(exportedAt: date.addingTimeInterval(60), appVersion: "test")
+        let (unchanged, _) = try AutomaticCollectionBackup.writeVersions(
+            current, in: directory, previous: last, limit: 2, prefix: prefix
+        )
+        XCTAssertEqual(unchanged.filename, written[2])
+        XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: directory.path)),
+                       [manual.lastPathComponent, otherDevice.lastPathComponent, written[1], written[2]])
+        let newest = try CollectionTransferCodec.decode(Data(contentsOf: directory.appendingPathComponent(written[2])))
+        let restored = GRDBCollectionRepository(database: try .inMemory())
+        try await restored.importCollection(newest, mode: .replace, importedAt: date.addingTimeInterval(61))
+        let entries = try await restored.fetchOwnedEntries()
+        XCTAssertEqual(entries.first?.quantity, 3)
+    }
+
+    func testAutomaticBackupObservationReceivesCommittedCollectionChanges() async throws {
+        let repository = GRDBCollectionRepository(database: try .inMemory())
+        let ready = expectation(description: "Initial snapshot requested")
+        let changed = expectation(description: "Ownership commit observed")
+        let changes = repository.backupChanges()
+        let watcher = Task {
+            var iterator = changes.makeAsyncIterator()
+            if try await iterator.next() != nil { ready.fulfill() }
+            if try await iterator.next() != nil { changed.fulfill() }
+        }
+        defer { watcher.cancel() }
+        await fulfillment(of: [ready], timeout: 2)
+        try await repository.setQuantity(1, cardID: "test-1", variant: .normal, updatedAt: Date())
+        await fulfillment(of: [changed], timeout: 2)
+    }
+
     func testCardDetailNavigationKeepsListOrderAndDoesNotWrap() {
         let cards = [card(id: "last-number", number: "99"), card(id: "first-number", number: "1"), card(id: "middle", number: "2")]
         var navigation = CardDetailNavigation(card: cards[1], cards: cards)

@@ -62,6 +62,14 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         case collectorBadges
     }
 
+    func withExportDate(_ date: Date) -> Self {
+        Self(format: format, schemaVersion: schemaVersion, exportedAt: date, appVersion: appVersion,
+             ownership: ownership, setPreferences: setPreferences, folders: folders,
+             cardMetadata: cardMetadata, exactOwnership: exactOwnership, binderPlans: binderPlans,
+             priceChartingMappings: priceChartingMappings, manualValues: manualValues,
+             collectorBadges: collectorBadges)
+    }
+
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         format = try values.decode(String.self, forKey: .format)
