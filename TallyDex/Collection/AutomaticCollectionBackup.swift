@@ -53,23 +53,35 @@ final class AutomaticCollectionBackup {
         filePrefix = "TallyDex-Auto-\(fileTag)-"
     }
 
-    func chooseFolder(_ url: URL) -> Bool {
+    func chooseFolder(_ url: URL, collection: CollectionStore) async throws {
+        guard !isSaving, !collection.isInitialLoading, collection.loadMessage == nil else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        scheduledSave?.cancel()
+        scheduledSave = nil
+        isSaving = true
+        message = nil
+        defer {
+            isSaving = false
+            if firstPendingChange != nil { requestSave(collection) }
+        }
+
+        let selection: Destination
         do {
             guard url.startAccessingSecurityScopedResource() else {
                 throw CocoaError(.fileWriteNoPermission)
             }
             defer { url.stopAccessingSecurityScopedResource() }
             let bookmark = try url.bookmarkData(options: .minimalBookmark)
-            let selection = Destination(id: UUID(), bookmark: bookmark, name: url.lastPathComponent)
-            defaults.set(try JSONEncoder().encode(selection), forKey: Self.settingsKey + "destination")
-            destination = selection
-            setLastSave(nil)
-            setEnabled(true)
-            return true
-        } catch {
-            message = "TallyDex couldn’t access that folder. Choose a writable folder in Files."
-            return false
+            selection = Destination(id: UUID(), bookmark: bookmark, name: url.lastPathComponent)
         }
+        let encodedSelection = try JSONEncoder().encode(selection)
+        // Verify the saved folder permission with a real backup before enabling it.
+        let (saved, rotationFailed) = try await writeBackup(collection, to: selection, previous: nil)
+        defaults.set(encodedSelection, forKey: Self.settingsKey + "destination")
+        destination = selection
+        setEnabled(true)
+        recordSave(saved, rotationFailed: rotationFailed)
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -142,21 +154,29 @@ final class AutomaticCollectionBackup {
         }
 
         do {
-            let document = try await collection.exportDocument()
+            let (saved, rotationFailed) = try await writeBackup(collection, to: destination, previous: lastSave)
             guard observationID == id else { return }
-            let previous = lastSave
-            let limit = keepVersions
-            let prefix = filePrefix
-            let (saved, rotationFailed) = try await Task.detached(priority: .utility) {
-                try Self.write(document, to: destination, previous: previous, limit: limit, prefix: prefix)
-            }.value
-            guard observationID == id else { return }
-            setLastSave(saved)
-            message = rotationFailed ? "Backup saved. Some older versions couldn’t be removed." : nil
+            recordSave(saved, rotationFailed: rotationFailed)
         } catch {
             guard observationID == id else { return }
             message = "Backup couldn’t be saved. Check the folder in Files or choose another folder."
         }
+    }
+
+    private func writeBackup(
+        _ collection: CollectionStore, to destination: Destination, previous: SavedBackup?
+    ) async throws -> (SavedBackup, Bool) {
+        let document = try await collection.exportDocument()
+        let limit = keepVersions
+        let prefix = filePrefix
+        return try await Task.detached(priority: .utility) {
+            try Self.write(document, to: destination, previous: previous, limit: limit, prefix: prefix)
+        }.value
+    }
+
+    private func recordSave(_ backup: SavedBackup, rotationFailed: Bool) {
+        setLastSave(backup)
+        message = rotationFailed ? "Backup saved. Some older versions couldn’t be removed." : nil
     }
 
     private func setLastSave(_ backup: SavedBackup?) {

@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.61",
+          "buildVersion": "97",
+          "date": "2026-11-04",
+          "localizedDescription": "Fixes Automatic Export setup so the first backup starts immediately after folder selection, with visible progress and a clear error if the folder cannot be used.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.61/TallyDex-v0.9.61.ipa",
+          "size": 30658788,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.60",
           "buildVersion": "96",
           "date": "2026-11-04",

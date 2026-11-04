@@ -949,12 +949,12 @@ final class ReliabilityUITests: XCTestCase {
         for _ in 0..<3 { tap(app.buttons["Continue"]) }
         XCTAssertFalse(app.staticTexts["Help improve scanning"].exists)
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.staticTexts["What’s New in TallyDex"].exists)
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }
@@ -975,7 +975,7 @@ final class ReliabilityUITests: XCTestCase {
         tap(app.buttons["Done"])
         capturePurchaseScreen("Optional background price updates in setup")
         tap(app.buttons["Start Collecting"])
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
 
@@ -1014,10 +1014,10 @@ final class ReliabilityUITests: XCTestCase {
     func testSkippingSetupIsAlsoPersisted() {
         launch("fresh")
         tap(app.buttons["Skip"])
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         XCTAssertFalse(app.buttons["Skip"].exists)
         XCTAssertFalse(app.buttons["Continue"].exists)
     }
@@ -1027,10 +1027,10 @@ final class ReliabilityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s New in TallyDex"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["Skip"].exists)
         tap(app.buttons["Continue"])
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         app.terminate()
         app.launch()
-        expectState(["intro=true", "seen=0.9.60"])
+        expectState(["intro=true", "seen=0.9.61"])
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertFalse(app.buttons["Skip"].exists)
     }

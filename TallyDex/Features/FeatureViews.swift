@@ -8300,6 +8300,7 @@ private struct CollectionDataTransferView: View {
     @State private var isExporting = false
     @State private var isImporting = false
     @State private var isChoosingBackupFolder = false
+    @State private var backupFolderError: String?
     @State private var isPreparing = false
     @State private var stagedImportSelection: CollectionBackupSelection?
     @State private var importKind = CollectionFileImportKind.tallyDexBackup
@@ -8371,11 +8372,11 @@ private struct CollectionDataTransferView: View {
                     }
                     .disabled(automaticBackup.isSaving)
 
-                    if automaticBackup.isSaving {
-                        ProgressView("Saving backup…")
-                    } else if let date = automaticBackup.lastSavedAt {
-                        LabeledContent("Last Backup", value: date.formatted(date: .abbreviated, time: .shortened))
-                    }
+                }
+                if automaticBackup.isSaving {
+                    ProgressView("Saving backup…")
+                } else if automaticBackup.isEnabled, let date = automaticBackup.lastSavedAt {
+                    LabeledContent("Last Backup", value: date.formatted(date: .abbreviated, time: .shortened))
                 }
                 if let message = automaticBackup.message {
                     Label(message, systemImage: "exclamationmark.triangle")
@@ -8428,12 +8429,24 @@ private struct CollectionDataTransferView: View {
         .fileImporter(isPresented: $isChoosingBackupFolder, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let folder):
-                if automaticBackup.chooseFolder(folder) {
-                    automaticBackup.requestSave(collectionStore, immediate: true)
+                Task {
+                    do {
+                        try await automaticBackup.chooseFolder(folder, collection: collectionStore)
+                    } catch {
+                        backupFolderError = "TallyDex couldn’t save the first backup. Choose a writable folder in Files and try again."
+                    }
                 }
             case .failure:
-                message = "The backup folder couldn’t be opened."
+                backupFolderError = "The backup folder couldn’t be opened. Choose another folder in Files."
             }
+        }
+        .alert("Automatic Export", isPresented: Binding(
+            get: { backupFolderError != nil },
+            set: { if !$0 { backupFolderError = nil } }
+        )) {
+            Button("OK") { backupFolderError = nil }
+        } message: {
+            Text(backupFolderError ?? "")
         }
         .fileExporter(
             isPresented: $isExporting,
