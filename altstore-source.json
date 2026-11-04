@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.62",
+          "buildVersion": "98",
+          "date": "2026-11-04",
+          "localizedDescription": "Fixes the Files picker handoff for Automatic Export and backup imports. Choose Backup Folder, go inside the folder you want, then tap Open.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.62/TallyDex-v0.9.62.ipa",
+          "size": 30659859,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.61",
           "buildVersion": "97",
           "date": "2026-11-04",

@@ -10,6 +10,16 @@ final class AutomaticCollectionBackup {
         let id: UUID
         let bookmark: Data
         let name: String
+
+        init(folder: URL) throws {
+            guard folder.startAccessingSecurityScopedResource() else {
+                throw CocoaError(.fileWriteNoPermission)
+            }
+            defer { folder.stopAccessingSecurityScopedResource() }
+            id = UUID()
+            bookmark = try folder.bookmarkData(options: .minimalBookmark)
+            name = folder.lastPathComponent
+        }
     }
 
     struct SavedBackup: Codable, Sendable {
@@ -53,7 +63,7 @@ final class AutomaticCollectionBackup {
         filePrefix = "TallyDex-Auto-\(fileTag)-"
     }
 
-    func chooseFolder(_ url: URL, collection: CollectionStore) async throws {
+    func chooseFolder(_ selection: Destination, collection: CollectionStore) async throws {
         guard !isSaving, !collection.isInitialLoading, collection.loadMessage == nil else {
             throw CocoaError(.fileWriteUnknown)
         }
@@ -66,15 +76,6 @@ final class AutomaticCollectionBackup {
             if firstPendingChange != nil { requestSave(collection) }
         }
 
-        let selection: Destination
-        do {
-            guard url.startAccessingSecurityScopedResource() else {
-                throw CocoaError(.fileWriteNoPermission)
-            }
-            defer { url.stopAccessingSecurityScopedResource() }
-            let bookmark = try url.bookmarkData(options: .minimalBookmark)
-            selection = Destination(id: UUID(), bookmark: bookmark, name: url.lastPathComponent)
-        }
         let encodedSelection = try JSONEncoder().encode(selection)
         // Verify the saved folder permission with a real backup before enabling it.
         let (saved, rotationFailed) = try await writeBackup(collection, to: selection, previous: nil)

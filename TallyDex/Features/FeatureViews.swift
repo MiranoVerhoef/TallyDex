@@ -8223,6 +8223,13 @@ private struct CollectionBackupSelection: Identifiable {
     let id = UUID()
     let data: Data
     let filename: String
+
+    init(url: URL) throws {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        data = try CollectionTransferCodec.readImportData(at: url)
+        filename = url.lastPathComponent
+    }
 }
 
 private enum CollectionFileImportKind {
@@ -8230,8 +8237,10 @@ private enum CollectionFileImportKind {
     case priceChartingCSV
 }
 
-private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
-    let onResult: (Result<CollectionBackupSelection, Error>) -> Void
+private struct CollectionDocumentPicker: UIViewControllerRepresentable {
+    let contentTypes: [UTType]
+    let asCopy: Bool
+    let onResult: (Result<URL, Error>) -> Void
     let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -8240,8 +8249,8 @@ private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: [.item],
-            asCopy: true
+            forOpeningContentTypes: contentTypes,
+            asCopy: asCopy
         )
         picker.delegate = context.coordinator
         picker.allowsMultipleSelection = false
@@ -8252,11 +8261,11 @@ private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        private let onResult: (Result<CollectionBackupSelection, Error>) -> Void
+        private let onResult: (Result<URL, Error>) -> Void
         private let onCancel: () -> Void
 
         init(
-            onResult: @escaping (Result<CollectionBackupSelection, Error>) -> Void,
+            onResult: @escaping (Result<URL, Error>) -> Void,
             onCancel: @escaping () -> Void
         ) {
             self.onResult = onResult
@@ -8271,16 +8280,7 @@ private struct CollectionBackupDocumentPicker: UIViewControllerRepresentable {
                 onResult(.failure(CocoaError(.fileNoSuchFile)))
                 return
             }
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-            do {
-                onResult(.success(CollectionBackupSelection(
-                    data: try CollectionTransferCodec.readImportData(at: url),
-                    filename: url.lastPathComponent
-                )))
-            } catch {
-                onResult(.failure(error))
-            }
+            onResult(.success(url))
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
@@ -8300,6 +8300,7 @@ private struct CollectionDataTransferView: View {
     @State private var isExporting = false
     @State private var isImporting = false
     @State private var isChoosingBackupFolder = false
+    @State private var stagedBackupFolder: Result<AutomaticCollectionBackup.Destination, Error>?
     @State private var backupFolderError: String?
     @State private var isPreparing = false
     @State private var stagedImportSelection: CollectionBackupSelection?
@@ -8356,14 +8357,14 @@ private struct CollectionDataTransferView: View {
                 ))
                 .disabled(automaticBackup.isSaving)
 
-                if automaticBackup.isEnabled {
-                    Button {
-                        isChoosingBackupFolder = true
-                    } label: {
-                        LabeledContent("Backup Folder", value: automaticBackup.destination?.name ?? "Choose Folder")
-                    }
-                    .disabled(automaticBackup.isSaving)
+                Button {
+                    isChoosingBackupFolder = true
+                } label: {
+                    LabeledContent("Backup Folder", value: automaticBackup.destination?.name ?? "Choose Folder")
+                }
+                .disabled(automaticBackup.isSaving)
 
+                if automaticBackup.isEnabled {
                     Stepper(value: Binding(
                         get: { automaticBackup.keepVersions },
                         set: { automaticBackup.setKeepVersions($0, collection: collectionStore) }
@@ -8371,7 +8372,6 @@ private struct CollectionDataTransferView: View {
                         LabeledContent("Keep Versions", value: automaticBackup.keepVersions.formatted())
                     }
                     .disabled(automaticBackup.isSaving)
-
                 }
                 if automaticBackup.isSaving {
                     ProgressView("Saving backup…")
@@ -8383,7 +8383,11 @@ private struct CollectionDataTransferView: View {
                         .foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Full backups are saved after a pause in editing. The oldest automatic versions are removed when the limit is reached.")
+                if automaticBackup.isEnabled {
+                    Text("Full backups are saved after a pause in editing. The oldest automatic versions are removed when the limit is reached.")
+                } else {
+                    Text("Go inside the folder you want in Files, then tap Open to use it for backups.")
+                }
             }
 
             Section {
@@ -8426,19 +8430,18 @@ private struct CollectionDataTransferView: View {
         }
         .navigationTitle("Export & Import")
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(isPresented: $isChoosingBackupFolder, allowedContentTypes: [.folder]) { result in
-            switch result {
-            case .success(let folder):
-                Task {
-                    do {
-                        try await automaticBackup.chooseFolder(folder, collection: collectionStore)
-                    } catch {
-                        backupFolderError = "TallyDex couldn’t save the first backup. Choose a writable folder in Files and try again."
-                    }
+        .sheet(isPresented: $isChoosingBackupFolder, onDismiss: beginBackupFolderSetup) {
+            CollectionDocumentPicker(contentTypes: [.folder], asCopy: false) { result in
+                stagedBackupFolder = result.flatMap { url in
+                    Result { try AutomaticCollectionBackup.Destination(folder: url) }
                 }
-            case .failure:
-                backupFolderError = "The backup folder couldn’t be opened. Choose another folder in Files."
+                isChoosingBackupFolder = false
+            } onCancel: {
+                isChoosingBackupFolder = false
             }
+        }
+        .onChange(of: isChoosingBackupFolder) { _, isPresented in
+            if !isPresented { beginBackupFolderSetup() }
         }
         .alert("Automatic Export", isPresented: Binding(
             get: { backupFolderError != nil },
@@ -8462,8 +8465,8 @@ private struct CollectionDataTransferView: View {
             }
         }
         .sheet(isPresented: $isImporting, onDismiss: beginStagedImport) {
-            CollectionBackupDocumentPicker { result in
-                switch result {
+            CollectionDocumentPicker(contentTypes: [.item], asCopy: true) { result in
+                switch result.flatMap({ url in Result { try CollectionBackupSelection(url: url) } }) {
                 case .success(let selection):
                     stagedImportSelection = selection
                 case .failure(CollectionRepositoryError.importTooLarge(let maximumByteCount)):
@@ -8479,6 +8482,9 @@ private struct CollectionDataTransferView: View {
             } onCancel: {
                 isImporting = false
             }
+        }
+        .onChange(of: isImporting) { _, isPresented in
+            if !isPresented { beginStagedImport() }
         }
         .sheet(item: $pendingImport) { prepared in
             CollectionImportPreviewView(prepared: prepared) { resultMessage in
@@ -8502,6 +8508,23 @@ private struct CollectionDataTransferView: View {
             Button("OK") { importError = nil }
         } message: {
             Text(importError ?? "The selected file couldn’t be imported.")
+        }
+    }
+
+    private func beginBackupFolderSetup() {
+        guard let result = stagedBackupFolder else { return }
+        stagedBackupFolder = nil
+        switch result {
+        case .success(let folder):
+            Task {
+                do {
+                    try await automaticBackup.chooseFolder(folder, collection: collectionStore)
+                } catch {
+                    backupFolderError = "TallyDex couldn’t save the first backup. Choose a writable folder in Files and try again."
+                }
+            }
+        case .failure:
+            backupFolderError = "The backup folder couldn’t be opened. Choose another folder in Files."
         }
     }
 

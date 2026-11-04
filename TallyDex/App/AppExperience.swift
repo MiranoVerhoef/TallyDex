@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.61",
-        headline: "Clearer automatic backup setup",
+        version: "0.9.62",
+        headline: "Backup folder selection",
         notes: [
             AppReleaseNote(
                 systemImage: "arrow.up.doc",
                 title: "Automatic Export",
-                detail: "The first backup starts as soon as you choose a folder. Automatic Export turns on once the backup is saved."
+                detail: "Choose Backup Folder, go inside a folder in Files, then tap Open to save your first backup."
             ),
         ]
     )
