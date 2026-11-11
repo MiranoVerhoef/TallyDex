@@ -4012,7 +4012,7 @@ private struct CatalogCardDetailPage: View {
                     Text("Price History")
                         .font(.headline)
                     Text(pricedVariants.isEmpty
-                         ? "No saved \(source.displayName) prices yet"
+                         ? "Daily prices by printing"
                          : "\(source.displayName) · \(pricedVariants.count) priced \(pricedVariants.count == 1 ? "printing" : "printings")")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -8341,7 +8341,7 @@ private struct CollectionDataTransferView: View {
                 }
                 .disabled(isPreparing)
             } header: {
-                HelpSectionHeader(title: "Export", message: "A full backup saves your collection, including quantities, goals, notes, wishlists, binder plans and manual values. Cached market prices and price history are not included.\n\nPriceCharting CSV uses product IDs from an earlier import. For cards without IDs, use the text list. Check matches and quantities after importing into PriceCharting.")
+                HelpSectionHeader(title: "Export", message: "A full backup saves owned printings, goals, notes, wishlists, binders, manual values, saved market prices and history, restore points, and portable preferences.\n\nPriceCharting CSV uses product IDs from an earlier import. For cards without IDs, use the text list. Check matches and quantities after importing into PriceCharting.")
             }
 
             Section {
@@ -8395,7 +8395,7 @@ private struct CollectionDataTransferView: View {
                     importKind = .tallyDexBackup
                     isImporting = true
                 } label: {
-                    Label("Import Backup", systemImage: "square.and.arrow.down")
+                    Label("Import Full Backup", systemImage: "square.and.arrow.down")
                 }
                 .disabled(isPreparing)
 
@@ -8535,17 +8535,20 @@ private struct CollectionDataTransferView: View {
         Task {
             defer { isPreparing = false }
             do {
-                let document = try await collectionStore.exportDocument()
-                exportFile = CollectionTransferFileDocument(
-                    data: csv ? CollectionTransferCodec.csv(document) : try CollectionTransferCodec.encode(document)
-                )
+                let document = try await collectionStore.exportDocument(fullBackup: !csv)
+                let data = try await Task.detached(priority: .userInitiated) {
+                    csv ? CollectionTransferCodec.csv(document) : try CollectionTransferCodec.encodeBackup(document)
+                }.value
+                exportFile = CollectionTransferFileDocument(data: data)
                 let date = document.exportedAt.formatted(.iso8601.year().month().day())
                 exportType = csv ? .commaSeparatedText : .tallyDexCollection
                 exportFilename = csv ? "TallyDex-Collection-\(date).csv" : "TallyDex-Collection-\(date).pokecollection"
                 exportCompletionText = csv ? "Readable CSV exported successfully." : "Full backup exported successfully."
                 isExporting = true
+            } catch CollectionRepositoryError.importTooLarge {
+                message = "This full backup exceeds the 25 MB file limit."
             } catch {
-                message = "TallyDex couldn’t prepare the export. Your collection was not changed."
+                message = "TallyDex couldn’t prepare the export."
             }
         }
     }
@@ -8791,6 +8794,18 @@ struct CollectionImportPreviewView: View {
                     LabeledContent("File", value: prepared.filename)
                     LabeledContent("Created", value: prepared.document.exportedAt.formatted(date: .abbreviated, time: .shortened))
                     LabeledContent("TallyDex", value: prepared.document.appVersion)
+                    if !prepared.document.priceHistory.isEmpty {
+                        LabeledContent("Price history points", value: prepared.document.priceHistory.count.formatted())
+                    }
+                    if !prepared.document.marketQuotes.isEmpty {
+                        LabeledContent("Saved market quotes", value: prepared.document.marketQuotes.count.formatted())
+                    }
+                    if !prepared.document.restorePoints.isEmpty {
+                        LabeledContent("Restore points", value: prepared.document.restorePoints.count.formatted())
+                    }
+                    if prepared.document.preferences != nil {
+                        LabeledContent("App preferences", value: mode == .replace ? "Replace" : "Fill unset preferences")
+                    }
                 }
 
                 Section {
@@ -8804,7 +8819,7 @@ struct CollectionImportPreviewView: View {
                 } footer: {
                     Text(mode == .merge
                          ? "Merge adds missing records and accepts newer changes. Your newer conflicting records stay untouched."
-                         : "Replace makes this iPhone match the backup exactly, including removing records not in the file.")
+                         : "Replace removes collection records missing from the backup. Saved market data and restore points are merged in either mode.")
                 }
 
                 Section("Preview") {
@@ -8832,17 +8847,19 @@ struct CollectionImportPreviewView: View {
                 }
 
                 Section {
-                    Button(mode == .merge ? "Merge Collection" : "Replace Collection", role: mode == .replace ? .destructive : nil) {
-                        if mode == .replace {
+                    Button(preview.hasChanges ? "\(mode.displayName) Collection" : "Import Backup Data", role: mode == .replace && preview.hasChanges ? .destructive : nil) {
+                        if mode == .replace && preview.hasChanges {
                             isConfirmingReplace = true
                         } else {
                             applyImport()
                         }
                     }
-                    .disabled(isApplying || !preview.hasChanges)
+                    .disabled(isApplying || (!preview.hasChanges && !prepared.hasSupplementalData))
                     .accessibilityIdentifier("import.apply")
                 } footer: {
-                    Text("Before importing, TallyDex saves the current collection in Settings → Collection Backups so you can roll back.")
+                    if preview.hasChanges {
+                        Text("Before changing your collection, TallyDex saves a rollback copy in Settings → Collection Backups.")
+                    }
                 }
             }
             .navigationTitle("Import Preview")
@@ -8881,8 +8898,14 @@ struct CollectionImportPreviewView: View {
         errorMessage = nil
         Task {
             do {
-                try await collectionStore.importCollection(prepared, mode: mode)
-                onFinish("Collection \(mode == .merge ? "merged" : "replaced") successfully. A rollback backup is available.")
+                let warning = try await collectionStore.importCollection(prepared, mode: mode)
+                if let warning {
+                    onFinish(warning)
+                } else if prepared.hasSupplementalData {
+                    onFinish("Full backup imported.")
+                } else {
+                    onFinish("Collection \(mode == .merge ? "merged" : "replaced") successfully. A rollback backup is available.")
+                }
             } catch {
                 isApplying = false
                 errorMessage = "The import failed. Your collection was not changed."

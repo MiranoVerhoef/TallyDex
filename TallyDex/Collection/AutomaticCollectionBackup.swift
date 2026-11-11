@@ -158,6 +158,9 @@ final class AutomaticCollectionBackup {
             let (saved, rotationFailed) = try await writeBackup(collection, to: destination, previous: lastSave)
             guard observationID == id else { return }
             recordSave(saved, rotationFailed: rotationFailed)
+        } catch CollectionRepositoryError.importTooLarge {
+            guard observationID == id else { return }
+            message = "The full backup exceeds the 25 MB file limit."
         } catch {
             guard observationID == id else { return }
             message = "Backup couldn’t be saved. Check the folder in Files or choose another folder."
@@ -167,7 +170,7 @@ final class AutomaticCollectionBackup {
     private func writeBackup(
         _ collection: CollectionStore, to destination: Destination, previous: SavedBackup?
     ) async throws -> (SavedBackup, Bool) {
-        let document = try await collection.exportDocument()
+        let document = try await collection.exportDocument(fullBackup: true)
         let limit = keepVersions
         let prefix = filePrefix
         return try await Task.detached(priority: .utility) {
@@ -204,7 +207,7 @@ final class AutomaticCollectionBackup {
         _ document: PortableCollectionDocument, in folder: URL,
         previous: SavedBackup?, limit: Int, prefix: String
     ) throws -> (SavedBackup, Bool) {
-        let stableData = try CollectionTransferCodec.encode(document.withExportDate(Date(timeIntervalSince1970: 0)))
+        let stableData = try CollectionTransferCodec.encode(document.copy(exportedAt: Date(timeIntervalSince1970: 0)))
         let fingerprint = SHA256.hash(data: stableData).description
         let manager = FileManager.default
         var coordinationError: NSError?
@@ -216,12 +219,7 @@ final class AutomaticCollectionBackup {
                    manager.fileExists(atPath: coordinated.appendingPathComponent(previous.filename).path) {
                     saved = previous
                 } else {
-                    let data = try CollectionTransferCodec.encode(document)
-                    guard data.count <= CollectionTransferCodec.maximumImportByteCount else {
-                        throw CollectionRepositoryError.importTooLarge(
-                            maximumByteCount: CollectionTransferCodec.maximumImportByteCount
-                        )
-                    }
+                    let data = try CollectionTransferCodec.encodeBackup(document)
                     let formatter = ISO8601DateFormatter()
                     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                     let stamp = formatter.string(from: document.exportedAt).replacingOccurrences(of: ":", with: "")

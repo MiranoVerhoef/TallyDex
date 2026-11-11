@@ -1834,6 +1834,136 @@ final class CollectionFoundationTests: XCTestCase {
         XCTAssertEqual(metadata.notes, "Binder page 3")
     }
 
+    @MainActor
+    func testFullBackupRestoresExactOwnershipMarketDataRestorePointsAndPreferences() async throws {
+        let sourceRepository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let sourceCatalog = CatalogStore(repository: GRDBCatalogRepository(database: try CatalogDatabase.inMemory()))
+        let sourceSuite = "TallyDexFullBackupSource-\(UUID())"
+        let destinationSuite = "TallyDexFullBackupDestination-\(UUID())"
+        let sourceDefaults = try XCTUnwrap(UserDefaults(suiteName: sourceSuite))
+        let destinationDefaults = try XCTUnwrap(UserDefaults(suiteName: destinationSuite))
+        defer {
+            sourceDefaults.removePersistentDomain(forName: sourceSuite)
+            destinationDefaults.removePersistentDomain(forName: destinationSuite)
+        }
+        sourceDefaults.set(CatalogPriceHistoryRetention.forever.rawValue, forKey: PricingSettings.historyRetentionKey)
+        sourceDefaults.set(CatalogPriceDisplayMode.both.rawValue, forKey: PricingSettings.displayModeKey)
+        sourceDefaults.set(true, forKey: CollectionSettings.allowsMultipleCopiesKey)
+        sourceDefaults.set(true, forKey: AppExperienceSettings.introductionCompletedKey)
+        destinationDefaults.set(CatalogPriceDisplayMode.tcgplayer.rawValue, forKey: PricingSettings.displayModeKey)
+        let source = CollectionStore(repository: sourceRepository, catalogStore: sourceCatalog, backupDefaults: sourceDefaults)
+        let destinationRepository = GRDBCollectionRepository(database: try CollectionDatabase.inMemory())
+        let destinationCatalog = CatalogStore(repository: GRDBCatalogRepository(database: try CatalogDatabase.inMemory()))
+        let destination = CollectionStore(repository: destinationRepository, catalogStore: destinationCatalog,
+                                          backupDefaults: destinationDefaults)
+        let cardID = "me01-001"
+        let update = Date(timeIntervalSince1970: 1_700_000_000.125)
+        func point(
+            _ variant: CatalogVariantKind, _ source: CatalogPriceSource, _ day: String,
+            _ amount: Double, _ updatedAt: Date
+        ) -> PortableCollectionDocument.PriceHistoryRecord {
+            .init(cardID: cardID, variant: variant, source: source, day: day,
+                  currencyCode: source.currencyCode, amount: amount, sourceUpdatedAt: updatedAt)
+        }
+
+        try await sourceRepository.setPrintingQuantity(
+            1, cardID: cardID, printingID: "provider-holo-1", variant: .holo, updatedAt: update.addingTimeInterval(-1)
+        )
+        let sourceRestorePoint = try await sourceRepository.createBackup(reason: "Before adding another copy", createdAt: update)
+        try await sourceRepository.setPrintingQuantity(
+            2, cardID: cardID, printingID: "provider-holo-1", variant: .holo, updatedAt: update
+        )
+        let holoEUR = point(.holo, .cardmarket, "2023-11-14", 1.25, update)
+        let reverseEUR = point(.reverseHolo, .cardmarket, "2023-11-14", 0.75, update)
+        let holoUSD = point(.holo, .tcgplayer, "2023-11-14", 2.50, update)
+        let savedQuote = CatalogPriceQuote(cardID: cardID, variant: .holo, source: .cardmarket, currencyCode: "EUR",
+                                           amount: 1.25, updatedAt: update, productID: 123,
+                                           average1Day: 1.30, average7Days: 1.20, average30Days: 1.15,
+                                           averagePrice: 1.23, lowPrice: 1.10)
+        let savedUSQuote = CatalogPriceQuote(cardID: cardID, variant: .holo, source: .tcgplayer, currencyCode: "USD",
+                                             amount: 2.50, updatedAt: update, productID: 456, lowPrice: 1.80)
+        try await sourceCatalog.mergeMarketData(history: [holoEUR, reverseEUR, holoUSD], quotes: [savedQuote, savedUSQuote])
+
+        let exported = try await source.exportDocument(fullBackup: true)
+        let plain = try await source.exportDocument()
+        XCTAssertTrue(plain.priceHistory.isEmpty)
+        XCTAssertTrue(plain.marketQuotes.isEmpty)
+        XCTAssertTrue(plain.restorePoints.isEmpty)
+        XCTAssertEqual(exported.priceHistory.count, 3)
+        XCTAssertEqual(exported.marketQuotes, [savedQuote, savedUSQuote])
+        XCTAssertEqual(exported.restorePoints.first?.id, sourceRestorePoint.id)
+        XCTAssertEqual(exported.restorePoints.first?.snapshot.exactOwnership.first?.quantity, 1)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let (automatic, _) = try AutomaticCollectionBackup.writeVersions(
+            exported, in: folder, previous: nil, limit: 3, prefix: "Test-"
+        )
+        let data = try Data(contentsOf: folder.appendingPathComponent(automatic.filename))
+        let prepared = try await destination.prepareImport(data: data, filename: automatic.filename)
+        XCTAssertEqual(prepared.document, exported)
+
+        let newerHoloEUR = point(.holo, .cardmarket, "2023-11-14", 1.75, update.addingTimeInterval(60))
+        let laterHoloUSD = point(.holo, .tcgplayer, "2023-11-15", 2.75, update.addingTimeInterval(86_400))
+        let staleReverseEUR = point(.reverseHolo, .cardmarket, "2023-11-14", 0.50, update.addingTimeInterval(-60))
+        let newerQuote = CatalogPriceQuote(cardID: cardID, variant: .holo, source: .cardmarket, currencyCode: "EUR",
+                                          amount: 1.75, updatedAt: update.addingTimeInterval(60), productID: 123, lowPrice: 1.40)
+        try await destinationCatalog.mergeMarketData(history: [newerHoloEUR, laterHoloUSD, staleReverseEUR], quotes: [newerQuote])
+
+        let warning = try await destination.importCollection(prepared, mode: .replace)
+        XCTAssertNil(warning)
+        let printings = try await destinationRepository.fetchPrintingEntries(cardID: cardID)
+        XCTAssertEqual(printings.first?.printingID, "provider-holo-1")
+        XCTAssertEqual(printings.first?.quantity, 2)
+        let euroChart = try await destinationCatalog.priceHistory(cardID: cardID, source: .cardmarket)
+        XCTAssertEqual(euroChart.first(where: { $0.variant == .holo })?.amount, 1.75)
+        XCTAssertEqual(euroChart.first(where: { $0.variant == .reverseHolo })?.amount, 0.75)
+        let dollarChart = try await destinationCatalog.priceHistory(cardID: cardID, source: .tcgplayer)
+        XCTAssertEqual(dollarChart.map(\.amount), [2.50, 2.75])
+        let currentPrices = try await destinationCatalog.prices(cardIDs: [cardID])
+        XCTAssertEqual(Set(currentPrices[cardID] ?? []), [newerQuote, savedUSQuote])
+        let variants = try await destinationCatalog.variants(cardIDs: [cardID])
+        XCTAssertTrue(variants[cardID, default: []].isEmpty, "Restored price rows cannot invent catalog variants")
+        let restored = try await destinationRepository.fetchBackups()
+        XCTAssertTrue(restored.contains(sourceRestorePoint))
+        let restorePreview = try await destinationRepository.previewBackupRestore(id: sourceRestorePoint.id)
+        XCTAssertTrue(restorePreview.hasChanges)
+        XCTAssertEqual(destinationDefaults.string(forKey: PricingSettings.historyRetentionKey), CatalogPriceHistoryRetention.forever.rawValue)
+        XCTAssertEqual(destinationDefaults.string(forKey: PricingSettings.displayModeKey), CatalogPriceDisplayMode.both.rawValue)
+        XCTAssertTrue(destinationDefaults.bool(forKey: CollectionSettings.allowsMultipleCopiesKey))
+        XCTAssertFalse(destinationDefaults.bool(forKey: AppExperienceSettings.introductionCompletedKey))
+
+        let repeatImport = try await destination.prepareImport(data: data, filename: automatic.filename)
+        XCTAssertFalse(repeatImport.mergePreview.hasChanges)
+        destinationDefaults.set(CatalogPriceDisplayMode.tcgplayer.rawValue, forKey: PricingSettings.displayModeKey)
+        try await destination.importCollection(repeatImport, mode: .merge)
+        XCTAssertEqual(destinationDefaults.string(forKey: PricingSettings.displayModeKey), CatalogPriceDisplayMode.tcgplayer.rawValue)
+        let legacy = Data(#"""
+        {"format":"com.miranoverhoef.tallydex.collection","schemaVersion":8,
+         "exportedAt":"2023-11-14T22:13:20Z","appVersion":"0.9.64 (100)",
+         "ownership":[],"setPreferences":[],"folders":[],"cardMetadata":[]}
+        """#.utf8)
+        let legacyImport = try await destination.prepareImport(data: legacy, filename: "older.pokecollection")
+        try await destination.importCollection(legacyImport, mode: .replace)
+        let saved = try await destinationCatalog.exportMarketData()
+        XCTAssertEqual(saved.history, [newerHoloEUR, holoUSD, laterHoloUSD, reverseEUR])
+        XCTAssertEqual(saved.quotes, [newerQuote, savedUSQuote])
+    }
+
+    func testLargeFullBackupCompressesWithoutDroppingData() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000.125)
+        let document = PortableCollectionDocument(
+            format: PortableCollectionDocument.formatIdentifier,
+            schemaVersion: PortableCollectionDocument.currentSchemaVersion,
+            exportedAt: date, appVersion: "0.9.65 (101)", ownership: [], setPreferences: [], folders: [],
+            cardMetadata: [.init(cardID: "me01-001", isWishlisted: true,
+                                 notes: String(repeating: "Binder page 3. ", count: 150_000), updatedAt: date)]
+        )
+        let encoded = try CollectionTransferCodec.encodeBackup(document)
+        XCTAssertLessThan(encoded.count, 100_000)
+        XCTAssertEqual(try CollectionTransferCodec.decode(encoded), document)
+    }
+
     func testSchemaOneBackupDecodesAndPreviewsWithEmptyExactOwnership() async throws {
         let json = #"""
         {

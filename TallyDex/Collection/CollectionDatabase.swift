@@ -659,14 +659,29 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
 
     func exportCollection(
         exportedAt: Date,
-        appVersion: String
+        appVersion: String,
+        includingRestorePoints: Bool = false
     ) async throws -> PortableCollectionDocument {
         try await database.queue.read { database in
-            Self.portableDocument(
+            let document = Self.portableDocument(
                 from: try Self.captureSnapshot(in: database),
                 exportedAt: exportedAt,
                 appVersion: appVersion
             )
+            guard includingRestorePoints else { return document }
+            let rows = try Row.fetchAll(database, sql: """
+                SELECT id, createdAt, reason FROM collectionBackup ORDER BY createdAt DESC, id DESC
+                """)
+            let points = try rows.map { row -> PortableCollectionDocument.RestorePoint in
+                guard let backup = Self.backup(row) else { throw CollectionRepositoryError.invalidBackup }
+                let snapshot = Self.portableDocument(
+                    from: try Self.backupPayload(id: backup.id, in: database),
+                    exportedAt: backup.createdAt,
+                    appVersion: appVersion
+                )
+                return .init(id: backup.id, reason: backup.reason, snapshot: snapshot)
+            }
+            return document.copy(restorePoints: points)
         }
     }
 
@@ -721,22 +736,27 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
                 appVersion: document.appVersion
             )
             let preview = Self.preview(document, current: current, mode: mode)
-            guard preview.hasChanges else { return }
+            if preview.hasChanges {
+                let safetyBackup = CollectionBackup(
+                    id: UUID(),
+                    createdAt: importedAt,
+                    reason: "Before \(mode.displayName.lowercased()) import"
+                )
+                try Self.insertBackup(safetyBackup, payload: currentPayload, in: database)
 
-            let safetyBackup = CollectionBackup(
-                id: UUID(),
-                createdAt: importedAt,
-                reason: "Before \(mode.displayName.lowercased()) import"
-            )
-            try Self.insertBackup(safetyBackup, payload: currentPayload, in: database)
-
-            switch mode {
-            case .replace:
-                try Self.applySnapshot(Self.backupPayload(from: document), in: database)
-            case .merge:
-                try Self.merge(document, into: current, in: database)
+                switch mode {
+                case .replace:
+                    try Self.applySnapshot(Self.backupPayload(from: document), in: database)
+                case .merge:
+                    try Self.merge(document, into: current, in: database)
+                }
+                try Self.pruneBackups(in: database)
             }
-            try Self.pruneBackups(in: database)
+            for point in document.restorePoints {
+                let backup = CollectionBackup(id: point.id, createdAt: point.snapshot.exportedAt, reason: point.reason)
+                try Self.insertBackup(backup, payload: Self.backupPayload(from: point.snapshot),
+                                      in: database, ignoringExisting: true)
+            }
         }
     }
 
@@ -1467,7 +1487,20 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
         guard (1...PortableCollectionDocument.currentSchemaVersion).contains(document.schemaVersion) else {
             throw CollectionRepositoryError.unsupportedImportVersion(document.schemaVersion)
         }
-        guard document.ownership.allSatisfy({ !$0.cardID.isEmpty && $0.quantity > 0 }),
+        let historyDay = ISO8601DateFormatter()
+        historyDay.formatOptions = [.withFullDate]
+        guard Set(document.restorePoints.map(\.id)).count == document.restorePoints.count,
+              document.marketQuotes.allSatisfy({ quote in
+                  !quote.cardID.isEmpty && quote.currencyCode == quote.source.currencyCode
+                      && quote.amount.isFinite && quote.amount > 0 && quote.updatedAt.timeIntervalSince1970.isFinite
+              }),
+              Set(document.marketQuotes.map(\.id)).count == document.marketQuotes.count,
+              document.priceHistory.allSatisfy({ point in
+            guard !point.cardID.isEmpty, point.currencyCode == point.source.currencyCode,
+                  point.amount.isFinite, point.amount > 0, point.sourceUpdatedAt.timeIntervalSince1970.isFinite,
+                  let day = historyDay.date(from: point.day) else { return false }
+            return historyDay.string(from: day) == point.day
+        }), document.ownership.allSatisfy({ !$0.cardID.isEmpty && $0.quantity > 0 }),
               Set(document.ownership.map { "\($0.cardID)|\($0.variant.rawValue)" }).count == document.ownership.count,
               document.exactOwnership.allSatisfy({
                   !$0.cardID.isEmpty && !$0.printingID.isEmpty && $0.quantity > 0
@@ -1495,6 +1528,13 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
               Set(document.collectorBadges.map(\.id)).count == document.collectorBadges.count,
               document.collectorBadges.allSatisfy({ $0.earnedAt.timeIntervalSince1970.isFinite }) else {
             throw CollectionRepositoryError.invalidImport
+        }
+        for point in document.restorePoints {
+            guard !point.reason.isEmpty, point.snapshot.restorePoints.isEmpty, point.snapshot.priceHistory.isEmpty,
+                  point.snapshot.marketQuotes.isEmpty, point.snapshot.preferences == nil else {
+                throw CollectionRepositoryError.invalidImport
+            }
+            try validate(point.snapshot)
         }
     }
 
@@ -1857,7 +1897,8 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
     private static func insertBackup(
         _ backup: CollectionBackup,
         payload: CollectionBackupPayload,
-        in database: Database
+        in database: Database,
+        ignoringExisting: Bool = false
     ) throws {
         guard let payloadJSON = String(
             data: try JSONEncoder().encode(payload),
@@ -1869,6 +1910,7 @@ final class GRDBCollectionRepository: CollectionRepository, @unchecked Sendable 
             sql: """
             INSERT INTO collectionBackup (id, createdAt, reason, payloadJSON)
             VALUES (?, ?, ?, ?)
+            \(ignoringExisting ? "ON CONFLICT(id) DO NOTHING" : "")
             """,
             arguments: [backup.id.uuidString, backup.createdAt, backup.reason, payloadJSON]
         )

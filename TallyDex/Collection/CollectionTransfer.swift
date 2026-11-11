@@ -1,3 +1,4 @@
+import Compression
 import Foundation
 import UniformTypeIdentifiers
 
@@ -10,7 +11,7 @@ extension UTType {
 
 struct PortableCollectionDocument: Codable, Equatable, Sendable {
     static let formatIdentifier = "com.miranoverhoef.tallydex.collection"
-    static let currentSchemaVersion = 8
+    static let currentSchemaVersion = 9
 
     let format: String
     let schemaVersion: Int
@@ -25,6 +26,10 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
     let priceChartingMappings: [PriceChartingProductMapping]
     let manualValues: [ManualCardValue]
     let collectorBadges: [CollectorBadgeAward]
+    let priceHistory: [PriceHistoryRecord]
+    let marketQuotes: [CatalogPriceQuote]
+    let preferences: PortableBackupPreferences?
+    let restorePoints: [RestorePoint]
 
     init(
         format: String,
@@ -39,7 +44,11 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         binderPlans: [BinderPlan] = [],
         priceChartingMappings: [PriceChartingProductMapping] = [],
         manualValues: [ManualCardValue] = [],
-        collectorBadges: [CollectorBadgeAward] = []
+        collectorBadges: [CollectorBadgeAward] = [],
+        priceHistory: [PriceHistoryRecord] = [],
+        marketQuotes: [CatalogPriceQuote] = [],
+        preferences: PortableBackupPreferences? = nil,
+        restorePoints: [RestorePoint] = []
     ) {
         self.format = format
         self.schemaVersion = schemaVersion
@@ -54,20 +63,35 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         self.priceChartingMappings = priceChartingMappings
         self.manualValues = manualValues
         self.collectorBadges = collectorBadges
+        self.priceHistory = priceHistory
+        self.marketQuotes = marketQuotes
+        self.preferences = preferences
+        self.restorePoints = restorePoints
     }
 
     private enum CodingKeys: String, CodingKey {
         case format, schemaVersion, exportedAt, appVersion, ownership
         case setPreferences, folders, cardMetadata, exactOwnership, binderPlans, priceChartingMappings, manualValues
-        case collectorBadges
+        case collectorBadges, priceHistory, marketQuotes, preferences, restorePoints
     }
 
-    func withExportDate(_ date: Date) -> Self {
-        Self(format: format, schemaVersion: schemaVersion, exportedAt: date, appVersion: appVersion,
+    func copy(
+        exportedAt: Date? = nil, priceHistory: [PriceHistoryRecord]? = nil,
+        marketQuotes: [CatalogPriceQuote]? = nil, preferences: PortableBackupPreferences? = nil,
+        restorePoints: [RestorePoint]? = nil
+    ) -> Self {
+        Self(format: format, schemaVersion: schemaVersion, exportedAt: exportedAt ?? self.exportedAt, appVersion: appVersion,
              ownership: ownership, setPreferences: setPreferences, folders: folders,
              cardMetadata: cardMetadata, exactOwnership: exactOwnership, binderPlans: binderPlans,
-             priceChartingMappings: priceChartingMappings, manualValues: manualValues,
-             collectorBadges: collectorBadges)
+             priceChartingMappings: priceChartingMappings, manualValues: manualValues, collectorBadges: collectorBadges,
+             priceHistory: priceHistory ?? self.priceHistory, marketQuotes: marketQuotes ?? self.marketQuotes,
+             preferences: preferences ?? self.preferences, restorePoints: restorePoints ?? self.restorePoints)
+    }
+
+    struct RestorePoint: Codable, Equatable, Sendable {
+        let id: UUID
+        let reason: String
+        let snapshot: PortableCollectionDocument
     }
 
     init(from decoder: Decoder) throws {
@@ -85,6 +109,58 @@ struct PortableCollectionDocument: Codable, Equatable, Sendable {
         priceChartingMappings = try values.decodeIfPresent([PriceChartingProductMapping].self, forKey: .priceChartingMappings) ?? []
         manualValues = try values.decodeIfPresent([ManualCardValue].self, forKey: .manualValues) ?? []
         collectorBadges = try values.decodeIfPresent([CollectorBadgeAward].self, forKey: .collectorBadges) ?? []
+        priceHistory = try values.decodeIfPresent([PriceHistoryRecord].self, forKey: .priceHistory) ?? []
+        marketQuotes = try values.decodeIfPresent([CatalogPriceQuote].self, forKey: .marketQuotes) ?? []
+        preferences = try values.decodeIfPresent(PortableBackupPreferences.self, forKey: .preferences)
+        restorePoints = try values.decodeIfPresent([RestorePoint].self, forKey: .restorePoints) ?? []
+    }
+
+    struct PriceHistoryRecord: Codable, Equatable, Sendable {
+        let cardID: String
+        let variant: CatalogVariantKind
+        let source: CatalogPriceSource
+        let day: String
+        let currencyCode: String
+        let amount: Double
+        let sourceUpdatedAt: Date
+
+        init(
+            cardID: String, variant: CatalogVariantKind, source: CatalogPriceSource, day: String,
+            currencyCode: String, amount: Double, sourceUpdatedAt: Date
+        ) {
+            self.cardID = cardID
+            self.variant = variant
+            self.source = source
+            self.day = day
+            self.currencyCode = currencyCode
+            self.amount = amount
+            self.sourceUpdatedAt = sourceUpdatedAt
+        }
+
+        // Keep the stored calendar day and timestamp precision across time zones.
+        // An array keeps large histories compact.
+        init(from decoder: Decoder) throws {
+            var row = try decoder.unkeyedContainer()
+            cardID = try row.decode(String.self)
+            variant = try row.decode(CatalogVariantKind.self)
+            source = try row.decode(CatalogPriceSource.self)
+            day = try row.decode(String.self)
+            currencyCode = try row.decode(String.self)
+            amount = try row.decode(Double.self)
+            sourceUpdatedAt = Date(timeIntervalSince1970: try row.decode(Double.self))
+            guard row.isAtEnd else { throw CollectionRepositoryError.invalidImport }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var row = encoder.unkeyedContainer()
+            try row.encode(cardID)
+            try row.encode(variant)
+            try row.encode(source)
+            try row.encode(day)
+            try row.encode(currencyCode)
+            try row.encode(amount)
+            try row.encode(sourceUpdatedAt.timeIntervalSince1970)
+        }
     }
 
     struct OwnershipRecord: Codable, Equatable, Sendable {
@@ -208,12 +284,63 @@ struct CollectionImportPreviewItem: Identifiable, Equatable, Sendable {
     let detail: String
 }
 
+struct PortableBackupPreferences: Codable, Equatable, Sendable {
+    private static let boolKeys = [
+        CollectionSettings.allowsMultipleCopiesKey, CollectionSettings.defaultCustomIncludesSecretCardsKey,
+        CardDisplaySettings.detailsExpandedByDefaultKey, AutomaticPriceUpdateSettings.enabledKey,
+        AutomaticPriceUpdateSettings.backgroundKey, "collectionManagerShowDetails", "collectionManagerShowMarket"
+    ]
+    private static let stringKeys = [
+        AppAppearance.storageKey, SetsScope.storageKey, SetsBrowsingStyle.storageKey, CollectionSettings.defaultGoalKey,
+        PricingSettings.sourceKey, PricingSettings.displayModeKey, PricingSettings.historyRetentionKey,
+        PricingSettings.cardmarketCountryKey, PricingSettings.cardmarketCurrencyKey,
+        "search.resultLayout", "camera.captureMode", "browserEditorGridColumns", "browserEditorGridSpacing"
+    ]
+    private static let integerKeys = [ArtworkCacheSettings.limitKey, PricingSettings.foreverHistorySizeLimitKey]
+    private static let arrayKey = CollectionSettings.defaultCustomVariantsKey
+
+    let bools: [String: Bool]
+    let strings: [String: String]
+    let integers: [String: Int]
+    let customVariants: [String]?
+
+    init(defaults: UserDefaults) {
+        bools = Dictionary(uniqueKeysWithValues: Self.boolKeys.compactMap { key in
+            (defaults.object(forKey: key) as? Bool).map { (key, $0) }
+        })
+        strings = Dictionary(uniqueKeysWithValues: Self.stringKeys.compactMap { key in
+            defaults.string(forKey: key).map { (key, $0) }
+        })
+        integers = Dictionary(uniqueKeysWithValues: Self.integerKeys.compactMap { key in
+            (defaults.object(forKey: key) as? Int).map { (key, $0) }
+        })
+        customVariants = defaults.stringArray(forKey: Self.arrayKey)
+    }
+
+    func restore(to defaults: UserDefaults, mode: CollectionImportMode) {
+        func restore(_ key: String, _ value: Any?) {
+            if mode == .replace || defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
+        for key in Self.boolKeys { restore(key, bools[key]) }
+        for key in Self.stringKeys { restore(key, strings[key]) }
+        for key in Self.integerKeys { restore(key, integers[key]) }
+        restore(Self.arrayKey, customVariants)
+    }
+}
+
 struct PreparedCollectionImport: Identifiable, Sendable {
     let id = UUID()
     let filename: String
     let document: PortableCollectionDocument
     let mergePreview: CollectionImportPreview
     let replacePreview: CollectionImportPreview
+
+    var hasSupplementalData: Bool {
+        !document.priceHistory.isEmpty || !document.marketQuotes.isEmpty
+            || !document.restorePoints.isEmpty || document.preferences != nil
+    }
 }
 
 struct PriceChartingCSVRow: Equatable, Identifiable, Sendable {
@@ -639,6 +766,13 @@ enum PriceChartingImportResolver {
 
 enum CollectionTransferCodec {
     static let maximumImportByteCount = 25 * 1_024 * 1_024
+    private static let maximumExpandedBackupByteCount = 128 * 1_024 * 1_024
+
+    private struct CompressedBackup: Codable {
+        let compression: String
+        let byteCount: Int
+        let payload: Data
+    }
 
     static func readImportData(at url: URL) throws -> Data {
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
@@ -661,14 +795,51 @@ enum CollectionTransferCodec {
 
     static func encode(_ document: PortableCollectionDocument) throws -> Data {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .secondsSince1970
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        if document.preferences == nil { encoder.outputFormatting.insert(.prettyPrinted) }
         return try encoder.encode(document)
+    }
+
+    static func encodeBackup(_ document: PortableCollectionDocument) throws -> Data {
+        var data = try encode(document)
+        if (2 * 1_024 * 1_024...maximumExpandedBackupByteCount).contains(data.count) {
+            let compressed = try (data as NSData).compressed(using: .lzfse) as Data
+            let envelope = try JSONEncoder().encode(CompressedBackup(compression: "lzfse", byteCount: data.count, payload: compressed))
+            if envelope.count < data.count { data = envelope }
+        }
+        guard data.count <= maximumImportByteCount else {
+            throw CollectionRepositoryError.importTooLarge(maximumByteCount: maximumImportByteCount)
+        }
+        return data
     }
 
     static func decode(_ data: Data) throws -> PortableCollectionDocument {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let value = try decoder.singleValueContainer()
+            if let seconds = try? value.decode(Double.self), seconds.isFinite {
+                return Date(timeIntervalSince1970: seconds)
+            }
+            return try Date.ISO8601FormatStyle().parse(value.decode(String.self))
+        }
+        if let backup = try? decoder.decode(CompressedBackup.self, from: data) {
+            guard backup.compression == "lzfse",
+                  (1...maximumExpandedBackupByteCount).contains(backup.byteCount),
+                  !backup.payload.isEmpty else { throw CollectionRepositoryError.invalidImport }
+            // One extra byte lets the decoder distinguish an exact fit from truncated output.
+            var expanded = Data(count: backup.byteCount + 1)
+            let count = expanded.withUnsafeMutableBytes { output in
+                backup.payload.withUnsafeBytes { input in
+                    compression_decode_buffer(output.bindMemory(to: UInt8.self).baseAddress!, output.count,
+                                              input.bindMemory(to: UInt8.self).baseAddress!, input.count,
+                                              nil, COMPRESSION_LZFSE)
+                }
+            }
+            guard count == backup.byteCount else { throw CollectionRepositoryError.invalidImport }
+            expanded.removeLast()
+            return try decoder.decode(PortableCollectionDocument.self, from: expanded)
+        }
         return try decoder.decode(PortableCollectionDocument.self, from: data)
     }
 

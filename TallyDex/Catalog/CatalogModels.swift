@@ -1001,6 +1001,8 @@ protocol CatalogRepository: Sendable {
         cardID: String,
         source: CatalogPriceSource
     ) async throws -> [CatalogPriceHistoryPoint]
+    func exportMarketData() async throws -> (history: [PortableCollectionDocument.PriceHistoryRecord], quotes: [CatalogPriceQuote])
+    func mergeMarketData(history: [PortableCollectionDocument.PriceHistoryRecord], quotes: [CatalogPriceQuote]) async throws
     func fetchCard(id: String) async throws -> CatalogCard?
     func priceStorageStatistics() async throws -> CatalogPriceStorageStatistics
     @discardableResult

@@ -370,6 +370,10 @@ private struct LocalSharingImportPreviewDTO: Encodable {
     let removals: Int
     let issues: Int
     let rows: Int
+    let priceHistoryPoints: Int
+    let savedQuotes: Int
+    let restorePoints: Int
+    let hasPreferences: Bool
     let replace: LocalSharingPreviewCountsDTO?
     let issueSamples: [String]
 }
@@ -538,12 +542,15 @@ final class LocalCollectionSharingController {
 
         if request.method == "GET", request.path == "/api/export" {
             do {
-                let document = try await collectionStore.exportDocument()
+                let document = try await collectionStore.exportDocument(fullBackup: request.query["kind"] == "backup")
                 let day = document.exportedAt.formatted(.iso8601.year().month().day())
                 switch request.query["kind"] {
                 case "backup":
+                    let data = try await Task.detached(priority: .userInitiated) {
+                        try CollectionTransferCodec.encodeBackup(document)
+                    }.value
                     return .download(
-                        try CollectionTransferCodec.encode(document),
+                        data,
                         filename: "TallyDex-Collection-\(day).pokecollection",
                         contentType: "application/octet-stream"
                     )
@@ -569,6 +576,8 @@ final class LocalCollectionSharingController {
                 default:
                     return .error("Unknown export format.", statusCode: 400)
                 }
+            } catch CollectionRepositoryError.importTooLarge {
+                return .error("This full backup exceeds the 25 MB file limit.", statusCode: 400)
             } catch {
                 return .error("The export couldn’t be prepared.", statusCode: 500)
             }
@@ -652,6 +661,10 @@ final class LocalCollectionSharingController {
                         additions: preview.additions, changes: preview.changes,
                         skipped: preview.skipped, removals: preview.removals,
                         issues: preview.conflicts, rows: 0,
+                        priceHistoryPoints: prepared.document.priceHistory.count,
+                        savedQuotes: prepared.document.marketQuotes.count,
+                        restorePoints: prepared.document.restorePoints.count,
+                        hasPreferences: prepared.document.preferences != nil,
                         replace: LocalSharingPreviewCountsDTO(
                             additions: prepared.replacePreview.additions,
                             changes: prepared.replacePreview.changes,
@@ -673,6 +686,7 @@ final class LocalCollectionSharingController {
                     additions: preview.additions, changes: preview.changes,
                     skipped: preview.skipped, removals: preview.removals,
                     issues: prepared.issues.count, rows: prepared.sourceRowCount,
+                    priceHistoryPoints: 0, savedQuotes: 0, restorePoints: 0, hasPreferences: false,
                     replace: nil,
                     issueSamples: prepared.issues.prefix(8).map {
                         "Row \($0.rowNumber): \($0.productName) — \($0.reason)"
@@ -689,10 +703,11 @@ final class LocalCollectionSharingController {
                 return .error("Import preview expired. Choose the file again.", statusCode: 400)
             }
             do {
+                var message = "Collection imported"
                 if let prepared = stagedBackupImport,
                    let mode = CollectionImportMode(rawValue: command.mode) {
                     let fresh = try await collectionStore.prepareImport(
-                        data: CollectionTransferCodec.encode(prepared.document),
+                        document: prepared.document,
                         filename: prepared.filename
                     )
                     let earlierPreview = mode == .merge ? prepared.mergePreview : prepared.replacePreview
@@ -702,7 +717,11 @@ final class LocalCollectionSharingController {
                         stagedImportToken = ""
                         return .error("Collection changed since preview. Preview the file again before importing.", statusCode: 400)
                     }
-                    try await collectionStore.importCollection(prepared, mode: mode)
+                    if let warning = try await collectionStore.importCollection(fresh, mode: mode) {
+                        message = warning
+                    } else if fresh.hasSupplementalData {
+                        message = "Full backup imported"
+                    }
                 } else if let prepared = stagedPriceChartingImport,
                           command.mode == "merge" {
                     let fresh = try await collectionStore.preparePriceChartingImport(
@@ -724,7 +743,7 @@ final class LocalCollectionSharingController {
                 stagedPriceChartingImport = nil
                 stagedImportToken = ""
                 editCount += 1
-                return .json(["saved": true])
+                return .json(["message": message])
             } catch {
                 return .error("Import failed. Your collection was not changed; check its rollback backup.", statusCode: 500)
             }
@@ -991,7 +1010,10 @@ final class LocalCollectionSharingController {
             root.innerHTML=`<p><strong>${esc(data.filename)}</strong></p><p id="import-counts"></p><label>Import mode<select id="import-mode"><option value="merge">Merge with existing collection</option>${kind==='backup'?'<option value="replace">Replace entire collection</option>':''}</select></label><p id="import-warning"></p>${data.issueSamples?.length?`<details><summary>${data.issues} skipped or uncertain rows</summary><ul>${data.issueSamples.map(item=>`<li>${esc(item)}</li>`).join('')}</ul></details>`:''}<button id="commit-import" type="button">Confirm import</button>`;
             const updatePreview=()=>{
               const replace=document.querySelector('#import-mode').value==='replace',counts=replace?data.replace:data;
-              document.querySelector('#import-counts').textContent=(data.rows?data.rows+' rows · ':'')+counts.additions+' new · '+counts.changes+' changed · '+counts.skipped+' already present · '+counts.removals+' removed · '+data.issues+' needing review';
+              const supplemental=[[data.priceHistoryPoints,'price history points'],[data.savedQuotes,'saved market quotes'],[data.restorePoints,'restore points']].filter(([count])=>count).map(([count,label])=>count.toLocaleString()+' '+label);
+              const countsText=(data.rows?data.rows+' rows · ':'')+counts.additions+' new · '+counts.changes+' changed · '+counts.skipped+' already present · '+counts.removals+' removed · '+data.issues+' needing review';
+              if(data.hasPreferences)supplemental.push(replace?'replace app preferences':'fill unset app preferences');
+              document.querySelector('#import-counts').textContent=[countsText,...supplemental].join(' · ');
               document.querySelector('#import-warning').textContent=replace?'Replace removes collection data missing from this backup. A rollback backup is created first.':'Merge keeps existing cards. A rollback backup is created before import.';
             };
             document.querySelector('#import-mode').onchange=updatePreview;updatePreview();
@@ -999,7 +1021,7 @@ final class LocalCollectionSharingController {
               const mode=document.querySelector('#import-mode').value;
               if(mode==='replace'&&!confirm('Replace your entire collection with this backup? A rollback backup will be created.'))return;
               const button=document.querySelector('#commit-import');button.disabled=true;
-              try{await api('/api/import/commit',{method:'POST',body:JSON.stringify({token:data.token,mode})});root.textContent='Import complete. Reloading cards…';await load();toast('Collection imported');}
+              try{const result=await api('/api/import/commit',{method:'POST',body:JSON.stringify({token:data.token,mode})});root.textContent='Import complete. Reloading cards…';await load();toast(result.message);}
               catch(error){root.textContent=error.message;}
             };
           }catch(error){root.textContent=error.message;}

@@ -1223,7 +1223,7 @@ protocol CollectionRepository: Sendable {
     func saveManualValue(_ value: ManualCardValue) async throws
     func deleteManualValue(cardID: String, variant: CatalogVariantKind, currencyCode: String) async throws
     func fetchBackups() async throws -> [CollectionBackup]
-    func exportCollection(exportedAt: Date, appVersion: String) async throws -> PortableCollectionDocument
+    func exportCollection(exportedAt: Date, appVersion: String, includingRestorePoints: Bool) async throws -> PortableCollectionDocument
     func backupChanges() -> AsyncThrowingStream<Void, Error>
     func previewImport(
         _ document: PortableCollectionDocument,

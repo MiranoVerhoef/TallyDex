@@ -45,8 +45,8 @@ struct ReliabilityUITestFixture {
         try! GRDBCollectionRepository(database: CollectionDatabase(path: directory.appendingPathComponent("collection.sqlite").path))
     }
 
-    func makeCollectionStore() -> CollectionStore {
-        CollectionStore(repository: repository(), now: { Date(timeIntervalSince1970: 300) })
+    func makeCollectionStore(catalogStore: CatalogStore) -> CollectionStore {
+        CollectionStore(repository: repository(), catalogStore: catalogStore, now: { Date(timeIntervalSince1970: 300) })
     }
 
     func makeCatalogStore() -> CatalogStore {

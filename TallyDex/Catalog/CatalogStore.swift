@@ -371,6 +371,16 @@ final class CatalogStore {
         try await resolveRepository().fetchPriceHistory(cardID: cardID, source: source)
     }
 
+    func exportMarketData() async throws -> (history: [PortableCollectionDocument.PriceHistoryRecord], quotes: [CatalogPriceQuote]) {
+        try await resolveRepository().exportMarketData()
+    }
+
+    func mergeMarketData(history: [PortableCollectionDocument.PriceHistoryRecord], quotes: [CatalogPriceQuote]) async throws {
+        guard !history.isEmpty || !quotes.isEmpty else { return }
+        try await resolveRepository().mergeMarketData(history: history, quotes: quotes)
+        automaticPricesDidUpdate()
+    }
+
     func priceStorageStatistics() async throws -> CatalogPriceStorageStatistics {
         try await resolveRepository().priceStorageStatistics()
     }

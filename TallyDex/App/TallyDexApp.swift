@@ -28,16 +28,18 @@ struct TallyDexApp: App {
         if let fixture = ReliabilityUITestFixture.current {
             let accessStore = AccessStore(anchorStore: KeychainTrialAnchorStore(namespace: fixture.id.uuidString))
             _accessStore = State(initialValue: accessStore)
-            _catalogStore = State(initialValue: fixture.makeCatalogStore())
-            _collectionStore = State(initialValue: fixture.makeCollectionStore())
+            let catalogStore = fixture.makeCatalogStore()
+            _catalogStore = State(initialValue: catalogStore)
+            _collectionStore = State(initialValue: fixture.makeCollectionStore(catalogStore: catalogStore))
             _automaticBackup = State(initialValue: AutomaticCollectionBackup(defaults: fixture.defaults))
             return
         }
 #endif
         let accessStore = AccessStore()
         _accessStore = State(initialValue: accessStore)
-        _catalogStore = State(initialValue: CatalogStore())
-        _collectionStore = State(initialValue: CollectionStore(accessStore: accessStore))
+        let catalogStore = CatalogStore()
+        _catalogStore = State(initialValue: catalogStore)
+        _collectionStore = State(initialValue: CollectionStore(accessStore: accessStore, catalogStore: catalogStore))
         _automaticBackup = State(initialValue: AutomaticCollectionBackup())
     }
 

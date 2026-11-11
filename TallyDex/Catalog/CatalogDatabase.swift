@@ -181,6 +181,29 @@ final class CatalogDatabase: @unchecked Sendable {
             }
         }
 
+        migrator.registerMigration("catalog-v11-portable-market-quotes") { database in
+            // Backup quotes can arrive before the destination has downloaded their cards.
+            try database.execute(sql: """
+                ALTER TABLE catalogPrice RENAME TO catalogPriceV10;
+                CREATE TABLE catalogPrice (
+                    cardID TEXT NOT NULL, variant TEXT NOT NULL, source TEXT NOT NULL,
+                    currencyCode TEXT NOT NULL, amount DOUBLE NOT NULL, updatedAt DATETIME NOT NULL,
+                    productID INTEGER, average1Day DOUBLE, average7Days DOUBLE, average30Days DOUBLE,
+                    averagePrice DOUBLE, lowPrice DOUBLE, fromBackup BOOLEAN NOT NULL DEFAULT 0,
+                    PRIMARY KEY (cardID, variant, source)
+                );
+                INSERT INTO catalogPrice (cardID, variant, source, currencyCode, amount, updatedAt, productID,
+                    average1Day, average7Days, average30Days, averagePrice, lowPrice)
+                SELECT cardID, variant, source, currencyCode, amount, updatedAt, productID,
+                    average1Day, average7Days, average30Days, averagePrice, lowPrice FROM catalogPriceV10;
+                DROP TABLE catalogPriceV10;
+                CREATE TRIGGER deleteCatalogCardPrices AFTER DELETE ON catalogCard
+                BEGIN
+                    DELETE FROM catalogPrice WHERE cardID = OLD.id;
+                END;
+                """)
+        }
+
         try migrator.migrate(queue)
     }
 }
@@ -533,7 +556,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 sql: """
                 SELECT kind FROM catalogVariant WHERE cardID = ?
                 UNION
-                SELECT variant FROM catalogPrice WHERE cardID = ?
+                SELECT variant FROM catalogPrice WHERE cardID = ? AND fromBackup = 0
                 ORDER BY 1
                 """,
                 arguments: [cardID, cardID]
@@ -554,7 +577,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 sql: """
                 SELECT cardID, kind FROM catalogVariant WHERE cardID IN (\(placeholders))
                 UNION
-                SELECT cardID, variant AS kind FROM catalogPrice WHERE cardID IN (\(placeholders))
+                SELECT cardID, variant AS kind FROM catalogPrice WHERE cardID IN (\(placeholders)) AND fromBackup = 0
                 """,
                 arguments: StatementArguments(cardIDs + cardIDs)
             )
@@ -598,7 +621,12 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             let placeholders = Array(repeating: "?", count: cardIDs.count).joined(separator: ",")
             let rows = try Row.fetchAll(
                 database,
-                sql: "SELECT * FROM catalogPrice WHERE cardID IN (\(placeholders))",
+                sql: """
+                SELECT price.* FROM catalogPrice AS price WHERE price.cardID IN (\(placeholders))
+                  AND (price.fromBackup = 0
+                       OR NOT EXISTS (SELECT 1 FROM catalogVariant WHERE cardID = price.cardID)
+                       OR EXISTS (SELECT 1 FROM catalogVariant WHERE cardID = price.cardID AND kind = price.variant))
+                """,
                 arguments: StatementArguments(cardIDs)
             )
             return Dictionary(grouping: rows.compactMap(Self.priceQuote), by: \.cardID)
@@ -621,6 +649,67 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                 arguments: [cardID, source.rawValue]
             )
             return rows.compactMap(Self.priceHistoryPoint)
+        }
+    }
+
+    func exportMarketData() async throws -> (history: [PortableCollectionDocument.PriceHistoryRecord], quotes: [CatalogPriceQuote]) {
+        try await database.queue.read { database in
+            let cursor = try Row.fetchCursor(database, sql: """
+                SELECT cardID, variant, source, day, currencyCode, amount, sourceUpdatedAt
+                FROM catalogPriceHistory
+                ORDER BY cardID, variant, source, day
+                """)
+            var points: [PortableCollectionDocument.PriceHistoryRecord] = []
+            while let row = try cursor.next() {
+                guard let variant = CatalogVariantKind(rawValue: row["variant"]),
+                      let source = CatalogPriceSource(rawValue: row["source"]) else {
+                    throw CatalogRepositoryError.invalidSnapshot
+                }
+                points.append(.init(cardID: row["cardID"], variant: variant, source: source,
+                                    day: row["day"], currencyCode: row["currencyCode"],
+                                    amount: row["amount"], sourceUpdatedAt: row["sourceUpdatedAt"]))
+            }
+            let quotes = try Row.fetchAll(database, sql: """
+                SELECT * FROM catalogPrice ORDER BY cardID, variant, source
+                """).compactMap(Self.priceQuote)
+            return (points, quotes)
+        }
+    }
+
+    func mergeMarketData(history: [PortableCollectionDocument.PriceHistoryRecord], quotes: [CatalogPriceQuote]) async throws {
+        try await database.queue.write { database in
+            let statement = try database.makeStatement(sql: """
+                INSERT INTO catalogPriceHistory
+                    (cardID, variant, source, day, currencyCode, amount, sourceUpdatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cardID, variant, source, day) DO UPDATE SET
+                    currencyCode = excluded.currencyCode, amount = excluded.amount,
+                    sourceUpdatedAt = excluded.sourceUpdatedAt
+                WHERE excluded.sourceUpdatedAt > catalogPriceHistory.sourceUpdatedAt
+                """)
+            for point in history {
+                try statement.execute(arguments: [
+                    point.cardID, point.variant.rawValue, point.source.rawValue,
+                    point.day, point.currencyCode, point.amount, point.sourceUpdatedAt
+                ])
+            }
+            let quoteStatement = try database.makeStatement(sql: """
+                INSERT INTO catalogPrice (cardID, variant, source, currencyCode, amount, updatedAt, productID,
+                    average1Day, average7Days, average30Days, averagePrice, lowPrice, fromBackup)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(cardID, variant, source) DO UPDATE SET
+                    currencyCode = excluded.currencyCode, amount = excluded.amount, updatedAt = excluded.updatedAt,
+                    productID = excluded.productID, average1Day = excluded.average1Day, average7Days = excluded.average7Days,
+                    average30Days = excluded.average30Days, averagePrice = excluded.averagePrice, lowPrice = excluded.lowPrice
+                WHERE excluded.updatedAt > catalogPrice.updatedAt
+                """)
+            for quote in quotes {
+                try quoteStatement.execute(arguments: [
+                    quote.cardID, quote.variant.rawValue, quote.source.rawValue, quote.currencyCode, quote.amount,
+                    quote.updatedAt, quote.productID, quote.average1Day, quote.average7Days, quote.average30Days,
+                    quote.averagePrice, quote.lowPrice
+                ])
+            }
         }
     }
 
@@ -996,6 +1085,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                         currencyCode = excluded.currencyCode,
                         amount = excluded.amount,
                         sourceUpdatedAt = excluded.sourceUpdatedAt
+                    WHERE excluded.sourceUpdatedAt >= catalogPriceHistory.sourceUpdatedAt
                     """,
                     arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
                                 dayFormatter.string(from: quote.updatedAt), quote.currencyCode,
@@ -1050,7 +1140,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
             // price kind would implicitly add a printing. Never do that here.
             let cachedKinds = Set(try String.fetchAll(database, sql: """
                 SELECT kind FROM catalogVariant WHERE cardID = ?
-                UNION SELECT variant FROM catalogPrice WHERE cardID = ?
+                UNION SELECT variant FROM catalogPrice WHERE cardID = ? AND fromBackup = 0
                 """, arguments: [snapshot.card.id, snapshot.card.id]))
             for quote in snapshot.prices {
                 let latestKnown = try Date.fetchOne(database, sql: """
@@ -1076,7 +1166,7 @@ final class GRDBCatalogRepository: CatalogRepository, @unchecked Sendable {
                             productID = COALESCE(excluded.productID, catalogPrice.productID),
                             average1Day = excluded.average1Day, average7Days = excluded.average7Days,
                             average30Days = excluded.average30Days,
-                            averagePrice = excluded.averagePrice, lowPrice = excluded.lowPrice
+                            averagePrice = excluded.averagePrice, lowPrice = excluded.lowPrice, fromBackup = 0
                         WHERE excluded.updatedAt >= catalogPrice.updatedAt
                         """, arguments: [quote.cardID, quote.variant.rawValue, quote.source.rawValue,
                                            quote.currencyCode, quote.amount, quote.updatedAt, quote.productID,

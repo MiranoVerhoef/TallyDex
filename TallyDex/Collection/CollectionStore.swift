@@ -126,6 +126,8 @@ final class CollectionStore {
 
     @ObservationIgnored private var repository: (any CollectionRepository)?
     @ObservationIgnored private var accessStore: AccessStore?
+    @ObservationIgnored private let catalogStore: CatalogStore?
+    @ObservationIgnored private let backupDefaults: UserDefaults
     @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var hasStarted = false
     @ObservationIgnored private var ownedEntriesByCardID: [String: [CollectionVariantEntry]] = [:]
@@ -133,10 +135,14 @@ final class CollectionStore {
     init(
         repository: (any CollectionRepository)? = nil,
         accessStore: AccessStore? = nil,
+        catalogStore: CatalogStore? = nil,
+        backupDefaults: UserDefaults = .standard,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.repository = repository
         self.accessStore = accessStore
+        self.catalogStore = catalogStore
+        self.backupDefaults = backupDefaults
         self.now = now
     }
 
@@ -240,13 +246,18 @@ final class CollectionStore {
         try await resolveRepository().previewBackupRestore(id: backup.id)
     }
 
-    func exportDocument() async throws -> PortableCollectionDocument {
+    func exportDocument(fullBackup: Bool = false) async throws -> PortableCollectionDocument {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
-        return try await resolveRepository().exportCollection(
+        let document = try await resolveRepository().exportCollection(
             exportedAt: now(),
-            appVersion: "\(version) (\(build))"
+            appVersion: "\(version) (\(build))",
+            includingRestorePoints: fullBackup
         )
+        guard fullBackup else { return document }
+        let market = try await catalogStore?.exportMarketData()
+        return document.copy(priceHistory: market?.history, marketQuotes: market?.quotes,
+                             preferences: PortableBackupPreferences(defaults: backupDefaults))
     }
 
     func backupChanges() throws -> AsyncThrowingStream<Void, Error> {
@@ -261,10 +272,14 @@ final class CollectionStore {
         }
         let document: PortableCollectionDocument
         do {
-            document = try CollectionTransferCodec.decode(data)
+            document = try await Task.detached(priority: .userInitiated) { try CollectionTransferCodec.decode(data) }.value
         } catch {
             throw CollectionRepositoryError.invalidImport
         }
+        return try await prepareImport(document: document, filename: filename)
+    }
+
+    func prepareImport(document: PortableCollectionDocument, filename: String) async throws -> PreparedCollectionImport {
         let repository = try resolveRepository()
         async let mergePreview = repository.previewImport(document, mode: .merge)
         async let replacePreview = repository.previewImport(document, mode: .replace)
@@ -338,10 +353,25 @@ final class CollectionStore {
         )
     }
 
-    func importCollection(_ prepared: PreparedCollectionImport, mode: CollectionImportMode) async throws {
+    @discardableResult
+    func importCollection(_ prepared: PreparedCollectionImport, mode: CollectionImportMode) async throws -> String? {
         try accessStore?.requireEditing()
         try await resolveRepository().importCollection(prepared.document, mode: mode, importedAt: now())
-        try await reloadCollectionState()
+        let document = prepared.document
+        document.preferences?.restore(to: backupDefaults, mode: mode)
+        do {
+            try await reloadCollectionState()
+        } catch {
+            return "The collection was saved. Reopen TallyDex and try the backup again to finish importing."
+        }
+        guard !document.priceHistory.isEmpty || !document.marketQuotes.isEmpty else { return nil }
+        do {
+            guard let catalogStore else { throw CollectionRepositoryError.invalidImport }
+            try await catalogStore.mergeMarketData(history: document.priceHistory, quotes: document.marketQuotes)
+            return nil
+        } catch {
+            return "The collection was saved, but market data couldn’t be restored. Try importing this file again."
+        }
     }
 
     func importPriceCharting(_ prepared: PreparedPriceChartingImport) async throws {

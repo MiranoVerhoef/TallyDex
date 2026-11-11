@@ -98,6 +98,15 @@
       ],
       "versions": [
         {
+          "version": "0.9.65",
+          "buildVersion": "101",
+          "date": "2026-11-11",
+          "localizedDescription": "Full backups now include saved market quotes and price history, in-app restore points, and portable preferences. Import Full Backup preserves newer market data on the device.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.65/TallyDex-v0.9.65.ipa",
+          "size": 30665547,
+          "minOSVersion": "26.0"
+        },
+        {
           "version": "0.9.64",
           "buildVersion": "100",
           "date": "2026-11-11",

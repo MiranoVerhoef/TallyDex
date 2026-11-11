@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.64",
-        headline: "Separate sideloaded app",
+        version: "0.9.65",
+        headline: "Full backup improvements",
         notes: [
             AppReleaseNote(
-                systemImage: "apps.iphone",
-                title: "Tallydex (Unofficial)",
-                detail: "Tallydex (Unofficial) can be installed alongside the Apple version. Use a Full Backup to bring a collection into the new copy."
+                systemImage: "chart.xyaxis.line",
+                title: "More complete backups",
+                detail: "Full backups now include saved prices and history, restore points, and app preferences."
             ),
         ]
     )
