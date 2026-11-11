@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.62",
-        headline: "Backup folder selection",
+        version: "0.9.63",
+        headline: "Name for sideloaded builds",
         notes: [
             AppReleaseNote(
-                systemImage: "arrow.up.doc",
-                title: "Automatic Export",
-                detail: "Choose Backup Folder, go inside a folder in Files, then tap Open to save your first backup."
+                systemImage: "apps.iphone",
+                title: "Tallydex (Unofficial)",
+                detail: "The sideloaded app has a new name in the store listing and on the Home Screen."
             ),
         ]
     )

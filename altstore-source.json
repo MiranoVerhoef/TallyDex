@@ -11,7 +11,7 @@
   ],
   "apps": [
     {
-      "name": "TallyDex",
+      "name": "Tallydex (Unofficial)",
       "bundleIdentifier": "com.miranoverhoef.TallyDex",
       "developerName": "Mirano Verhoef",
       "subtitle": "Track Pokémon TCG sets and your collection.",
@@ -97,6 +97,15 @@
         "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.1.3/TallyDex-v0.1.3-Card-Grid.png"
       ],
       "versions": [
+        {
+          "version": "0.9.63",
+          "buildVersion": "99",
+          "date": "2026-11-11",
+          "localizedDescription": "Names the sideloaded app Tallydex (Unofficial) in the source listing and on the Home Screen.",
+          "downloadURL": "https://github.com/MiranoVerhoef/TallyDex/releases/download/v0.9.63/TallyDex-v0.9.63.ipa",
+          "size": 30659924,
+          "minOSVersion": "26.0"
+        },
         {
           "version": "0.9.62",
           "buildVersion": "98",
