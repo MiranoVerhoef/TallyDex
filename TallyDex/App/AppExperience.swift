@@ -66,13 +66,13 @@ struct AppRelease: Equatable {
 
 enum AppReleaseNotes {
     static let current = AppRelease(
-        version: "0.9.63",
-        headline: "Name for sideloaded builds",
+        version: "0.9.64",
+        headline: "Separate sideloaded app",
         notes: [
             AppReleaseNote(
                 systemImage: "apps.iphone",
                 title: "Tallydex (Unofficial)",
-                detail: "The sideloaded app has a new name in the store listing and on the Home Screen."
+                detail: "Tallydex (Unofficial) can be installed alongside the Apple version. Use a Full Backup to bring a collection into the new copy."
             ),
         ]
     )

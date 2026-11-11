@@ -24,16 +24,22 @@ final class AppNavigationStore {
 }
 
 enum CardDeepLink {
+    private static let scheme: String = {
+        let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]]
+        let cardLink = types?.first { $0["CFBundleURLName"] as? String == "com.miranoverhoef.tallydex.card" }
+        return (cardLink?["CFBundleURLSchemes"] as? [String])?.first ?? "tallydex"
+    }()
+
     static func url(cardID: String) -> URL {
         var components = URLComponents()
-        components.scheme = "tallydex"
+        components.scheme = scheme
         components.host = "card"
         components.path = "/\(cardID)"
         return components.url!
     }
 
     static func cardID(from url: URL) -> String? {
-        if url.scheme?.lowercased() == "tallydex", url.host?.lowercased() == "card" {
+        if url.scheme?.lowercased() == scheme, url.host?.lowercased() == "card" {
             let value = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             return value.isEmpty ? nil : value.removingPercentEncoding ?? value
         }

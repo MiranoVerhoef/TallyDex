@@ -9,7 +9,8 @@ enum AutomaticPriceUpdateSettings {
     static let backgroundKey = "pricing.backgroundUpdates"
     static let lastCheckKey = "pricing.automaticLastCheck"
     static let retryAfterKey = "pricing.automaticRetryAfter"
-    static let taskIdentifier = "com.miranoverhoef.TallyDex.prices.refresh"
+    static let taskIdentifier = Bundle.main.object(forInfoDictionaryKey: "TallyDexPriceRefreshTaskIdentifier") as? String
+        ?? "com.miranoverhoef.TallyDex.prices.refresh"
     static let explanation = "Prices update for owned cards first, then My Sets. Background updates let iOS check while TallyDex is closed, using internet data and battery.\n\nOnly card IDs are requested from TCGdex. Your collection file, notes and photos are not uploaded.\n\niOS chooses when updates run and may pause them in Low Power Mode or after you force-quit."
 }
 
